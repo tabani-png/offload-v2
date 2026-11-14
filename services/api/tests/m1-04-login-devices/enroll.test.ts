@@ -15,7 +15,7 @@ beforeAll(async () => {
   tenantId = s.me.tenant.id;
 });
 afterAll(async () => {
-  await h.close();
+  await h?.close(); // beforeAll may have failed before h was set: report that failure, not a TypeError here
 });
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;

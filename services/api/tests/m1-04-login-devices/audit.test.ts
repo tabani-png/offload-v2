@@ -7,7 +7,7 @@ beforeAll(async () => {
   h = await makeHarness();
 });
 afterAll(async () => {
-  await h.close();
+  await h?.close(); // beforeAll may have failed before h was set: report that failure, not a TypeError here
 });
 
 test("AUDIT: device.enrolled is written in the same transaction", async () => {
