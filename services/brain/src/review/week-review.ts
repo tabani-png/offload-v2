@@ -12,6 +12,8 @@ export interface ReviewOpportunity {
   name: string;
   rank: number;
   state: string;
+  /** A declined task can still rank with score 0; it is not asked about. */
+  score?: number;
 }
 
 export interface WeekReview {
@@ -42,7 +44,7 @@ export function buildWeekReview(input: {
     tiles: [week.hours.total, week.focus.minutes, week.focus.meeting_hours, week.focus.switches_per_active_hour],
     goals: input.goals.filter((g) => g.archived_at === null).map((g) => ({ id: g.id, text: g.text })),
     questions: input.opportunities
-      .filter((o) => o.state === "open")
+      .filter((o) => o.state === "open" && (o.score ?? 1) > 0)
       .sort((a, b) => a.rank - b.rank)
       .slice(0, MAX_QUESTIONS)
       .map((o) => ({

@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import { isValidTimezone } from "../records/dates.ts";
 import { sanitizeUserContext, type UserContext } from "../understanding/context.ts";
+import { hasLeak } from "../user-model/names.ts";
 
 export const DRAINS = ["email", "meetings", "agent_babysitting", "reporting", "content", "admin", "context_switching"] as const;
 export type Drain = (typeof DRAINS)[number];
@@ -68,6 +69,7 @@ function line(field: string, v: unknown): string {
   if (/[\r\n]/.test(v)) fail(`${field} must be one line`);
   if (/[\u0000-\u001f\u007f]/.test(v)) fail(`${field} must not contain control characters`);
   if (/[<>]/.test(v)) fail(`${field} must not contain < or >`);
+  if (hasLeak(v)) fail(`${field} must not contain an email address or a link`);
   const s = v.replace(/\s+/g, " ").trim();
   if (s === "") fail(`${field} is empty`);
   if (s.length > GOAL_MAX_CHARS) fail(`${field} is longer than ${GOAL_MAX_CHARS} characters`);

@@ -190,6 +190,25 @@ session; the server stores a single-use code (10 min) in `device_enrollment_code
 | `GET /v1/facts?entity_id=&at=` (M7) | `Fact[]` valid at `at`, each with `valid_at`, `invalid_at` |
 | `GET /v1/figures/{figure_id}/evidence` | `{ arithmetic, evidence[], source_purged_at }` |
 
+User model shapes (handlers in `services/brain/src/http/handlers.ts`, slices p43a and p43b; zod contracts follow in
+`packages/contracts`):
+- `Profile`: `{ version, role, industry, goals: [{ id, text, horizon: "90d", created_at, archived_at: null }], drains[],
+  schedule: { days[], start, end } | null, timezone, review_slot: { day, time }, autonomy, own_name_to_models,
+  keyframes_to_cloud, learning_paused, updated_at }`. Days are `mon` … `sun`; times `HH:MM`; `timezone` is IANA. A
+  profile never saved answers the defaults (`version` 0, review slot `fri` `16:00`, autonomy `suggest`).
+- `PATCH /v1/profile` accepts only `role`, `industry`, `goals`, `drains`, `schedule`, `timezone`, `review_slot`,
+  `autonomy`, `own_name_to_models`, `keyframes_to_cloud`; any other field (including `version`, `updated_at`,
+  `learning_paused`) is 400 `schema_invalid`. `goals` is a list of strings (or `{ text }`), at most 3, each one line of
+  at most 80 characters with no `<`, `>`, email address or link. The same text (case-insensitive) keeps its goal id; a
+  goal left out is archived. A body that is not JSON is 400 `invalid_request`.
+- `DayRecord`, `WeekRecord`, `MonthRecord` and `QuarterRecord` carry every number as a `Figure`. A malformed date,
+  week, month or quarter is 400 `invalid_request`; no record (or a future week in the member's timezone) is 404.
+- `POST /v1/review/answers`: `question_kind` is `opportunity` in v1 (name and outcome questions come in M7);
+  `subject_key` is a task key; `answer` is one of `keep`, `not_now`, `build`, `never`, `leave_alone`, `other_goal`;
+  `goal_id` goes with `keep`, `build` or `other_goal` and is required with `other_goal`. A bad shape is 400
+  `schema_invalid`; an unknown goal or a future week is 400 `invalid_request`. 200 returns the stored `ReviewAnswer`
+  `{ iso_week, subject_key, question_kind, answer, goal_id, answered_at }` (latest wins per week and subject).
+
 ### Opportunities, fixes and builds (core)
 
 | Method and path | Request | Response |

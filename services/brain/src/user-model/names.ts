@@ -38,5 +38,6 @@ export function nameWords(name: string): string[] {
 
 /** True when the text holds an email address or a URL. */
 export function hasLeak(text: string): boolean {
-  return /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(text) || /\bhttps?:\/\//i.test(text) || /\bwww\.[a-z0-9-]+\./i.test(text);
+  // A bare host (`www.notion.so`) is allowed C1 metadata; a URL with a scheme or a path is not.
+  return /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(text) || /\bhttps?:\/\//i.test(text) || /\bwww\.[^\s/"]+\/[^\s"]/i.test(text);
 }

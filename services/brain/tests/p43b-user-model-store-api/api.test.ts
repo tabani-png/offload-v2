@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { handleUserModelRequest, type UserModelAuth } from "../../src/http/handlers.ts";
 import { listOpportunities, listReviewAnswers } from "../../src/store/repository.ts";
-import { runMemberUpdate } from "../../src/store/job.ts";
+import { runMemberUpdate, writeWeekNarrative } from "../../src/store/job.ts";
 import type { TenantContext } from "../../src/store/tenant.ts";
 import { fixtureWeek, MONDAYS, SEED } from "../fixtures/window.ts";
 import { estimateFor, HAS_DB, seedFourWeeks, testDb, type TestDb } from "./db.ts";
@@ -138,6 +138,20 @@ describe.skipIf(!HAS_DB)("p43b records and review routes", () => {
     expect(o.factors.alignment.value).toBe(1);
     expect(o.factors.goal_weight.value).toBe(1.5);
     expect(o.goal_id).toBe(goalId);
+  });
+
+  test("API: the review sentence is the stored narrative once a checked model sentence is written; others are refused", async () => {
+    const week = (await call(`/v1/records/weeks/${W}`))!.body;
+    const bad = await writeWeekNarrative(db.run, db.A1, W, async () => "You worked 999 hours this week.");
+    expect(bad).toBe("code");
+    expect((await call(`/v1/review/week?w=${W}`))!.body.sentence).toContain(String(week.hours.total.value));
+    let prompt = "";
+    const good = `A steady week: ${week.hours.total.value} h of active time.`;
+    expect(await writeWeekNarrative(db.run, db.A1, W, async (p) => { prompt = p; return good; })).toBe("model");
+    expect(prompt).toContain("<week_record>");
+    expect((await call(`/v1/review/week?w=${W}`))!.body.sentence).toBe(good);
+    expect((await call(`/v1/records/weeks/${W}`))!.body.narrative).toBe(good);
+    expect(await writeWeekNarrative(db.run, db.A1, "2026-W30", async () => good)).toBe("none");
   });
 
   test("API: paths and methods it does not own return null", async () => {
