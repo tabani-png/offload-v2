@@ -303,8 +303,8 @@ receipt. A `Figure` carries its `id` and the validator checks it equals `fig_` +
 The JSON Schema states the shape, the bounds, the per-kind rules and `import_id` for imports. These rules are checked by zod only,
 so every consumer repeats them (the Mac egress guard, [ADR 0035](adr/0035-mac-egress-guard-and-ledger.md)):
 `text_hash = sha256Hex(text)`; `title`, `text`, `app_name` and `app_bundle_id` hold no `<kind:...>` token (any `<...:...>`
-after NFKC normalisation) other than a pseudonym or a router placeholder (`<person:[a-z]{4}\\.[0-9]+(\\.first)?>`,
-`<person:[a-z]{4}\\.me>`); the `Figure` id check. `notice_version` and `detail_code` are codes (`[A-Za-z0-9_.-]`). Length limits count
+after NFKC normalisation) other than a pseudonym or a router placeholder (`<person:[a-z]{4}\.[0-9]+(\.first)?>`,
+`<person:[a-z]{4}\.me>`); the `Figure` id check. `notice_version` and `detail_code` are codes (`[A-Za-z0-9_.-]`). Length limits count
 UTF-16 code units in zod and code points in JSON Schema.
 
 Required `Observation` fields per `kind`:
