@@ -1,0 +1,14 @@
+{
+  "name": "@offload-ee/identity",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Enterprise: SAML SSO, SCIM provisioning, enforced SSO, custom roles.",
+  "license": "SEE LICENSE IN ../../../ee/LICENSE",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p ."
+  }
+}

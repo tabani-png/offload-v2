@@ -1,0 +1,1 @@
+Offload chart placeholder. No workloads are defined yet. See docs/ROADMAP.md (M8).

@@ -1,0 +1,37 @@
+Offload v2
+Copyright (c) 2026 Muhammad Ali Tabani / consultance.ai
+
+License: pending owner decision. See LICENSE and docs/OPEN_QUESTIONS.md (OQ-01).
+
+Third-party code included in this repository
+--------------------------------------------
+None yet. This repository holds architecture docs and an empty skeleton.
+
+Rule: when a slice ports code from a third-party project, it adds that project
+here in the same commit, with the project name, URL, license, the exact files or
+functions taken, and the full license text when the license requires it.
+See AGENTS.md ("License boundary and notices").
+
+Planned ports (see docs/MIGRATION.md). Each will be listed here when it lands:
+- farzaa/clicky (MIT, Copyright (c) 2026 Farza): non-activating floating panel
+  configuration and permission polling cadence (1.5 s) for apps/mac.
+- obra/superpowers (MIT): TDD and verification skills loaded into build workers
+  (vendored skill files keep their license header).
+- nizos/tdd-guard (MIT): PreToolUse hook pattern for build workers.
+
+Ideas only, no code copied
+--------------------------
+- kortix-ai/CompanyOS (Elastic License 2.0): verifier, change requests, swarms.
+  ELv2 forbids offering it as a hosted service. Never copy its code.
+- GeneralUserModels/gum (MIT): proposition model with confidence, revise, decay.
+  Its screen observer is never used.
+- getzep/graphiti (Apache-2.0): bi-temporal episodes, entities and edges.
+- storytold/craft-anything (MIT or Apache-2.0): check callable mid-build,
+  per-action-kind approval.
+- Quantexa, Cortexa (commercial): patterns only.
+
+Prior Offload code
+------------------
+Parts of this design are harvested from the owner's earlier repository, which is
+"all rights reserved". Relicensing that code under the chosen v2 license is the
+owner's decision (OQ-02).

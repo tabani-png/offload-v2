@@ -1,0 +1,30 @@
+{
+  "name": "offload",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Offload v2 monorepo. Architecture and skeleton only. See README.md.",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "packageManager": "bun@1.4.4",
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "apps/web",
+    "ee/packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test",
+    "check:license-boundary": "bash scripts/check-license-boundary.sh",
+    "check:docs": "bun scripts/check-doc-links.ts",
+    "check:slices": "bash scripts/check-slices.sh",
+    "verify": "bash scripts/verify-all.sh"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "typescript": "7.0.2"
+  }
+}

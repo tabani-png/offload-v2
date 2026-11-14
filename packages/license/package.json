@@ -1,0 +1,14 @@
+{
+  "name": "@offload/license",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Offline license-key verification (Ed25519) and the feature entitlement set. Core-side only; contains no ee features.",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p ."
+  }
+}

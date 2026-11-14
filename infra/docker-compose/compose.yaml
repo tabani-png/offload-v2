@@ -1,0 +1,18 @@
+# Local development and the smallest self-host footprint: Postgres 17 with pgvector.
+# Object storage uses the local-disk adapter in dev (OFFLOAD_OBJECT_STORE_URL empty).
+# Services are not listed yet: there is no feature code. See docs/ARCHITECTURE.md#14-deployment.
+name: offload
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: offload
+      POSTGRES_USER: offload_migrator
+      # Dev only. Set POSTGRES_PASSWORD in your shell; never commit a value.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in your shell}
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:

@@ -1,0 +1,6 @@
+[install]
+exact = true
+
+[test]
+# Tests live next to each workspace in tests/ and in scripts/tests/.
+root = "."

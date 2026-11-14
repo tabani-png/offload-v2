@@ -1,0 +1,14 @@
+# Placeholder values. See docs/ARCHITECTURE.md#14-deployment.
+# Required: an external Postgres 17 with pgvector and an S3-compatible bucket.
+postgres:
+  url: ""
+objectStore:
+  url: ""
+  bucket: ""
+services:
+  api: { replicas: 1 }
+  brain: { replicas: 1 }
+  builder: { replicas: 1 }
+  runtime: { replicas: 1 }
+ee:
+  licenseKeySecretRef: ""
