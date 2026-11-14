@@ -2,7 +2,7 @@
 id: p45a-build-loop
 title: Port of old PR #45 OK, build into the builder - hash-checked approval, frozen check set and held-out check, teeth gate, one test-first worker, parallel check shards in fresh Docker sandboxes with the container guard, fan-out on check failure, build cap, build lock
 milestone: M2
-status: ready
+status: done
 depends_on: []
 parallel_safe: true
 human_gated: false

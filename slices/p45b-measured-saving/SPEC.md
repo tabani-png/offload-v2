@@ -2,7 +2,7 @@
 id: p45b-measured-saving
 title: Measured saving after a fix ships - four weekly windows, ended weeks measured once, purged weeks never guessed, partial weeks scaled, the 4-week median against the estimate as Figures
 milestone: M4
-status: ready
+status: done
 depends_on: [p45a-build-loop]
 parallel_safe: true
 human_gated: false
