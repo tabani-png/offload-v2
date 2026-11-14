@@ -111,6 +111,14 @@ describe("p45a Postgres build store", () => {
     await expect(sql`DELETE FROM budget_entries WHERE scope_id = ${b.id}`).rejects.toThrow(/append-only/);
   });
 
+  test("LOCK: (Postgres) starting a queued build is a compare-and-set: of two starts exactly one wins", async () => {
+    const b = await store.insertQueued(newBuild("brief_start"), T0, STALE);
+    const both = await Promise.all([1, 2].map(() => store.startBuild(TENANT, b.id, T0 + 1)));
+    expect(both.sort()).toEqual([false, true]);
+    expect((await store.get(TENANT, b.id))!).toMatchObject({ state: "building", started_at: T0 + 1 });
+    expect(await store.startBuild(TENANT, b.id, T0 + 2)).toBe(false);
+  });
+
   test("SHIP: (Postgres) deployed_at is set once; a second deploy finds it set", async () => {
     const b = await store.insertQueued(newBuild("brief_ship"), T0, STALE);
     await store.update(TENANT, b.id, { state: "ready", ended_at: T0 + 1 }, T0 + 1);

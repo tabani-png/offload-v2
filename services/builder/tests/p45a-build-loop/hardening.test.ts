@@ -106,6 +106,17 @@ describe("p45a hardening", () => {
     expect((await h.store.get(TENANT, dead.build_id))!.state).toBe("infra_failed");
   });
 
+  test("LOCK: two starts of one build run it once; the second start writes nothing and burns nothing", async () => {
+    const h = harness([{ delayMs: 20 }]);
+    const r = await ok(h);
+    await Promise.all([1, 2].map(() => runBuild(h.deps, { tenant_id: TENANT, build_id: r.build_id, token: r.token })));
+    const b = (await h.store.get(TENANT, r.build_id))!;
+    expect(b.state).toBe("ready");
+    expect(h.worker.turns.filter((t) => t.ordinal === 1)).toHaveLength(1);
+    expect(b.stages.filter((s) => s.name === "teeth_gate")).toHaveLength(1);
+    expect((await h.approvals.get(TENANT, b.approval_id!))!.claimed_at).not.toBeNull();
+  });
+
   test("LOCK: a build younger than the stale limit still refuses (409) and is left alone", async () => {
     const h = harness();
     const live = await ok(h);
