@@ -12,7 +12,7 @@ parallel_group: M1-D
 owns: [services/api/**, docs/API.md]
 verify: bash slices/m1-04-login-devices/verify.sh
 min_tests: 22
-paths_in_scope: [services/api/**, packages/contracts/src/auth/**, packages/contracts/src/index.ts, packages/contracts/schemas/**, packages/db/src/**, packages/testkit/**, slices/m1-04-login-devices/**, docs/API.md, package.json, bun.lock]
+paths_in_scope: [services/api/**, packages/contracts/src/auth/**, packages/contracts/src/index.ts, packages/contracts/schemas/**, packages/db/src/**, packages/testkit/**, slices/m1-04-login-devices/**, docs/API.md, package.json, bun.lock, packages/db/tests/m1-01-durable-spike/durable.test.ts, packages/db/tests/m1-01-durable-spike/child-workflow.ts, packages/db/tests/m1-03-tenancy-rls/role.test.ts, slices/m1-01-durable-spike/SPEC.md, slices/m1-03-tenancy-rls/SPEC.md]
 paths_out_of_scope: [ee/**, apps/**, services/brain/**, services/builder/**, services/runtime/**, services/broker/**, packages/db/migrations/**, docs/adr/**]
 red_tests: [SESSION, ENROLL, TOKEN, AUDIT]
 ---
@@ -106,3 +106,9 @@ SAML, SCIM, WorkOS (M8/M9), team invites (M8), ingest routes (m3-01), pseudonym 
 - Extra tests beyond the table: `TOKEN: an expired nonce is 401 token_expired` and `TOKEN: Offload-Signature parses
   keyid and sig, and a signed body must be JCS` (24 in all).
 - Done with m1-03-tenancy-rls still `in_progress` (its code is on this branch; its review is pending).
+- CI fix (2026-11-14): CI's Postgres uses scram-sha-256, and every Postgres test failed to log in as the roles it had
+  created without a password. The fix lives in the lower slices of this stacked branch: `@offload/testkit` gives each
+  role a test-only password (m1-03, with a ROLE test in `role.test.ts`), and m1-01's kill test spawns
+  `process.execPath` so SIGKILL reaches the child. Those m1-01 and m1-03 test files and SPECs are outside this slice's
+  paths, but this slice's `BASE` is below the fix, so `paths_in_scope` lists those five exact files. Here, each test
+  file's `afterAll` uses `h?.close()`, so a failed `beforeAll` reports its own error rather than a TypeError.
