@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The harness. Run before every commit and in CI. Exit 0 = green.
-# Steps: install, typecheck, tests, license boundary, slices lint, doc links, copy lint, secrets hygiene.
+# Steps: install, typecheck, tests, license boundary, slices lint (+ done slices), doc links, copy lint, secrets
+# hygiene, workflow YAML.
 # Swift is built and tested only on macOS (CI job "mac"); on Linux it is reported as skipped.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -23,6 +24,8 @@ step "product copy"
 bash scripts/check-copy.sh
 step "secrets hygiene"
 bash scripts/check-secrets-hygiene.sh
+step "workflows"
+bun scripts/check-workflows.ts
 step "swift (apps/mac)"
 if [[ $(uname -s) == Darwin ]] && command -v swift >/dev/null; then
   (cd apps/mac && swift build && swift test)
