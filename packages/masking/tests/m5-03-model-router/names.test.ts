@@ -44,6 +44,16 @@ describe("m5-03 person-name masker", () => {
       `<person:${m.tag}.me> asked <person:${m.tag}.1> for the file. Thanks, <person:${m.tag}.me>`,
     );
     expect(m.mask("Okafor approved it.")).toBe(`<person:${m.tag}.me> approved it.`);
+    // The own name can be given to a run's masker later; the map and tag stay the same.
+    const late = createNameMasker();
+    const before = late.mask("Priya Holmvik met Sam Okafor.");
+    late.setOwnName("Sam Okafor", "mask");
+    expect(late.mask("Priya Holmvik met Sam Okafor.")).toBe(`<person:${late.tag}.1> met <person:${late.tag}.me>.`);
+    expect(before.startsWith(`<person:${late.tag}.1>`)).toBe(true);
+    // A different own name is refused; asking for keep after mask leaves the own name masked.
+    expect(() => late.setOwnName("Dana Fielding", "mask")).toThrow();
+    late.setOwnName("Sam Okafor", "keep");
+    expect(late.mask("Sam Okafor")).toBe(`<person:${late.tag}.me>`);
     const keep = createNameMasker({ ownName: "Sam Okafor", ownNameToModels: "keep" });
     expect(keep.mask("Sam Okafor asked Priya Holmvik.")).toBe(`Sam Okafor asked <person:${keep.tag}.1>.`);
   });

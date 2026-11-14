@@ -54,13 +54,35 @@ describe("m5-03 router masking", () => {
     expect(r.status === "refused" && r.reason).toBe("schema_holds_name");
     expect(h.provider.requests).toHaveLength(0);
 
-    // Within one run, a later call that names the member's own name masks it (masker settings follow the call).
+    // A name the run already masked in a message cannot go out raw in the schema.
+    const known = harness();
+    const r2 = await route(
+      call({
+        route: "label",
+        messages: [{ role: "user", content: "cc Zorvak Quellin on this" }],
+        schema: { type: "object", properties: { who: { type: "string", enum: ["Zorvak Quellin", "other"] } }, required: ["who"], additionalProperties: false },
+      }),
+      known.deps,
+    );
+    expect(r2.status === "refused" && r2.reason).toBe("schema_holds_name");
+    expect(known.provider.requests).toHaveLength(0);
+
+    // One masker per run: the same name keeps one placeholder across calls, and once a call gives the member's own
+    // name, later calls in the run mask it even when they leave own_name out.
     const { RunMaskers } = await import("../../src/models/router.ts");
     const h2 = harness();
     h2.deps.maskers = new RunMaskers();
-    await route(call({ call_id: "c_r1", run_id: "run1", messages: [{ role: "user", content: "Sort these." }] }), h2.deps);
-    await route(call({ call_id: "c_r2", run_id: "run1", own_name: "Zorvak Quellin", messages: [{ role: "user", content: "From Zorvak Quellin: sort these." }] }), h2.deps);
-    expect(JSON.stringify(h2.provider.requests)).not.toContain("Zorvak");
-    expect(h2.provider.requests[1]!.messages[0]!.content).toContain(".me>");
+    const text = "From Zorvak Quellin: ask Margaret Holloway to sort these.";
+    await route(call({ call_id: "c_r0", run_id: "run1", messages: [{ role: "user", content: "Sort these." }] }), h2.deps);
+    await route(call({ call_id: "c_r1", run_id: "run1", own_name: "Zorvak Quellin", messages: [{ role: "user", content: text }] }), h2.deps);
+    await route(call({ call_id: "c_r2", run_id: "run1", messages: [{ role: "user", content: text }] }), h2.deps);
+    await route(call({ call_id: "c_r3", run_id: "run1", own_name: "Zorvak Quellin", messages: [{ role: "user", content: text }] }), h2.deps);
+    expect(JSON.stringify(h2.provider.requests)).not.toMatch(/Zorvak|Quellin|Margaret|Holloway/);
+    const sent = h2.provider.requests.slice(1).map((r) => r.messages[0]!.content);
+    expect(new Set(sent).size).toBe(1);
+    expect(sent[0]).toMatch(/^From <person:[a-z]{4}\.me>: ask <person:[a-z]{4}\.1> to sort these\.$/);
+    // A later call cannot loosen the run's own-name setting from mask to keep.
+    await route(call({ call_id: "c_r4", run_id: "run1", own_name: "Zorvak Quellin", own_name_to_models: "keep", messages: [{ role: "user", content: text }] }), h2.deps);
+    expect(h2.provider.requests.at(-1)!.messages[0]!.content).toBe(sent[0]!);
   });
 });
