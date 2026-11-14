@@ -97,4 +97,12 @@ SAML, SCIM, WorkOS (M8/M9), team invites (M8), ingest routes (m3-01), pseudonym 
 `bash slices/m1-04-login-devices/verify.sh` (needs `DATABASE_URL`).
 
 ## Scope changes
-None.
+- Magic link callback is `GET /auth/magic-link/callback?token=&email=`, and `POST /auth/magic-link` accepts an
+  optional `return_to`. `magic_links` stores only `email_hash` (DATA_MODEL), and a first login must create the member
+  with its email (`members.email` is NOT NULL), so the link carries the email it was sent to; the server checks it
+  against the stored hash. Migrations are out of scope here; a later slice may add an encrypted email column instead.
+- The contract schemas live in `packages/contracts/src/auth`; JSON Schema files for them are not generated because
+  `packages/contracts/scripts/**` is outside this slice's scope (the generator lists its schemas by hand).
+- Extra tests beyond the table: `TOKEN: an expired nonce is 401 token_expired` and `TOKEN: Offload-Signature parses
+  keyid and sig, and a signed body must be JCS` (24 in all).
+- Done with m1-03-tenancy-rls still `in_progress` (its code is on this branch; its review is pending).
