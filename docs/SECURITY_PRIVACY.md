@@ -281,7 +281,7 @@ The Mac app's Sparkle update check goes to Offload's download host and carries n
 | Every tenant table and partition has forced RLS; cross-tenant read returns zero rows as `offload_app` | `packages/db` | M1 (m1-03-tenancy-rls) |
 | Member RLS: as member A, zero rows of member B in every C1, C2 and C6 table | `packages/db` | M1 (m1-03-tenancy-rls) |
 | Resolver functions return ids only and nothing for unknown keys | `packages/db` | M1 (m1-03-tenancy-rls) |
-| Audit chain verify detects edit, delete and fork | `packages/db` | M1 (m1-03-tenancy-rls) |
+| Audit chain verify detects edit, delete and fork | `packages/db` | M2 (m2-12-audit-anchors; the chain writer is m1-03) |
 | Device token signature, nonce reuse, revoked device | `services/api` | M1 (m1-04-login-devices) |
 | Transform modules cannot reach the network or the file system | `packages/routine-sdk` | M1 (m1-05-routine-contract) |
 | Approval: wrong hash 403, expired 409, a claimed approval cannot be claimed again | `packages/policy` + `services/builder` | M2 |
@@ -291,7 +291,7 @@ The Mac app's Sparkle update check goes to Offload's download host and carries n
 | Teeth gate refuses a check that passes on an empty workspace | `services/builder` | M2 |
 | Sandbox has no credentials and no un-tokenised fixture value in env or files; outbound connection to a non-allowlisted host fails; no registry reachable | `services/builder` | M2 |
 | Budget: three parallel reservations cannot exceed the remaining cap | `services/builder` | M2 |
-| Broker re-check: a commit whose item hash differs from the approved one is refused; an undeclared read is refused | `services/broker` | M2 |
+| Broker re-check: a commit whose item hash differs from the approved one is refused; an undeclared read is refused | `services/broker` | M2 (m2-03-credential-broker) |
 | Item journal: crash after `sending` yields `unknown`, never re-sent | `services/runtime` | M2 |
 | EGRESS: `fetch` and socket APIs appear only in allowlisted server modules | lint test over `services/*`, `packages/*` | M2 |
 | CANARY: a canary string in fixtures never appears in logs or in a column outside the content-column allowlist (C1, C2, C6 columns named) | `packages/testkit` + `packages/db` | M2 |
@@ -299,7 +299,7 @@ The Mac app's Sparkle update check goes to Offload's download host and carries n
 | Observer sources contain no networking APIs | `apps/mac` | M3 (m3-02-mac-capture-upload) |
 | Mac egress guard: an object with an unknown field or a detector hit is not sent and is counted; the local ledger holds exactly what left | `apps/mac` | M3 (m3-02-mac-capture-upload) |
 | Pseudonyms: same value gives the same pseudonym across days; the key never appears in an upload | `apps/mac` | M3 (m3-02-mac-capture-upload) |
-| Model router refuses unmasked names and secrets (held-out corpus) | `services/brain` | M5 |
+| Model router refuses unmasked names and secrets (held-out corpus) | `services/brain` | M5 (m5-03-model-router) |
 | Device command: the Mac refuses a command whose item hash differs from the approved item | `apps/mac` + `services/runtime` | M6 |
 | Core never imports `ee/` | `scripts/check-license-boundary.sh` | M0 (done) |
 
