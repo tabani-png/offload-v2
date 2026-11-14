@@ -1,0 +1,129 @@
+# CI stub. Runs the same harness as scripts/verify-all.sh.
+# Action versions are pinned by tag for now. Pinning every action by commit SHA is an M8 acceptance test
+# (`CI: every action reference is pinned by a 40-char SHA`, docs/ROADMAP.md M8).
+# Note: workflow files could not be pushed to the old repo because the gh token there lacks the `workflow` scope,
+# so the old macOS CI build (PR #41 mac-release.yml, PR #45 builder-mac.yml.proposed) is blocked. Re-auth is operator
+# item O4 in docs/ROADMAP.md.
+name: ci
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  core:
+    name: core (bun, typecheck, tests, license boundary)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      # Real Postgres 17 + pgvector: RLS, roles, partitions and the durable runtime are tested here, not on PGlite.
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: offload
+          POSTGRES_PASSWORD: offload-ci
+          POSTGRES_DB: offload_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U offload -d offload_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # CI-only throwaway database on the job's service container. Not a secret.
+      DATABASE_URL: postgres://offload:offload-ci@localhost:5432/offload_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc --noEmit -p tsconfig.json
+      - run: bun test
+      - run: bash scripts/check-license-boundary.sh
+      - run: bash scripts/check-slices.sh
+      - run: bun scripts/check-doc-links.ts
+      - run: bash scripts/check-copy.sh
+      - run: bash scripts/check-secrets-hygiene.sh
+      - run: bun scripts/check-workflows.ts
+  mac:
+    # Job shape ported from the old repo's ci/mac-release-workflow branch (docs/DEPLOYMENT.md section 6.2).
+    # The Swift package has empty targets today; it cannot run on the Linux dev box.
+    # macos-26 matches the runner PR #41 built the old app on. Path filters for this job (apps/mac, packages/contracts,
+    # .github/workflows) arrive with the first Swift slice; CI capacity for macOS is OQ-25 / operator item O12.
+    name: mac (swift build and test, bundle stub, Swift slices)
+    runs-on: macos-26
+    timeout-minutes: 150
+    env:
+      TZ: UTC
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+    steps:
+      - uses: actions/checkout@v4
+      - name: select toolchain and print it
+        run: |
+          sudo xcode-select -s /Library/Developer/CommandLineTools
+          swiftc --version
+          xcrun --show-sdk-version
+          sw_vers
+          uname -m
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - name: swift build
+        working-directory: apps/mac
+        timeout-minutes: 30
+        run: swift build
+      - name: bundle app (stub)
+        # `swift build` output is not an app bundle. TCC grants (Screen Recording, Accessibility) bind to the
+        # bundle id + Team ID, so daily use needs a bundled, signed app with a stable identity. Needs operator
+        # items O1 (Apple Developer enrolment), O2 (bundle id ai.offload.mac / ai.offload.mac.dev) and O3
+        # (Developer ID + notarization credentials as CI secrets); O1 to O3 start in M0 and are needed by M3.
+        # Until then this step only reports. PR CI signs ad hoc; Developer ID signing lives in release-mac.yml.
+        run: |
+          echo "bundle step: pending operator items O1-O3 (docs/ROADMAP.md M0)"
+      - name: upload build before tests
+        # A red test never hides a build you can install.
+        uses: actions/upload-artifact@v4
+        with:
+          name: offload-mac-build
+          path: apps/mac/.build/debug
+          if-no-files-found: warn
+      - name: installed-copy smoke test (stub)
+        # Target shape: copy the bundle with ditto to a temp folder and run its self-check mode with an empty
+        # environment (env -i HOME=<temp> PATH=/usr/bin:/bin:/usr/sbin:/sbin). Lands with the first app bundle (m3-02).
+        run: |
+          echo "installed-copy smoke test: lands with the app bundle (m3-02)"
+      - name: swift test
+        id: swift_test
+        working-directory: apps/mac
+        timeout-minutes: 30
+        continue-on-error: true
+        run: swift test
+      - name: Swift slice m3-02-mac-capture-upload
+        id: slice_m302
+        # Runs once the slice is marked done (red tests exist by design before that, as in check-slices.sh).
+        # REQUIRE_MAC=1 turns a "needs macOS" skip into a failure.
+        timeout-minutes: 45
+        continue-on-error: true
+        env:
+          REQUIRE_MAC: "1"
+        run: |
+          if grep -q '^status: done' slices/m3-02-mac-capture-upload/SPEC.md; then
+            bash slices/m3-02-mac-capture-upload/verify.sh
+          else
+            echo "m3-02-mac-capture-upload: not done yet, verify not run"
+          fi
+      - name: result
+        if: always()
+        run: |
+          echo "swift test: ${{ steps.swift_test.outcome }}"
+          echo "slice m3-02: ${{ steps.slice_m302.outcome }}"
+          test "${{ steps.swift_test.outcome }}" = success
+          test "${{ steps.slice_m302.outcome }}" = success
