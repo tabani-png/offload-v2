@@ -246,6 +246,16 @@ describe("p45a check guard on its own (onLoad)", () => {
     }
   });
 
+  test("SHARDS: a path into the workspace is refused at resolution (onResolve), before onLoad is ever asked", () => {
+    // onLoad would also stop it (defence in depth); this pins the first line of defence on its own.
+    const l = layout();
+    for (const spec of [join(l.work, "evil.ts"), "../work/evil.ts"]) {
+      const g = runIn(l, spec, true);
+      expect([spec, g.exit, g.out.includes(REFUSED)]).toEqual([spec, 1, true]);
+      expect([spec, g.out.includes("if (builder(p)) throw new Error")]).toEqual([spec, true]);
+    }
+  });
+
   test("SHARDS: the guard refuses an absolute path into the workspace", () => {
     const l = layout();
     const spec = join(l.work, "evil.ts");
