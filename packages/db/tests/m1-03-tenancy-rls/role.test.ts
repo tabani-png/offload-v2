@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { sha256Hex } from "@offload/contracts";
 import {
-  APPEND_ONLY_TABLES, LastOwnerError, NetworkIoInTransactionError, createPersonalTenant, setMemberRole,
+  APPEND_ONLY_TABLES, LastOwnerError, bootstrapRoles, NetworkIoInTransactionError, createPersonalTenant, setMemberRole,
   setMemberState, uuidv7, withTenant, withTransaction,
 } from "../../src/index.ts";
 import { pgTenantFixture, seedTenantRows, type PgTenantFixture } from "@offload/testkit";
@@ -223,4 +223,22 @@ test("ROLE: a fetch inside withTenant throws", async () => {
             current_setting('app.tenant_role') r, current_setting('app.member_scope') s`,
   )).rows[0]);
   expect(s).toEqual({ t: fx.a.tenantId, p: "p-1", m: fx.a.owner, r: "owner", s: "member" });
+});
+
+test("ROLE: bootstrapRoles is idempotent and refuses to run as a role it manages", async () => {
+  const admin = await fx.admin.connect();
+  try {
+    await bootstrapRoles(admin);
+    await bootstrapRoles(admin);
+  } finally {
+    admin.release();
+  }
+  // Run as offload_migrator (in compose it is the container superuser) it would rewrite its own attributes.
+  const c = await fx.migrator.connect();
+  try {
+    const err = await fail(bootstrapRoles(c));
+    expect(err?.message).toMatch(/administrator/);
+  } finally {
+    c.release();
+  }
 });
