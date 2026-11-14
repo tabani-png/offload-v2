@@ -2,7 +2,7 @@
 id: m1-01-durable-spike
 title: Durable runtime spike - DBOS Transact on Bun behind the DurableRuntime port, with the fallback order and the outcome written into ADR 0009
 milestone: M1
-status: ready
+status: in_progress
 depends_on: []
 parallel_safe: false
 human_gated: false
