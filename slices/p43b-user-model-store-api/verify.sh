@@ -12,7 +12,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="p43b-user-model-store-api"
-BASE=""                                  # commit this slice stacks on (required once status is in_progress)
+BASE="3737da3"                                # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="services/brain/tests/p43b-user-model-store-api"   # one or more folders, space separated
 NEEDS_POSTGRES=1                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 # -------------------------------------------------------------------------

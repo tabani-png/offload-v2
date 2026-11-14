@@ -2,7 +2,7 @@
 id: p43b-user-model-store-api
 title: User model storage in Postgres with tenant and member RLS, a repository, the member update job and framework-agnostic handlers for /v1/profile, /v1/records and /v1/review (port of old PR #43)
 milestone: M5
-status: ready
+status: in_progress
 depends_on: [p43a-user-model-core]
 parallel_safe: false
 human_gated: false
