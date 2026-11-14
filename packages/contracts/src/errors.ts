@@ -27,7 +27,7 @@ export const ERROR_CODES = [
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
 /** `req_` + ULID. */
-export const requestId = z.string().regex(/^req_[0-9A-HJKMNP-TV-Z]{26}$/);
+export const requestId = z.string().regex(/^req_[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
 
 export const ErrorEnvelopeSchema = z.strictObject({
   error: z.strictObject({

@@ -2,7 +2,7 @@
 id: m1-02-contracts-ingest
 title: Ingest contracts in packages/contracts (zod to JSON Schema 2020-12) - envelope, five upload kinds, pseudonym shape, RFC 8785 JCS, hashes, error envelope, Figure
 milestone: M1
-status: in_progress
+status: done
 depends_on: []
 parallel_safe: false
 human_gated: false
@@ -12,7 +12,7 @@ parallel_group: M1-B
 owns: [packages/contracts/**, docs/API.md]
 verify: bash slices/m1-02-contracts-ingest/verify.sh
 min_tests: 22
-paths_in_scope: [packages/contracts/**, slices/m1-02-contracts-ingest/**, docs/API.md, package.json, bun.lock]
+paths_in_scope: [packages/contracts/**, slices/m1-02-contracts-ingest/**, docs/API.md, package.json, bun.lock, NOTICE]
 paths_out_of_scope: [ee/**, apps/**, services/**, packages/db/**, docs/adr/**]
 red_tests: [CONTRACT, JCS, KIND, PSEUDO]
 ---
@@ -117,4 +117,13 @@ need them), any service code.
 `bash slices/m1-02-contracts-ingest/verify.sh`.
 
 ## Scope changes
-None.
+- `NOTICE` added to `paths_in_scope`: AGENTS.md requires the Apache-2.0 JCS test vectors copied into
+  `packages/contracts/tests/fixtures/jcs/` to be listed in `NOTICE` in the same commit.
+- The error code list above omitted `stale_notice` (409); docs/API.md has it, and the test compares the code list to the
+  API.md table, so the contract includes it (28 codes).
+- Receipt `accepted` and `rejected[].id` are plain strings of 1 to 64 characters, not ULIDs, so an object with a
+  malformed id can still be rejected by name.
+- `import_id` is only required when `source = "import"` (as written); it is not rejected on other sources.
+- zod-only rules (JSON Schema cannot express them): `text_hash` equality, the angle-token rule (`title`, `text`,
+  `app_name`, `app_bundle_id`), the `Figure` id check. Listed in API.md section 3. `import_id` for imports is in both.
+- Review fixes: wide token regex with NFKC, ULIDs start with 0-7, `notice_version` and `detail_code` are code strings, `jcs` rejects sparse arrays.

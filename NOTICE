@@ -8,7 +8,17 @@ keep their own licenses, listed below.
 
 Third-party code included in this repository
 ============================================
-None yet. This repository holds architecture docs and an empty skeleton.
+cyberphone/json-canonicalization
+  https://github.com/cyberphone/json-canonicalization
+  License: Apache-2.0. Copyright 2018 Anders Rundgren
+  Data only, no code: the JCS (RFC 8785) test vectors from its testdata/input
+  and testdata/output folders (arrays, french, structures, unicode, values,
+  weird), copied unchanged to packages/contracts/tests/fixtures/jcs/ as
+  <name>.input.json and <name>.output.json. The notice is in the README there.
+  Licence text: http://www.apache.org/licenses/LICENSE-2.0
+
+Everything else in this repository is original to it or listed under
+"Planned attributions" below.
 
 Rule: when a slice ports code from a third-party project, it moves that
 project's entry from "Planned" below to this section in the same commit, with

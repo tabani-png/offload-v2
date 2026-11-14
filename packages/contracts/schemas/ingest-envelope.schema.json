@@ -39,7 +39,7 @@
                 "properties": {
                   "id": {
                     "type": "string",
-                    "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+                    "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
                   },
                   "ts": {
                     "type": "string",
@@ -64,12 +64,10 @@
                   },
                   "app_bundle_id": {
                     "type": "string",
-                    "minLength": 1,
                     "maxLength": 255
                   },
                   "app_name": {
                     "type": "string",
-                    "minLength": 1,
                     "maxLength": 256
                   },
                   "title": {
@@ -94,14 +92,32 @@
                   "app_bundle_id",
                   "app_name"
                 ],
-                "additionalProperties": false
+                "additionalProperties": false,
+                "if": {
+                  "properties": {
+                    "source": {
+                      "const": "import"
+                    }
+                  },
+                  "required": [
+                    "source"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "import_id": true
+                  },
+                  "required": [
+                    "import_id"
+                  ]
+                }
               },
               {
                 "type": "object",
                 "properties": {
                   "id": {
                     "type": "string",
-                    "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+                    "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
                   },
                   "ts": {
                     "type": "string",
@@ -130,14 +146,32 @@
                   "ts",
                   "kind"
                 ],
-                "additionalProperties": false
+                "additionalProperties": false,
+                "if": {
+                  "properties": {
+                    "source": {
+                      "const": "import"
+                    }
+                  },
+                  "required": [
+                    "source"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "import_id": true
+                  },
+                  "required": [
+                    "import_id"
+                  ]
+                }
               },
               {
                 "type": "object",
                 "properties": {
                   "id": {
                     "type": "string",
-                    "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+                    "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
                   },
                   "ts": {
                     "type": "string",
@@ -166,14 +200,32 @@
                   "ts",
                   "kind"
                 ],
-                "additionalProperties": false
+                "additionalProperties": false,
+                "if": {
+                  "properties": {
+                    "source": {
+                      "const": "import"
+                    }
+                  },
+                  "required": [
+                    "source"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "import_id": true
+                  },
+                  "required": [
+                    "import_id"
+                  ]
+                }
               },
               {
                 "type": "object",
                 "properties": {
                   "id": {
                     "type": "string",
-                    "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+                    "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
                   },
                   "ts": {
                     "type": "string",
@@ -214,14 +266,32 @@
                   "keys",
                   "clicks"
                 ],
-                "additionalProperties": false
+                "additionalProperties": false,
+                "if": {
+                  "properties": {
+                    "source": {
+                      "const": "import"
+                    }
+                  },
+                  "required": [
+                    "source"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "import_id": true
+                  },
+                  "required": [
+                    "import_id"
+                  ]
+                }
               },
               {
                 "type": "object",
                 "properties": {
                   "id": {
                     "type": "string",
-                    "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+                    "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
                   },
                   "ts": {
                     "type": "string",
@@ -246,7 +316,6 @@
                   },
                   "app_bundle_id": {
                     "type": "string",
-                    "minLength": 1,
                     "maxLength": 255
                   },
                   "text": {
@@ -274,14 +343,32 @@
                   "text_hash",
                   "text_source"
                 ],
-                "additionalProperties": false
+                "additionalProperties": false,
+                "if": {
+                  "properties": {
+                    "source": {
+                      "const": "import"
+                    }
+                  },
+                  "required": [
+                    "source"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "import_id": true
+                  },
+                  "required": [
+                    "import_id"
+                  ]
+                }
               },
               {
                 "type": "object",
                 "properties": {
                   "id": {
                     "type": "string",
-                    "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+                    "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
                   },
                   "ts": {
                     "type": "string",
@@ -320,14 +407,32 @@
                   "kind",
                   "reason"
                 ],
-                "additionalProperties": false
+                "additionalProperties": false,
+                "if": {
+                  "properties": {
+                    "source": {
+                      "const": "import"
+                    }
+                  },
+                  "required": [
+                    "source"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "import_id": true
+                  },
+                  "required": [
+                    "import_id"
+                  ]
+                }
               },
               {
                 "type": "object",
                 "properties": {
                   "id": {
                     "type": "string",
-                    "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+                    "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
                   },
                   "ts": {
                     "type": "string",
@@ -366,14 +471,32 @@
                   "kind",
                   "reason"
                 ],
-                "additionalProperties": false
+                "additionalProperties": false,
+                "if": {
+                  "properties": {
+                    "source": {
+                      "const": "import"
+                    }
+                  },
+                  "required": [
+                    "source"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "import_id": true
+                  },
+                  "required": [
+                    "import_id"
+                  ]
+                }
               },
               {
                 "type": "object",
                 "properties": {
                   "id": {
                     "type": "string",
-                    "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+                    "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
                   },
                   "ts": {
                     "type": "string",
@@ -419,7 +542,25 @@
                   "kind",
                   "perm"
                 ],
-                "additionalProperties": false
+                "additionalProperties": false,
+                "if": {
+                  "properties": {
+                    "source": {
+                      "const": "import"
+                    }
+                  },
+                  "required": [
+                    "source"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "import_id": true
+                  },
+                  "required": [
+                    "import_id"
+                  ]
+                }
               }
             ]
           }
@@ -470,7 +611,7 @@
             "properties": {
               "id": {
                 "type": "string",
-                "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+                "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
               },
               "ts": {
                 "type": "string",
@@ -577,7 +718,7 @@
             "properties": {
               "id": {
                 "type": "string",
-                "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+                "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
               },
               "ts": {
                 "type": "string",
@@ -592,7 +733,8 @@
               "notice_version": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 32
+                "maxLength": 32,
+                "pattern": "^[A-Za-z0-9_.-]+$"
               }
             },
             "required": [
@@ -650,7 +792,7 @@
             "properties": {
               "id": {
                 "type": "string",
-                "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+                "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
               },
               "ts": {
                 "type": "string",
@@ -739,7 +881,7 @@
             "properties": {
               "id": {
                 "type": "string",
-                "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+                "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
               },
               "ts": {
                 "type": "string",
@@ -766,7 +908,8 @@
               "detail_code": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 64
+                "maxLength": 64,
+                "pattern": "^[A-Za-z0-9_.-]+$"
               },
               "finished_at": {
                 "type": "string",

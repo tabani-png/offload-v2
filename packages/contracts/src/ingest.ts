@@ -16,8 +16,9 @@ const docPseudonym = z.string().regex(/^<doc:h_[0-9a-f]{16}>$/);
 /** Bare host: no scheme, no path, no port, no query. */
 const host = z.string().min(1).max(253).regex(/^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$/);
 
-const appBundleId = z.string().min(1).max(255);
-const appName = z.string().min(1).max(256);
+const appBundleId = maskedText(255).refine((v) => v.length > 0, { message: "empty" });
+const appName = maskedText(256).refine((v) => v.length > 0, { message: "empty" });
+const code = (max: number) => z.string().min(1).max(max).regex(/^[A-Za-z0-9_.-]+$/);
 const perMinute = z.number().int().min(0).max(100000);
 
 const base = {
@@ -91,7 +92,7 @@ export const NoticeAckSchema = z.strictObject({
   id: ulid,
   ts: rfc3339,
   notice_id: uuid,
-  notice_version: z.string().min(1).max(32),
+  notice_version: code(32),
 });
 export type NoticeAck = z.infer<typeof NoticeAckSchema>;
 
@@ -112,7 +113,7 @@ export const StepResultSchema = z.strictObject({
   command_id: uuid,
   item_hash: hex64,
   outcome: z.enum(["sent", "failed_before_send", "unknown"]),
-  detail_code: z.string().min(1).max(64).optional(),
+  detail_code: code(64).optional(),
   finished_at: rfc3339,
 });
 export type StepResult = z.infer<typeof StepResultSchema>;

@@ -19,7 +19,14 @@ function canon(v: unknown): string {
       if (hasLoneSurrogate(v)) throw new TypeError("jcs: lone surrogate in string");
       return JSON.stringify(v);
     case "object": {
-      if (Array.isArray(v)) return `[${v.map(canon).join(",")}]`;
+      if (Array.isArray(v)) {
+        const parts: string[] = [];
+        for (let i = 0; i < v.length; i++) {
+          if (!(i in v)) throw new TypeError("jcs: sparse array");
+          parts.push(canon(v[i]));
+        }
+        return `[${parts.join(",")}]`;
+      }
       const proto = Object.getPrototypeOf(v) as unknown;
       if (proto !== Object.prototype && proto !== null) throw new TypeError("jcs: only plain objects");
       const rec = v as Record<string, unknown>;
