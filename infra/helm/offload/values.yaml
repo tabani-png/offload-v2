@@ -1,14 +1,116 @@
-# Placeholder values. See docs/ARCHITECTURE.md#14-deployment.
-# Required: an external Postgres 17 with pgvector and an S3-compatible bucket.
+# Offload Helm values. Skeleton: no workload renders yet (templates are placeholders until M8).
+# Plan: docs/DEPLOYMENT.md section 11 and docs/adr/0037-hosting-cloud-and-self-host-parity.md.
+# Secrets never go in values: every secret is a reference to an existing Kubernetes Secret.
+
+image:
+  # Placeholder until images are published. Pin a release tag and its digest.
+  repository: ghcr.io/OWNER/offload
+  tag: ""          # defaults to .Chart.AppVersion
+  digest: ""       # sha256:...; preferred over tag when set
+  pullPolicy: IfNotPresent
+
+# Public origin of the API and web app (OIDC redirect URIs, links in mail). OFFLOAD_PUBLIC_BASE_URL.
+publicBaseUrl: ""
+
+serve:
+  # offload serve: api, brain, builder and runtime modules in one process (ADR 0023).
+  replicas: 1
+  resources: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile: { type: RuntimeDefault }
+
+broker:
+  # offload broker: its own process, the only one with decrypt rights (ADR 0034). With keyProvider.type=file it is a
+  # second container in the serve pod (Unix socket in an emptyDir; only it mounts the master key Secret). With a KMS
+  # key provider it is its own Deployment and ServiceAccount, because workload identity is per pod.
+  resources: {}
+  securityContext:
+    runAsNonRoot: true
+    readOnlyRootFilesystem: true
+
+migrate:
+  # offload migrate as a pre-install and pre-upgrade Job (role offload_migrator).
+  enabled: true
+  backoffLimit: 0
+
+# External services only. The chart runs neither Postgres nor object storage.
 postgres:
-  url: ""
+  # Postgres 17 with pgvector. Secret keys: DATABASE_URL (offload_app), DATABASE_MIGRATOR_URL (offload_migrator).
+  existingSecret: ""
 objectStore:
+  # Any S3-compatible endpoint. Empty url means the provider's default endpoint (for example AWS S3).
   url: ""
   bucket: ""
-services:
-  api: { replicas: 1 }
-  brain: { replicas: 1 }
-  builder: { replicas: 1 }
-  runtime: { replicas: 1 }
+  # Secret keys OFFLOAD_OBJECT_STORE_ACCESS_KEY_ID and OFFLOAD_OBJECT_STORE_SECRET_ACCESS_KEY.
+  # Leave empty when workload identity grants access.
+  existingSecret: ""
+
+keyProvider:
+  # aws-kms, gcp-kms or file (the local key provider).
+  type: file
+  # aws-kms / gcp-kms: key id (OFFLOAD_KMS_KEY_REF), reached through workload identity, no static cloud keys.
+  kmsKeyRef: ""
+  # file: a Secret holding a 32-byte key, mounted into the broker pod only (OFFLOAD_MASTER_KEY_FILE).
+  existingSecret: ""
+
+identity:
+  # Any OIDC issuer (OFFLOAD_OIDC_ISSUER, OFFLOAD_OIDC_CLIENT_ID); client secret from a Secret. Or magic link.
+  oidcIssuer: ""
+  oidcClientId: ""
+  existingSecret: ""
+  magicLink:
+    enabled: false
+
+models:
+  # Secret with ANTHROPIC_API_KEY (or BYOK keys). Optional local tier URL (OFFLOAD_LOCAL_MODEL_URL).
+  existingSecret: ""
+  localModelUrl: ""
+
+sandbox:
+  # e2b, docker or container-use. docker and container-use need a separate, isolated daemon, never the node's socket.
+  provider: e2b
+  # Secret with E2B_API_KEY, or the daemon's client certificates.
+  existingSecret: ""
+  dockerHost: ""
+
+connectors:
+  # Secret with COMPOSIO_API_KEY (optional). Read by the broker only.
+  existingSecret: ""
+
+retention:
+  # Empty means the defaults in docs/OPEN_QUESTIONS.md OQ-02.
+  rawTtlDays: ""
+  textTtlDays: ""
+  contentTtlDays: ""
+
 ee:
+  # Run the Enterprise entry (@offload-ee/server-ee). Features still need a license key.
+  enabled: false
+  # Secret with OFFLOAD_EE_LICENSE_KEY. Same mechanism as Offload Cloud.
   licenseKeySecretRef: ""
+
+# Content-free daily report. Off by default for self-host (OFFLOAD_TELEMETRY).
+telemetry:
+  enabled: false
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  # TLS is required; name the Secret holding the certificate, or let a certificate controller create it.
+  tlsSecretName: ""
+  annotations: {}
+
+networkPolicy:
+  # Ingress only from the ingress controller; egress only to Postgres, object store, models, sandboxes, connectors.
+  enabled: true
+
+serviceAccount:
+  create: true
+  annotations: {}   # for workload identity (KMS, S3)
+
+backup:
+  # The chart does not own backups. Optional pg_dump CronJob to the bucket; prefer managed point-in-time recovery.
+  enabled: false
+  schedule: "0 3 * * *"

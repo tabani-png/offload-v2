@@ -54,7 +54,7 @@ Only the owner can do these. Lead times are typical, not promises; check each wh
 
 | # | Item | Lead time | Needed by |
 |---|---|---|---|
-| O1 | Apple Developer Program enrolment for consultance.ai as an organisation (needs a D-U-N-S number) | days to weeks | M3 (signed app); start in M0 |
+| O1 | Apple Developer Program enrolment for consultance.ai as an organisation (needs a D-U-N-S number). Decided 2026-11-14: the owner enrols himself and is the Account Holder ([OQ-16](OPEN_QUESTIONS.md#oq-16-mac-distribution-and-signing) (b)) | days to weeks | M3 (signed app); start in M0 |
 | O2 | Lock the bundle id: `ai.offload.mac`, dev builds `ai.offload.mac.dev` ([OQ-16](OPEN_QUESTIONS.md#oq-16-mac-distribution-and-signing)) | minutes, a decision | M3; before any signed build reaches a tester |
 | O3 | Developer ID certificate and notarization credentials stored as CI secrets | a day, after O1 | M3 |
 | O4 | Re-authenticate the GitHub token with the `workflow` scope. The old repo's CI workflow files could not be pushed because the token lacks it, so the macOS CI build (PR #41 `mac-release.yml`, PR #45 `builder-mac.yml.proposed`) is blocked until this is done | minutes | M0 (CI `mac` job) |
@@ -65,10 +65,11 @@ Only the owner can do these. Lead times are typical, not promises; check each wh
 | O9 | Composio project with a toolkit allowlist; zero-retention add-on before any second user | weeks (vendor) | M2 if a Composio app is used; M8 |
 | O10 | Anthropic zero data retention agreement | weeks (vendor, unknown) | before any second user (M8) |
 | O11 | Sparkle EdDSA signing key and appcast host | hours | M3 |
-| O12 | CI capacity for macOS: hosted minutes, or a dedicated self-hosted Mac for PR jobs with hosted `macos-26` for releases ([OQ-25](OPEN_QUESTIONS.md#oq-25-ci-capacity-for-macos)) | same day | M0 (CI `mac` job) |
+| O12 | CI capacity for macOS. Default revised for the public repo: hosted `macos-26` for PR jobs and releases, no self-hosted runner for `pull_request` jobs ([OQ-25](OPEN_QUESTIONS.md#oq-25-ci-capacity-for-macos)) | same day | M0 (CI `mac` job) |
 | O13 | Product domain (`api.`, `downloads.`) and TLS | a day | M1 deploy, M3 (appcast) |
 | O14 | Rotate the provider key that old `LAUNCH.md` lists as exposed, and confirm old test canaries are fake | same day | M1 (first port, m1-03) |
 | O15 | Privacy policy, terms and sub-processor list ([OQ-17](OPEN_QUESTIONS.md#oq-17-privacy-policy-terms-and-dpa)): a plain-language version for the tenant of one, counsel-reviewed before any second user | weeks | M3 (linked from "What leaves your Mac"); M8 (reviewed) |
+| O16 | Create the public repository `tabani-png/offload-v2` and push, after the checklist in [DEPLOYMENT section 6.5](DEPLOYMENT.md#65-before-the-public-push) ([OQ-27](OPEN_QUESTIONS.md#oq-27-publish-the-repository-publicly)). Agents never do this | an hour | M0 (when the owner chooses) |
 
 ### Spikes
 
@@ -484,18 +485,27 @@ Tasks after the two slices:
 ## M8. Self-host and Pro
 
 - **Scope**: team tenants (`kind = 'team'`: invites, workspaces UI, shared fixes, team review) in `ee/packages/teams`,
-  enabled by the Offload Cloud key for Pro (default, pending [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices));
+  enabled by the Offload Cloud key for Pro (decided 2026-11-14, [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices); prices open);
   WorkOS AuthKit as the Cloud OIDC issuer; full web app (Today, Weekly review, Build progress, Routines, Settings,
   admin); Offload MCP server (read and propose); outbound webhooks; optional split of `offload serve` into four
-  processes; compose and Helm with real templates; `container-use` provider; `small_app` hosted by the web app with a
+  processes; compose and Helm with real templates and the parity suite against compose and Offload Cloud
+  ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)); `container-use` provider; `small_app` hosted by the web app with a
   visual compare-to-brief check; GitHub Actions pinned by commit SHA; public docs; zero data retention (O10) and the
   Composio zero-retention add-on (O9) in place before any second user; privacy policy, terms and DPA
   ([OQ-17](OPEN_QUESTIONS.md#oq-17-privacy-policy-terms-and-dpa)).
 - **Exit criteria**: a fresh machine with Postgres and an S3 bucket runs the full loop from the docs with the `local`
-  key provider; a 3-person Pro team tenant shares a fix and its review; without the Cloud key, team tenant creation is
+  key provider; the same acceptance suite passes against that compose deploy and against Offload Cloud; a 3-person Pro team tenant shares a fix and its review; without the Cloud key, team tenant creation is
   `403 feature_not_licensed`.
 - **Acceptance tests**:
   - `SELFHOST: docker compose up + migrations + seed fixture reaches a ready build with the docker provider`
+  - `PARITY: the same acceptance suite passes against the compose deploy and the cloud deploy` (one verify suite, run
+    twice per release: a deploy verify script added in M8, run against each base URL; the list of parity tests is in
+    [ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md#parity-test-list))
+  - `PARITY: the same license key gives the same features[] in GET /v1/me on both deploys`
+  - `PARITY: no source file reads a variable that names the hosting mode`
+  - `TELEMETRY: a compose deploy with default settings makes no telemetry request`
+  - `UPGRADE: a compose deploy of the previous minor upgrades in place and passes the suite`
+  - `HELM: helm template with default values renders and passes schema validation`
   - `TEAMS: creating a team tenant without the teams entitlement is 403 feature_not_licensed`
   - `RLS: an admin in a team tenant reads zero C1 and C2 rows of another member`
   - `MCP: offload.propose_opportunity creates an open opportunity with masked text and nothing else`

@@ -2,8 +2,10 @@
 
 How Offload splits into a free open core, Pro and Enterprise, how the split lives in the code, and how it is enforced
 at runtime. Decision: [ADR 0015](adr/0015-open-core-layout-and-license-gating.md). Plan contents and prices are owner
-decisions ([OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)); nothing here is a price. **Every plan-split value
-in sections 2 and 3 is a default, pending OQ-13.**
+decisions ([OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)). **The split is decided** (2026-11-14, owner:
+"One person free, teams pay."). **Prices are not decided**; nothing here is a price. Values marked "default" below are
+details the owner has not ruled on; agents build on them. Hosting is decided too: Offload Cloud and self-host at
+feature parity ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)).
 
 ## 1. License
 
@@ -14,37 +16,42 @@ in sections 2 and 3 is a default, pending OQ-13.**
 | Code harvested from the old repo | Owner's own code, currently "all rights reserved"; relicensing is his call | Pending [OQ-12](OPEN_QUESTIONS.md#oq-12-relicensing-code-from-the-old-repo) |
 | Third-party code ported in | Keeps its own license; listed in `NOTICE` | Rule in [AGENTS.md](../AGENTS.md#license-boundary-and-notices) |
 
-Until OQ-11 is answered, `LICENSE` and `ee/LICENSE` are placeholders that grant nothing.
+Until OQ-11 is answered, `LICENSE` and `ee/LICENSE` are placeholders that grant nothing. The repository will be
+published as a public repository (owner decision, [OQ-27](OPEN_QUESTIONS.md#oq-27-publish-the-repository-publicly)).
+Public is not the same as open source: until OQ-11 is answered, people can read the code but have no license to use it.
 
 Why Apache-2.0 and not MIT: the patent grant matters for a product that automates business workflows. Why not a
 fair-code license (n8n's Sustainable Use License) for the core: the owner asked for an open-source core, and fair-code
-is not OSI open source. Fair-code stays listed as an alternative under OQ-13 because of the risk in section 2.
+is not OSI open source. The owner's OQ-13 answer keeps the core open source; fair-code is no longer an option for the core.
 
 ## 2. Feature split
 
-**Recommended default (pending OQ-13): single-player is core, multiplayer is paid.**
+**Decided (OQ-13, 2026-11-14): single-player is core and free, multiplayer is paid through Pro.**
 
 - **Core** is everything one person needs, self-host included: capture, the cloud brain, the build loop, the runtime,
   connectors, gates, masking, the audit chain, export and forget. Safety is core. Trust is not an upgrade.
 - **Pro** is team tenants (`tenants.kind = 'team'`): invites, workspaces, shared fixes, team weekly review. The code
   lives in `ee/packages/teams` (created in M8) and is enabled by Offload Cloud's own license key for Pro tenants.
-- **Enterprise** adds SAML SSO and SCIM, approval chains, custom Cedar policies, SIEM streaming, an external audit
-  anchor sink, BYOC and dedicated deployment, configurable retention, and support.
+- **Enterprise** adds SSO and SCIM, approval chains, SIEM streaming and audit export, BYOC, and support (the owner's
+  list). Custom Cedar policies, the external audit anchor sink, dedicated deployment, configurable retention and legal
+  hold are Enterprise by default (details the owner has not ruled on).
 
 Why: with an Apache-2.0 core, anyone can host the same product. Offload self-host is Postgres plus object storage, so
 paid hosting alone (Temporal's model) is a weak moat. One gate, team tenant creation, is easy to enforce and leaves a
-hosted clone with the single-player product only. Alternatives under OQ-13: (a) **hosting-only Pro** (the previous
-default: Pro = hosted core with plan limits, team features free); (b) **fair-code core** (n8n style, not OSI open
-source).
+hosted clone with the single-player product only. The alternatives that were open under OQ-13, hosting-only Pro and
+a fair-code core, are closed.
+
+Pro and Enterprise features run on Offload Cloud and on self-host alike. In both, a license key switches them on
+([section 3](#3-how-gating-works)).
 
 Some EE parts are a few lines on top of core: audit export is paging `GET /v1/audit-events`, and a custom policy is a
 write to a table core already has. EE value is SSO/SCIM, approval chains, custom policies, SIEM, the external anchor
 sink, BYOC and support, not export. The license key check is the legal boundary, as with Langfuse; it is not meant to
 be hard to remove technically.
 
-Every value in this table is a default, pending OQ-13.
+Rows follow the decided split. Rows marked "default" are details the owner has not ruled on.
 
-| Feature | Free (core, self-host or personal) | Pro (team tenants) | Enterprise |
+| Feature | Free (core, self-host or personal) | Pro (team tenants, Cloud or self-host) | Enterprise |
 |---|---|---|---|
 | Mac client: capture, on-device masking and pseudonyms, upload | yes | yes | yes |
 | Cloud brain: understanding, user model, records | yes | yes | yes |
@@ -61,24 +68,29 @@ Every value in this table is a default, pending OQ-13.
 | Web app (all plans; hosted on Pro and Enterprise) | yes (self-host) | yes | yes |
 | Personal tenant (one member, one workspace) | yes | yes | yes |
 | **EE**: team tenants: invites, workspaces, shared fixes, team weekly review (`ee/packages/teams`, M8) | | yes | yes |
-| Hosted operations, backups, upgrades | | yes | yes |
+| Hosted operations, backups, upgrades (Offload Cloud only; operations, not a feature) | | yes, on Cloud | yes, on Cloud |
 | Higher build and model budgets | | plan limits | contract |
 | **EE**: SAML SSO, enforced SSO, SCIM, custom roles (`ee/packages/identity`) | | | yes |
-| **EE**: custom Cedar policies, approval chains (N of M), policy simulation (`ee/packages/governance`) | | | yes |
-| **EE**: SIEM streaming, external audit anchor sink, legal hold, configurable retention, audit export (`ee/packages/audit-export`) | | | yes |
+| **EE**: approval chains (N of M); custom Cedar policies and policy simulation (default) (`ee/packages/governance`) | | | yes |
+| **EE**: SIEM streaming and audit export; external audit anchor sink, legal hold, configurable retention (default) (`ee/packages/audit-export`) | | | yes |
 | **EE**: per-person views and working time for teams with compliance records (M9, package TBD; [OQ-15](OPEN_QUESTIONS.md#oq-15-monitoring-law-features-for-teams)) | | | yes |
-| **EE**: deployment options: self-host with license, BYOC, dedicated database, region choice (M9, package TBD) | | | yes |
+| **EE**: BYOC; dedicated database and region choice (default) (M9, package TBD) | | | yes |
 | Support | community | email | SLA |
 
-Open sub-questions under OQ-13, each with the default used above:
+Self-host itself is not an Enterprise feature: every plan can self-host ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)).
+
+Open sub-questions under OQ-13 (the split is decided; these details and the prices are not), each with the default
+used above:
+- **Prices** for Pro and Enterprise: not decided. No price appears in any doc.
 - (a) **Free hosted tier** on Offload Cloud: default none beyond the owner's tenant until he decides who pays its model
-  and sandbox costs.
-- (b) **Pro feature set**: default team tenants as listed, plus onboarding help for teams new to AI.
+  and sandbox costs. "One person free" may mean a free hosted tier for one person; the owner to confirm.
+- (b) **Pro feature set**: decided as multiplayer (team tenants, invites, workspaces, shared fixes, team review);
+  onboarding help for teams new to AI is a default. A Pro key for self-hosters is a default (parity).
 - (c) **Seat enforcement**: default seat counts from the license key; going over warns for 30 days before blocking new
   invites, never blocks existing members or safety features.
 - (d) **Support tiers**: default community, email, SLA as in the table.
 - **BYOK** (own model key) for every tenant: default yes.
-- **Pro team size**: default 3 to 20 people, pending [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices).
+- **Pro team size**: default 3 to 20 people, not decided ([OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)).
 
 ## 3. How gating works
 
@@ -95,7 +107,12 @@ Open sub-questions under OQ-13, each with the default used above:
 
 **At runtime**
 - `packages/license` verifies `OFFLOAD_EE_LICENSE_KEY` offline: Ed25519 signature over
-  `{ licensee, plan, features[], seats, expires_at, issued_at, key_id }`, public keys compiled in.
+  `{ licensee, plan, features[], seats, expires_at, issued_at, key_id }`, public keys compiled in. The variable holds one
+  key or several (one per plan); no call home.
+- **The same in both hosting modes** ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md#license-key-gating-is-identical-in-both-modes)):
+  a tenant's entitlements are the features of the key whose `plan` equals `tenants.plan`. Offload Cloud loads its own
+  key per paid plan and sets each tenant's plan from billing. A self-hoster loads the key they bought; new tenants take
+  its plan. No code checks which mode it runs in.
 - Each EE plugin declares the feature it needs (`teams`, `sso`, `scim`, `custom_policies`, `approval_chains`,
   `audit_export`, `siem`, `anchor_sink`, `legal_hold`, `per_person_views`, `byoc`). It registers only if the key
   entitles that feature, and checks again on each use.
@@ -103,7 +120,7 @@ Open sub-questions under OQ-13, each with the default used above:
   not entitle the feature. The core root does not mount them, so they are `404`.
 - An invalid or expired key disables EE features with a banner and an audit event; core keeps running; data created by
   EE features stays readable.
-- Seat counts follow sub-question (c) above (default, pending OQ-13).
+- Seat counts follow sub-question (c) above (a default; the owner has not ruled on it).
 
 ```mermaid
 flowchart LR
@@ -151,7 +168,8 @@ them externally.
 | EE teams | Nothing extra; enabled by the license key | Pro and Enterprise |
 | EE identity | SAML IdPs, SCIM clients (Okta, Entra ID, Google); WorkOS on Offload Cloud from M8 | Enterprise |
 | EE audit export | S3 (with object lock for the anchor sink), SIEM webhooks | Enterprise |
-| Offload Cloud | AWS (default region `ca-central-1`), E2B, Anthropic, WorkOS (from M8) | Cloud only |
+| Offload Cloud | Cloud provider and region (open, [OQ-01](OPEN_QUESTIONS.md#oq-01-cloud-hosting-provider-and-region), default AWS `ca-central-1`), E2B, Anthropic, WorkOS (from M8) | Cloud only |
+| Self-host (compose or Helm) | Postgres 17 + pgvector, S3-compatible storage (MinIO or another), the `local` key provider or a KMS, Docker or container-use sandboxes, the self-hoster's own OIDC client and model key; telemetry off by default | self-host only |
 
 Composio is never required in code. In practice Google apps need Composio for any user outside the owner's own Google
 Workspace until Offload has a verified OAuth client; the owner's tenant uses his own internal OAuth client

@@ -18,8 +18,12 @@ Conventions:
 | **Owner** (product) | Muhammad Ali Tabani. Makes the decisions listed in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). Not to be confused with the `owner` role. |
 | **User** | A person who uses Offload. Muhammad is the first user. |
 | **Tenant of one** | A personal tenant with exactly one member. The first milestones run Offload for Muhammad as a tenant of one. |
-| **Plan** | A commercial tier: **Free** (open core), **Pro** (hosted, teams), **Enterprise** (governance, SSO/SCIM, deployment options). Contents are a default pending [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices); see [OPEN_CORE.md](OPEN_CORE.md). |
-| **Single-player core** | The recommended default split: everything one person needs is core; team tenants are paid (EE, enabled for Pro). Pending OQ-13. |
+| **Plan** | A commercial tier: **Free** (open core), **Pro** (teams: team tenants, on Offload Cloud or self-host with a key), **Enterprise** (governance, SSO/SCIM, deployment options). The split is decided (single-player core free, multiplayer paid, [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices), 2026-11-14); prices are not; see [OPEN_CORE.md](OPEN_CORE.md). |
+| **Single-player core** | The decided split (OQ-13, 2026-11-14): everything one person needs is core and free; multiplayer (team tenants, invites, workspaces, shared fixes, team review) is paid (EE, enabled for Pro). |
+| **Offload Cloud** | Offload hosted by consultance.ai. Same code, images and features as self-host ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)); it adds operations (upgrades, backups, verified OAuth clients, support). Provider and region: [OQ-01](OPEN_QUESTIONS.md#oq-01-cloud-hosting-provider-and-region). |
+| **Self-host** | Offload run by the customer: docker compose on one host, or the Helm chart. Needs Postgres 17 with pgvector and S3-compatible storage. Feature parity with Offload Cloud (decided, [OQ-29](OPEN_QUESTIONS.md#oq-29-hosting-offload-cloud-and-self-host)). |
+| **Parity suite** | The acceptance tests that run against a compose deploy and the Offload Cloud deploy and must pass on both before a release is published ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md#parity-test-list)). |
+| **Telemetry** | An optional, content-free daily report from a self-host deploy (`OFFLOAD_TELEMETRY`, default `off`). Not the same as Offload Cloud's own observability. |
 | **Operator item** | A task only the owner can do outside the code (an account, a certificate, a vendor agreement), with a lead time. Listed in [ROADMAP M0](ROADMAP.md#operator-items). |
 | **Spike** | A time-boxed experiment whose result is written into an ADR. Listed in [ROADMAP M0](ROADMAP.md#spikes). |
 | **Hand-fed loop** | M2: the build and run half proven on a task the user typed in, before capture feeds opportunities. |
@@ -54,7 +58,7 @@ Conventions:
 |---|---|
 | **Tenant** | The top isolation boundary. Every tenant-owned row has `tenant_id`. Enforced by Postgres RLS. |
 | **Personal tenant** | A tenant created for one person at sign-up (`tenants.kind = 'personal'`). |
-| **Team tenant** | `tenants.kind = 'team'`: invites, several members, shared fixes. Paid under the OQ-13 default (`ee/packages/teams`). |
+| **Team tenant** | `tenants.kind = 'team'`: invites, several members, shared fixes. Paid, decided in OQ-13 (`ee/packages/teams`). |
 | **Workspace** | A group inside a tenant (a team or department). Fixes and routines belong to a workspace. A personal tenant has one workspace. |
 | **Member** | A person in a tenant (`members` row). Has one **tenant role** and zero or more workspace memberships. |
 | **Member isolation** | The restrictive RLS policy on C1, C2 and C6 tables: a row is visible only to its member, or to an audited aggregate job. |

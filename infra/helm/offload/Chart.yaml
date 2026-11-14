@@ -1,6 +1,14 @@
 apiVersion: v2
 name: offload
-description: Offload v2 self-host chart. Placeholder. No templates until the services exist.
+description: Offload self-host on Kubernetes. Skeleton; templates are placeholders until the services exist (M8).
 type: application
+# Chart version and appVersion follow the release version (docs/adr/0037-hosting-cloud-and-self-host-parity.md).
 version: 0.0.0
 appVersion: "0.0.0"
+kubeVersion: ">=1.29.0-0"
+home: https://github.com/tabani-png/offload-v2
+sources:
+  - https://github.com/tabani-png/offload-v2
+keywords:
+  - offload
+  - self-host

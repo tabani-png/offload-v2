@@ -1,0 +1,5 @@
+{{- /*
+Placeholder, renders nothing (M8).
+Optional CronJob (backup.enabled) running pg_dump to the bucket. Off by default; managed point-in-time recovery is 
+preferred.
+*/ -}}

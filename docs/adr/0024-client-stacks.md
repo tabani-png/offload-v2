@@ -14,8 +14,9 @@ identity, and every client fix needs a way to reach the Mac without a manual rei
   `OffloadStore`, `OffloadUploader`, `OffloadImport` (recordings), `OffloadActuator` (M6), `OffloadMac` (app).
   Accessibility for text, titles and focus; ScreenCaptureKit + Vision OCR as fallback; Keychain and Secure Enclave for
   keys.
-- **Signing and identity started in M0, needed by M3** (operator items O1 to O3): Apple Developer Program enrolment as an organisation,
-  bundle id locked (default `ai.offload.mac`, dev builds `ai.offload.mac.dev`, [OQ-16](../OPEN_QUESTIONS.md#oq-16-mac-distribution-and-signing)),
+- **Signing and identity started in M0, needed by M3** (operator items O1 to O3): Apple Developer Program enrolment as the organisation
+  consultance.ai (decided 2026-11-14; the owner enrols himself and is the Account Holder,
+  [OQ-16](../OPEN_QUESTIONS.md#oq-16-mac-distribution-and-signing) (b)), bundle id locked (default `ai.offload.mac`, dev builds `ai.offload.mac.dev`, [OQ-16](../OPEN_QUESTIONS.md#oq-16-mac-distribution-and-signing)),
   Developer ID signing and notarization credentials in CI. The CI `mac` job runs on `macos-26` (as PR #41 did) and has
   a bundling step that produces a signed `.app` once the credentials exist.
 - **Sparkle** auto-update (EdDSA-signed appcast) lands in M3, when the app becomes a daily install
@@ -44,3 +45,5 @@ Old ADR 0002, 0110, old 0114 (CSP); approved mockups; `/workspace/offload-pricin
 - 2026-11-14: signing, bundle id and TCC moved to M0, Sparkle at M3, `macos-26` runner and bundling step, Mac targets
   named (review-c P1(8), review-b 21, PR #41).
 - 2026-11-14 (final pass): signing and identity start in M0 and are needed by M3 (final-pass audit).
+- 2026-11-14 (decision pass D): Apple Developer enrolment as the organisation consultance.ai decided by the owner, who
+  enrols himself as Account Holder (OQ-16 (b)).

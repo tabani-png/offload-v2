@@ -1,0 +1,5 @@
+{{- /*
+Placeholder, renders nothing (M8).
+Job running offload migrate as offload_migrator with helm.sh/hook pre-install,pre-upgrade and hook-delete-policy 
+before-hook-creation. Refuses to skip a minor release.
+*/ -}}

@@ -36,8 +36,8 @@ until a second user exists (M8).
 
 **Pro team lead getting into AI.** Runs a small team at a small company (for example 3 to 20 people; illustrative, not
 a plan limit). Knows the team repeats the same admin work but does not have time to script it. Wants fixes that are
-safe to share across the team, a shared weekly view of what was saved, and no surprise sends. Team features are paid
-under the recommended default ([OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)): single-player is core,
+safe to share across the team, a shared weekly view of what was saved, and no surprise sends. Team features are paid,
+as the owner decided ([OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)): single-player is core and free,
 multiplayer is Pro.
 
 **Enterprise admin, security lead and auditor.** Needs SSO and SCIM, policy control over what may run unattended,
@@ -96,10 +96,15 @@ flow, permission mechanics, skip paths and re-consent are in [ONBOARDING.md](ONB
 
 ## 5. Plans
 
-Free (open core, self-host or personal), Pro (team tenants), Enterprise (governance, SSO/SCIM, deployment options).
-Recommended default: single-player is core, multiplayer is paid. Contents in
-[OPEN_CORE.md](OPEN_CORE.md#2-feature-split), all pending the owner's decision
-([OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)). Prices are his decision.
+Decided by the owner on 2026-11-14 ([OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)), in his words: "One
+person free, teams pay."
+- **Free**: the single-player core. Everything one person needs, open source.
+- **Pro**: multiplayer. Team tenants, invites, workspaces, shared fixes, team weekly review.
+- **Enterprise**: Pro plus SSO and SCIM, approval chains, SIEM and audit export, BYOC, and support.
+
+Offload runs as **Offload Cloud** or **self-host**, with the same features in both
+([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)). Paid features are switched on by a license key in both.
+Contents are in [OPEN_CORE.md](OPEN_CORE.md#2-feature-split). **Prices are not decided.**
 
 ## 6. UI direction
 

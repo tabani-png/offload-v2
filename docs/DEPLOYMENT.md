@@ -13,8 +13,8 @@ commands are the intended recipe, confirmed on the first signed build (spike S1)
 | How do people get the Mac client? | A Developer ID signed, notarized, stapled disk image (`Offload-<version>.dmg`) with `Offload.app` and an Applications shortcut. Not the Mac App Store: the App Store requires the App Sandbox, which blocks the Accessibility API on other apps |
 | How does it update? | Sparkle 2 from M3, when the Mac app starts running every day: signed appcast, EdDSA-signed archives, a beta channel, phased rollout. Before that, a new DMG |
 | What must never change? | The bundle id and the Apple Team ID. macOS ties Accessibility and Screen Recording grants to them |
-| Where does the cloud run first? | One host for the tenant of one: `offload serve` (the four modules in one process) plus the separate `offload broker` process, managed Postgres 17 with pgvector, an object storage bucket, a KMS key, in the region from [OQ-01](OPEN_QUESTIONS.md#oq-01-cloud-hosting-provider-and-region) (default AWS `ca-central-1`) |
-| How do self-hosters run it? | `infra/docker-compose` now: Postgres 17 + pgvector; `offload serve`, `offload broker` and S3-compatible storage are added as they gain code; Helm chart at M8 |
+| Where does the cloud run first? | Offload Cloud, one host for the tenant of one: `offload serve` (the four modules in one process) plus the separate `offload broker` process, managed Postgres 17 with pgvector, an object storage bucket, a KMS key, in the region from [OQ-01](OPEN_QUESTIONS.md#oq-01-cloud-hosting-provider-and-region) (default AWS `ca-central-1`) |
+| How do self-hosters run it? | Decided: self-host at feature parity with Offload Cloud ([OQ-29](OPEN_QUESTIONS.md#oq-29-hosting-offload-cloud-and-self-host)). `infra/docker-compose` on one host (Postgres 17 + pgvector, S3-compatible storage, `offload migrate`, `offload broker`, `offload serve`, optional sandbox daemon), Helm on Kubernetes with real templates at M8 ([section 11](#11-self-host)) |
 | What builds it? | GitHub Actions. Linux for TypeScript, `macos-26` for Swift and the Mac release. Release signing secrets live only in a protected environment |
 | What blocks the Mac CI today? | The GitHub token used on the old repo lacks the `workflow` scope, so workflow files could not be pushed; the macOS build is blocked until the owner re-authenticates ([section 6.4](#64-blocker-the-workflow-scope)) |
 
@@ -57,7 +57,9 @@ flowchart LR
 - The Keychain service name and the local buffer folder derive from the bundle id (`<bundle-id>` and
   `~/Library/Application Support/<bundle-id>/`), so dev and release never share keys or data.
 - The Team ID comes from enrolling consultance.ai as an organization in the Apple Developer Program
-  ([section 10](#10-operator-items), O1). It never changes for the life of the product.
+  ([section 10](#10-operator-items), O1). **Decided 2026-11-14**: the owner enrols consultance.ai himself and is the
+  Account Holder ([OQ-16](OPEN_QUESTIONS.md#oq-16-mac-distribution-and-signing) (b)). It never changes for the life of
+  the product.
 - Release builds are never ad hoc signed.
 
 **Spike S1 (before M3 exit, needs O1 or at least an Apple Development identity)**: on a signed build, record what
@@ -254,10 +256,27 @@ runs code from a fork.
   (`ci/mac-release-workflow`) and `builder-mac.yml` (PR #45, parked as `slices/s35-build-loop/builder-mac.yml.proposed`)
   could not be pushed. The macOS CI build of the old app is blocked until the owner re-authenticates with that scope
   (`gh auth refresh -s workflow`, run by the owner).
-- v2 is a local repository with no remote. When it gets one, the same scope is needed before `ci.yml` and
-  `release-mac.yml` can be pushed. Agents never create remotes or push ([CLAUDE.md](../CLAUDE.md)).
+- v2 is a local repository with no remote. The owner decided to publish it as a **public** repository,
+  `tabani-png/offload-v2` ([OQ-27](OPEN_QUESTIONS.md#oq-27-publish-the-repository-publicly)); the operator creates it
+  and pushes. The same scope is needed before `ci.yml` and `release-mac.yml` can be pushed. Agents never create
+  remotes or push ([CLAUDE.md](../CLAUDE.md)).
 - Until then, the Swift side is verified on the owner's Mac (`swift build && swift test` in `apps/mac`, then the
   bundling script) and recorded in the slice's verify output.
+
+### 6.5 Before the public push
+
+The repository will be public ([OQ-27](OPEN_QUESTIONS.md#oq-27-publish-the-repository-publicly)), and so will its
+whole git history. The operator checks, before the first push:
+- [ ] The license question is answered ([OQ-11](OPEN_QUESTIONS.md#oq-11-license-for-the-core-and-for-ee)), or the
+      repo is pushed knowingly with the placeholder `LICENSE` (visible, but no rights granted).
+- [ ] A secret scan over the full history (for example gitleaks) finds nothing; `scripts/check-secrets-hygiene.sh`
+      passes; no `.env` file is tracked.
+- [ ] Nothing private is in the docs or history beyond what the owner chose to publish (names, the old repo's PR
+      numbers and paths are fine; personal email addresses, customer data and tokens are not).
+- [ ] No self-hosted runner is registered for `pull_request` jobs ([OQ-25](OPEN_QUESTIONS.md#oq-25-ci-capacity-for-macos)).
+- [ ] Workflows give no secrets to `pull_request` runs and pin actions by commit hash ([section 6.3](#63-workflows)).
+- [ ] Branch protection on `main`: pull requests only, CI green, owner review.
+- [ ] The token used to push has the `workflow` scope (O4).
 
 ## 7. Cloud deploy for the tenant of one
 
@@ -304,8 +323,10 @@ flowchart TB
 
 ### 7.3 Deploy pipeline
 
-1. Build the `offload` image (one image; `offload serve` and `offload broker` are two entry points) from the workspace with the
-   pinned Bun; scan it; tag it with the commit.
+1. Build the `offload` image (one image; `offload serve`, `offload broker` and `offload migrate` are entry points) from
+   the workspace with the pinned Bun; scan it; tag it with the commit and, for production, a release version. The
+   same tagged image is published for self-host ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md), parity
+   rule 3).
 2. Run migrations as a one-off job as `offload_migrator`. Migrations are backward compatible with the running
    version; a destructive change says so in its slice spec.
 3. Replace the containers one at a time with health checks; the previous image stays until the new one is healthy.
@@ -363,7 +384,7 @@ same, with the deployment detail added. Decisions among these are open questions
 
 | # | Item | Deployment detail | Lead time | Needed by |
 |---|---|---|---|---|
-| O1 | Apple Developer Program enrolment for consultance.ai as an **organization** | Needs a legal entity, a D-U-N-S Number, a domain email and a public website; $99 a year. The seller name people see is the organization's. The Account Holder creates the Developer ID Application certificate | Days to weeks (D-U-N-S) | M3 (signed app); start in M0 |
+| O1 | Apple Developer Program enrolment for consultance.ai as an **organization**. **Decided 2026-11-14**; the owner does it himself and is the Account Holder ([OQ-16](OPEN_QUESTIONS.md#oq-16-mac-distribution-and-signing) (b)) | Needs a legal entity, a D-U-N-S Number, a domain email and a public website; $99 a year. The seller name people see is the organization's. The Account Holder creates the Developer ID Application certificate | Days to weeks (D-U-N-S) | M3 (signed app); start in M0 |
 | O2 | Lock the bundle id (`ai.offload.mac`, dev `ai.offload.mac.dev`) | Irreversible in practice: changing it resets every user's permissions and orphans Keychain items ([section 2](#2-identity-bundle-id-team-id-and-permissions)) | Minutes, a decision | M3; before any signed build reaches a tester |
 | O3 | Developer ID certificate and notarization credentials as CI secrets | `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`, an App Store Connect API key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8`) in the protected `release` environment; one offline backup. Renew the certificate yearly, 30 days ahead | A day, after O1 | M3 |
 | O4 | Re-authenticate GitHub with the `workflow` scope | [Section 6.4](#64-blocker-the-workflow-scope) | Minutes | M0 (CI `mac` job) |
@@ -374,32 +395,163 @@ same, with the deployment detail added. Decisions among these are open questions
 | O9 | Composio project with a toolkit allowlist; zero-retention add-on before any second user | Its default payload logging matters for the "What leaves your Mac" screen | Weeks (vendor) | M2 if a Composio app is used; M8 |
 | O10 | Anthropic zero data retention agreement | Changes the wording allowed on the privacy screen | Weeks (vendor) | Before any second user (M8) |
 | O11 | Sparkle EdDSA signing key and appcast host | `SPARKLE_ED_PRIVATE_KEY` in the `release` environment plus one offline backup; `downloads.<domain>` behind a CDN ([section 4](#4-updates-sparkle-2-from-m3)) | Hours | M3 |
-
-| O12 | CI capacity for macOS ([OQ-25](OPEN_QUESTIONS.md#oq-25-ci-capacity-for-macos)) | Hosted macOS minutes, or a dedicated Mac as a self-hosted runner for PR jobs (private repo only) with hosted `macos-26` kept for releases. The old repo ran out of minutes | Same day | M0 (CI `mac` job) |
+| O12 | CI capacity for macOS ([OQ-25](OPEN_QUESTIONS.md#oq-25-ci-capacity-for-macos)) | Default revised for the public repo: hosted `macos-26` for PR jobs and releases (standard hosted runners are free on public repos; check GitHub's billing page). No self-hosted runner for `pull_request` jobs on a public repo; a local Mac covers macOS 14. The old repo, private, ran out of minutes | Same day | M0 (CI `mac` job) |
 | O13 | Product domain (`api.`, `downloads.`) and TLS | DNS for the API host and the download/appcast host | A day | M1 deploy, M3 (appcast) |
 | O14 | Rotate the provider key that old `LAUNCH.md` lists as exposed, and confirm old test canaries are fake | Before any old test file is ported | Same day | M1 (first port, m1-03) |
 | O15 | Privacy policy, terms, sub-processor list, counsel review ([OQ-17](OPEN_QUESTIONS.md#oq-17-privacy-policy-terms-and-dpa)) | The "What leaves your Mac" screen links to them: a plain-language version for the tenant of one, counsel-reviewed before any second user | Weeks | M3 (linked from screen 5); M8 (reviewed) |
+| O16 | Create the public repository `tabani-png/offload-v2` and push ([OQ-27](OPEN_QUESTIONS.md#oq-27-publish-the-repository-publicly)) | Only after the checklist in [section 6.5](#65-before-the-public-push). Agents never create remotes or push | An hour | M0 (when the owner chooses) |
 
 Spikes S1 (TCC attribution and persistence on a signed build) and S2 (screen-capture re-consent cadence) are in
 [ROADMAP M0](ROADMAP.md#spikes); their deployment side is in [section 2](#2-identity-bundle-id-team-id-and-permissions).
 
 ## 11. Self-host
 
-- **Now (M0 to M7):** `infra/docker-compose/compose.yaml` runs Postgres 17 + pgvector for development and the
-  smallest self-host. Services are added to it as they gain code. Object storage: any S3-compatible service, or the
-  local-disk adapter when `OFFLOAD_OBJECT_STORE_URL` is empty (dev only).
-- **Self-host contents (M8):** the same image as the cloud (`offload serve` and `offload broker`); Postgres 17 + pgvector; S3-compatible storage;
-  sandbox provider Docker or container-use on Dagger (the Docker socket is given to the builder only, preferably on a
-  separate Docker host or a rootless daemon, since a build worker runs untrusted code); any OIDC provider; a model key
-  of the self-hoster's own, or the optional local tier (`OFFLOAD_LOCAL_MODEL_URL`, Ollama or exo on loopback or a
-  private network). The four modules run in one process by default ([ADR 0023](adr/0023-service-layout.md)); the
-  broker stays separate.
-- **Helm** (`infra/helm/offload`): a placeholder chart now; real templates at M8.
-- **Enterprise self-host:** the same images plus the `ee/` entry point and `OFFLOAD_EE_LICENSE_KEY`
-  ([OPEN_CORE.md](OPEN_CORE.md)). BYOC and dedicated deployments use the cloud definitions in the customer's account.
-- **Mac client for self-hosters:** the same notarized app, pointed at the self-hoster's API host by a signed
-  configuration profile or a one-time setting at sign-in; the host is pinned per device at enrollment, so a person
-  cannot be tricked into switching hosts later.
+Decided by the owner on 2026-11-14: "We'll make it self-hostable as well as the cloud hostable"
+([OQ-29](OPEN_QUESTIONS.md#oq-29-hosting-offload-cloud-and-self-host)). Self-host and Offload Cloud run the same image
+with the same features; a license key switches on paid features in both
+([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)). Everything below is a **plan**: there is no feature code
+and no published image yet. `infra/docker-compose/compose.yaml` and `infra/helm/offload` are skeletons that follow it.
+The cloud provider and region for Offload Cloud stay open ([OQ-01](OPEN_QUESTIONS.md#oq-01-cloud-hosting-provider-and-region)).
+
+### 11.1 Cloud and self-host side by side
+
+| Step | Offload Cloud (tenant of one, [section 7](#7-cloud-deploy-for-the-tenant-of-one)) | Self-host, one host (docker compose) | Self-host, Kubernetes (Helm, M8) |
+|---|---|---|---|
+| Image | `offload` release tag, built by `deploy-cloud.yml` | the same tag (`OFFLOAD_IMAGE`, `OFFLOAD_VERSION`) | the same tag and digest (`image.*`) |
+| Postgres 17 + pgvector | managed, encrypted, PITR | `postgres` service, volume `pgdata` | external only (`postgres.existingSecret`) |
+| Object storage | provider bucket, SSE-KMS | `objectstore` service (S3-compatible) + `objectstore-init` | external S3-compatible bucket |
+| Key provider | KMS (`aws-kms` by default) | `local`: a master key file given to `broker` only | KMS through workload identity, or `file` from a Secret |
+| Migrations | one-off job as `offload_migrator` | `migrate` service runs to completion first | `pre-install` / `pre-upgrade` hook Job |
+| Processes | `offload serve` + `offload broker` | `serve` + `broker` services, Unix socket volume | one pod (`serve` + `broker` containers) with `file`; broker Deployment with KMS |
+| Sandboxes | E2B | `docker` (profile `builds`, separate daemon) or `container-use`; or your own E2B key | E2B, or an isolated daemon |
+| Login | Google OIDC (O5), WorkOS from M8 | your own OIDC client, or magic link | your own OIDC client, or magic link |
+| Models | Offload's Anthropic organisation (O8) | your own key, or the local tier | your own key, or the local tier |
+| TLS | managed certificate | your reverse proxy in front of `127.0.0.1:${OFFLOAD_HTTP_PORT}` | ingress with TLS |
+| EE features | Offload Cloud's key per plan | your license key | your license key (`ee.*`) |
+| Telemetry | not applicable (own observability, [section 8](#8-observability-without-content)) | off (`OFFLOAD_TELEMETRY`) | off (`telemetry.enabled`) |
+| Backups | provider PITR + bucket versioning ([section 7.2](#72-backups-and-recovery)) | yours: `pg_dump` + bucket copy | yours; optional CronJob |
+| Upgrades | `deploy-cloud.yml` | pull the next tag, `up -d` (migrate runs first) | `helm upgrade` (migrate hook first) |
+
+### 11.2 Docker compose quickstart (plan)
+
+For one Linux host. Needs Docker Engine with Compose v2.24 or later, a DNS name, a TLS reverse proxy and an OIDC client
+(or an email sender for magic link).
+
+1. **Get the repo at a release tag.** The compose file and `.env.example` must match the image version.
+2. **Create `.env`** from `.env.example` in the repo root (`cp .env.example .env`). It is git-ignored. Fill the
+   required names in [section 11.3](#113-environment-variables). Never commit it.
+3. **Create the master key file** for the `local` key provider, outside the repo, readable only by you:
+   `umask 077 && head -c 32 /dev/urandom > /srv/offload/master.key`. Put its path in `OFFLOAD_MASTER_KEY_FILE`. Compose
+   gives it to `broker` only, as a secret. Back it up offline: without it, stored credentials cannot be decrypted.
+4. **Pick the release** in `OFFLOAD_IMAGE` and `OFFLOAD_VERSION` (no image is published yet), and a real tag for the
+   object store image (`OBJECT_STORE_IMAGE`, see [section 11.6](#116-object-storage-choice)).
+5. **Start**: `docker compose --env-file .env -f infra/docker-compose/compose.yaml up -d`. Order: `postgres` and
+   `objectstore` become healthy, `objectstore-init` creates the bucket with versioning, `migrate` runs
+   `offload migrate`, then `broker`, then `serve`.
+6. **Check**: `docker compose -f infra/docker-compose/compose.yaml ps` shows every long-running service healthy;
+   `curl -fsS http://127.0.0.1:8080/readyz` returns 200 ([API.md](API.md#operations-core)).
+7. **Expose it**: point your TLS reverse proxy at `127.0.0.1:${OFFLOAD_HTTP_PORT}` (default 8080). Set
+   `OFFLOAD_PUBLIC_BASE_URL` to the public origin and register `<base>/auth/callback` as the OIDC redirect URI.
+8. **Sign in** on the web app. The first login creates a personal tenant ([ADR 0014](adr/0014-identity.md)).
+9. **Builds (optional)**: either set `OFFLOAD_SANDBOX_PROVIDER=e2b` with your own `E2B_API_KEY`, or set
+   `OFFLOAD_SANDBOX_PROVIDER=docker`, `OFFLOAD_SANDBOX_DOCKER_HOST=tcp://sandbox:2376` and start with
+   `--profile builds`. The `sandbox` service is a separate Docker daemon; never give the host's Docker socket to
+   Offload, because build workers run untrusted code. A separate Docker host is better still.
+10. **Connect the Mac**: install the same notarized app and enter your host at sign-in ([section 11.8](#118-mac-client-for-self-hosters)).
+11. **Enterprise (optional)**: put your key in `OFFLOAD_EE_LICENSE_KEY` and run the Enterprise entry
+    (`offload serve --ee`) for `serve`.
+
+For development, start Postgres only (`... up -d postgres`); it listens on `127.0.0.1:54329`.
+
+### 11.3 Environment variables
+
+Names are in [.env.example](../.env.example) with empty values. The same names apply to Offload Cloud (where they come
+from the secrets manager, [section 13](#13-secrets-handling)) and to Helm (where secrets come from `existingSecret`
+references).
+
+| Name | Self-host | Read by | Notes |
+|---|---|---|---|
+| `DATABASE_URL` | required | `serve`, `broker` | connects as `offload_app` (no `BYPASSRLS`) |
+| `DATABASE_MIGRATOR_URL` | required | `migrate` | connects as `offload_migrator`; empty means `DATABASE_URL` |
+| `DATABASE_APP_ROLE` | optional | `serve`, `broker` | default `offload_app` |
+| `OFFLOAD_PUBLIC_BASE_URL` | required | `serve` | public origin behind your TLS proxy |
+| `OFFLOAD_OBJECT_STORE_URL`, `OFFLOAD_OBJECT_STORE_BUCKET` | required | `serve` | compose defaults the URL to the `objectstore` service |
+| `OFFLOAD_OBJECT_STORE_ACCESS_KEY_ID`, `OFFLOAD_OBJECT_STORE_SECRET_ACCESS_KEY` | required with static keys | `serve` | empty when a workload role grants access |
+| `OFFLOAD_RAW_TTL_DAYS`, `OFFLOAD_TEXT_TTL_DAYS`, `OFFLOAD_CONTENT_TTL_DAYS` | optional | `serve` | defaults from [OQ-02](OPEN_QUESTIONS.md#oq-02-raw-ttl-for-masked-observations-in-the-cloud) |
+| `OFFLOAD_MASTER_KEY_FILE` | required for `local` | `broker` only | path to the 32-byte key file |
+| `OFFLOAD_KMS_KEY_REF` | required for a KMS | `broker` only | key id |
+| `OFFLOAD_DEVICE_TOKEN_SIGNING_KEY_REF`, `OFFLOAD_SERVICE_SIGNING_KEY_REF` | required | `serve`, `broker` | references, never the key |
+| `OFFLOAD_BROKER_SOCKET` | set by compose | `serve`, `broker` | Unix socket path in the shared volume |
+| `ANTHROPIC_API_KEY` | required unless the local tier serves every route | `serve` | your own key |
+| `OFFLOAD_LOCAL_MODEL_URL` | optional | `serve` | Ollama or exo, loopback or private network |
+| `OFFLOAD_SANDBOX_PROVIDER` | required for builds | `serve` | `e2b`, `docker`, `container-use` |
+| `E2B_API_KEY` | with `e2b` | `serve` | |
+| `OFFLOAD_SANDBOX_DOCKER_HOST` | with `docker` | `serve` | the separate sandbox daemon |
+| `COMPOSIO_API_KEY` | optional | `broker` | only if you connect apps through Composio |
+| `OFFLOAD_OIDC_ISSUER`, `OFFLOAD_OIDC_CLIENT_ID`, `OFFLOAD_OIDC_CLIENT_SECRET_REF` | required unless magic link | `serve` | your own OIDC client |
+| `WORKOS_API_KEY`, `WORKOS_CLIENT_ID` | not used | | Offload Cloud from M8 only |
+| `OFFLOAD_EE_LICENSE_KEY` | optional | `serve` | one key, or one per plan |
+| `OFFLOAD_TELEMETRY` | optional | `serve` | `off` (default) or `on` |
+| `OFFLOAD_IMAGE`, `OFFLOAD_VERSION`, `OFFLOAD_HTTP_PORT` | compose only | compose | image and port |
+| `POSTGRES_PASSWORD` | compose only | `postgres` container | bootstrap password of `offload_migrator` |
+| `OBJECT_STORE_ROOT_USER`, `OBJECT_STORE_ROOT_PASSWORD` | compose only | `objectstore` container | root credentials of the bundled store |
+
+Narrowing which service sees which variable (for example connector keys only in `broker`) is done when the services
+exist; the skeleton gives the `.env` file to the three Offload services.
+
+### 11.4 Helm chart plan
+
+`infra/helm/offload` holds `Chart.yaml`, a `values.yaml` skeleton, placeholder templates and a
+[README](../infra/helm/offload/README.md). Real templates arrive in M8. The plan, as in
+[ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md#self-host-on-kubernetes-the-helm-chart-plan):
+- **Values**: image repository, tag and digest; replicas and resources; key provider (`aws-kms`, `gcp-kms`, `file`);
+  sandbox provider; OIDC issuer and client id; public base URL; ingress; retention days; `ee.enabled`; telemetry (off).
+- **Secrets**: only `existingSecret` references (database URLs, object store keys, master key, OIDC client secret,
+  model key, sandbox key, license key). No secret in values.
+- **External Postgres 17 with pgvector and an external S3-compatible bucket.** The chart runs neither.
+- **Key provider**: with `file`, the broker is a second container in the `serve` pod and alone mounts the master key
+  Secret. With a KMS, the broker is its own Deployment and ServiceAccount, so only it holds the decrypt grant.
+- **Ingress**: one TLS host, `serve` the only backend; NetworkPolicy limits ingress and egress.
+- **Upgrades and migrations**: the `offload migrate` hook Job runs before the rolling update and refuses to skip a
+  minor release.
+- **Backups**: not owned by the chart; managed PITR preferred; an optional `pg_dump` CronJob, off by default.
+- **Checks** (M8): `helm lint`, `helm template` with default values, and schema validation of the rendered manifests
+  in CI.
+
+### 11.5 Upgrades, backups and telemetry
+
+- **Versions**: the image, the chart and the server share one semantic version. Offload Cloud production runs only
+  tagged releases, and each one is published for self-host at the same time
+  ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md#upgrade-and-versioning-policy)).
+- **Upgrade one minor at a time**: back up, pull the next tag, `up -d` (or `helm upgrade`). `migrate` runs first and
+  refuses to skip a minor. Migrations are expand then contract, so the running version keeps working during them.
+- **Backups**: `pg_dump` of the database on a schedule (or your provider's PITR), a copy of the bucket (versioning on),
+  and the master key file kept offline. Rehearse a restore into a fresh compose deploy; the acceptance test is
+  `BACKUP: a restore into a fresh compose deploy passes the suite` (M8).
+- **Telemetry** is off by default. With `OFFLOAD_TELEMETRY=on` a daily content-free report goes to Offload: version,
+  migration head, enabled modules, bucketed tenant and member counts, license `key_id` if any. License checks never
+  call home.
+
+### 11.6 Object storage choice
+
+Any S3-compatible store works. The compose file names MinIO as a placeholder (`OBJECT_STORE_IMAGE`). MinIO is
+AGPL-3.0, and its maintainers stopped publishing free community images in late 2025 (verify before relying on it).
+Alternatives: SeaweedFS, Garage, or an external bucket from any provider; with an external bucket, delete
+`objectstore` and `objectstore-init` and set `OFFLOAD_OBJECT_STORE_URL`. Offload uses only the S3 API (put, get,
+delete, list, versioning), and the parity suite runs against the store you choose.
+
+### 11.7 Enterprise self-host and BYOC
+
+- The same image plus the Enterprise entry (`offload serve --ee`, the `@offload-ee/server-ee` composition root) and
+  `OFFLOAD_EE_LICENSE_KEY` ([OPEN_CORE.md](OPEN_CORE.md#3-how-gating-works)). The key is verified offline; features
+  are the same as on Offload Cloud for the same plan.
+- BYOC and dedicated deployments use the Helm chart (or the cloud definitions) in the customer's account (M9).
+
+### 11.8 Mac client for self-hosters
+
+The same notarized app, pointed at the self-hoster's API host by a signed configuration profile or a one-time setting
+at sign-in. The host is pinned per device at enrollment, so a person cannot be tricked into switching hosts later.
+Sparkle update checks still go to Offload's download host; no user data goes with them.
 
 ## 12. Environments
 

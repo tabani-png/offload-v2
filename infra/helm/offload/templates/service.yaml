@@ -1,0 +1,5 @@
+{{- /*
+Placeholder, renders nothing (M8).
+Service for serve (HTTP 8080). With a KMS key provider, also a ClusterIP Service for the broker Deployment,
+admitted only from serve pods by the NetworkPolicy. Never behind the ingress.
+*/ -}}

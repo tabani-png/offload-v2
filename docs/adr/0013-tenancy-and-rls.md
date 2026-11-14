@@ -9,7 +9,7 @@ bug (review-c P1(5)).
 
 ## Decision
 - Hierarchy: **tenant → workspace → member**. A personal tenant (`kind = 'personal'`) has one workspace and one member
-  with role `owner`. Team tenants (`kind = 'team'`) have many; creating them is gated by plan ([OQ-13](../OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)).
+  with role `owner`. Team tenants (`kind = 'team'`) have many; creating them is gated by plan (decided in [OQ-13](../OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)).
 - One Postgres database, shared schema. Every tenant-owned table has `tenant_id uuid NOT NULL`, first in its primary key
   or a unique index, FK to `tenants`.
 - **Tenant wall**: `ENABLE` and `FORCE ROW LEVEL SECURITY` on every tenant-owned table, with policy

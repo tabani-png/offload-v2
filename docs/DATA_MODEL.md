@@ -131,7 +131,7 @@ return no row. Cross-tenant jobs run as `offload_jobs`, which may only EXECUTE `
 
 | Table | Key | Fields | Retention |
 |---|---|---|---|
-| `tenants` | `id` | `kind` (`personal`, `team`), `name`, `region`, `plan` (`free`, `pro`, `enterprise`), `reporting_timezone`, `monthly_model_budget_usd` (default 50.0000, [OQ-05](OPEN_QUESTIONS.md#oq-05-model-provider-terms-and-monthly-model-budget)), `created_at`, `deleted_at` | life of tenant. RLS: `id = app.tenant_id`; `createPersonalTenant` sets `app.tenant_id` to the new id before inserting. `kind = 'team'` rows are created only through `ee/packages/teams` (default pending [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)) |
+| `tenants` | `id` | `kind` (`personal`, `team`), `name`, `region`, `plan` (`free`, `pro`, `enterprise`), `reporting_timezone`, `monthly_model_budget_usd` (default 50.0000, [OQ-05](OPEN_QUESTIONS.md#oq-05-model-provider-terms-and-monthly-model-budget)), `created_at`, `deleted_at` | life of tenant. RLS: `id = app.tenant_id`; `createPersonalTenant` sets `app.tenant_id` to the new id before inserting. `kind = 'team'` rows are created only through `ee/packages/teams` (decided, [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)) |
 | `workspaces` | `(tenant_id, id)` | `name`, `created_at`, `archived_at` | life of tenant |
 | `members` | `(tenant_id, id)` | `email` (plaintext, account data, needed for login match and invites), `email_hash`, `display_name`, `tenant_role` (`owner`, `admin`, `member`, `auditor`), `state` (`invited`, `active`, `leaving`, `frozen`, `departed`), `idp_subject`, `created_at` | life of tenant; departed + 90 days for personal data. Helpers `setMemberRole`, `setMemberState` throw `LastOwnerError { code: "last_owner" }` |
 | `workspace_members` | `(tenant_id, workspace_id, member_id)` | `workspace_role` (`lead`, `member`) | life of membership |
@@ -148,7 +148,7 @@ return no row. Cross-tenant jobs run as `offload_jobs`, which may only EXECUTE `
 | `idempotency_keys` | `(tenant_id, key)` | `request_sha256`, `status`, `response jsonb`, `created_at` | `R-ops` (24 h) |
 | `magic_links` | `token_sha256` (global) | `email_hash`, `return_to`, `expires_at` (15 min), `used_at` | `R-session`. Self-host login only. Global, no RLS (allowlisted): it is read before any tenant is known and holds no tenant data |
 | `schema_migrations` | `version` (global) | `name`, `checksum`, `applied_at` | global, no RLS (allowlisted) |
-| `license_state` | `id` (global) | `key_id`, `licensee`, `plan`, `features[]`, `seats`, `issued_at`, `expires_at`, `verified_at` | global, no RLS (allowlisted) |
+| `license_state` | `key_id` (global) | `licensee`, `plan`, `features[]`, `seats`, `issued_at`, `expires_at`, `verified_at`. One row per verified key, at most one unexpired key per `plan`; a tenant's entitlements come from the key whose `plan` equals `tenants.plan`, the same in Offload Cloud and self-host ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md#license-key-gating-is-identical-in-both-modes)) | global, no RLS (allowlisted) |
 
 ## 4. User model
 
@@ -260,7 +260,7 @@ Created by core migrations so the schema is one; written only by `ee/` code with
 | `anchor_sinks` | `(tenant_id, id)` | `kind` (`s3_object_lock`, `email`), `target`, `enabled`, `last_anchor_seq` | life of sink (M9) |
 
 Team tenant rows (`tenants.kind = 'team'`, `invites`, extra `workspaces`) are core tables written only through
-`ee/packages/teams` (M8; default pending [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)).
+`ee/packages/teams` (M8; decided, [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)).
 
 ## 10. Indexes and vectors
 

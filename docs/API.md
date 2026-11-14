@@ -13,8 +13,8 @@ say when ([ROADMAP.md](ROADMAP.md)).
 
 ## 1. Conventions
 
-- **Base URL**: `https://<host>/v1`. The browser login routes `/auth/*` are the one exception: they sit outside `/v1`
-  because they are redirects, not API calls. JSON only (`application/json; charset=utf-8`), except SSE streams and
+- **Base URL**: `https://<host>/v1`. The browser login routes `/auth/*` and the health checks `/healthz` and `/readyz` are the
+  exceptions: they sit outside `/v1` because they are redirects or operations checks, not API calls. JSON only (`application/json; charset=utf-8`), except SSE streams and
   keyframe upload.
 - **Versioning**: breaking changes get a new path version (`/v2`). Additive fields are allowed within `v1`; clients
   ignore unknown fields. Events carry `type` and `version`.
@@ -87,6 +87,16 @@ always present and may be null.
 
 ## 2. Public REST
 
+### Operations (core)
+
+Outside `/v1`, like `/auth/*`: health checks for compose, Helm and the Offload Cloud deploy, the same in both hosting
+modes ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)). No auth, no content, no tenant data.
+
+| Method and path | Response |
+|---|---|
+| `GET /healthz` | 200 `{ status: "ok" }` while the process runs (liveness) |
+| `GET /readyz` | 200 `{ status: "ready", version, migration_head }` when Postgres, the object store and the broker are reachable and the schema is at the expected head; 503 `{ status: "not_ready", failing: ["postgres" \| "object_store" \| "broker" \| "migrations"] }` otherwise |
+
 ### Auth and me (core)
 
 M1 login uses one OIDC provider (Google, his Workspace) or an email magic link for self-host. WorkOS AuthKit is the
@@ -103,7 +113,7 @@ Offload Cloud provider from M8 ([OQ-06](OPEN_QUESTIONS.md#oq-06-identity-provide
 | `DELETE /v1/me/consents/what-leaves-your-mac` (M3) | session or member token | 204; sets `withdrawn_at`, audited as `privacy.consent_withdrawn`; uploads stop (Local mode) |
 | `POST /v1/me/tokens` (M8) | `{ name, scopes[] }` | `{ id, token }` (shown once) |
 
-### Tenancy (core; team tenants are ee from M8, default pending OQ-13; SCIM and SSO are ee)
+### Tenancy (core; team tenants are ee from M8, decided in OQ-13; SCIM and SSO are ee)
 
 | Method and path | Request | Response |
 |---|---|---|
@@ -409,5 +419,5 @@ Written to `events_outbox` in the same transaction as the change; delivered to d
 |---|---|---|
 | Auth (one OIDC provider, magic link), me, devices, pseudonym key wraps, profile, privacy, imports, today, records, review, facts, opportunities (manual, instant read), fixes, builds, routines, batches, device commands, connections, catalog, metrics, outcomes, audit read and verify, policies read, budget, ingest, support grants | yes | |
 | Offload MCP server, outbound webhooks (M8) | yes | |
-| Team tenants: workspaces create, invites (M8, default pending [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)) | | yes |
+| Team tenants: workspaces create, invites (M8, decided, [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)) | | yes |
 | SCIM, SSO config, audit exports and streams, anchor sinks, custom policy write and simulate, notices and feature enablements (M9) | | yes |

@@ -38,6 +38,10 @@ a model, and never kept longer than its TTL.
 
 ## 3. What leaves the Mac
 
+That masked screen text goes to the cloud is the owner's decision of 2026-11-14 ("Yes, masked text can go to the
+cloud", [OQ-28](OPEN_QUESTIONS.md#oq-28-masked-screen-text-to-the-cloud)). Pixels stay on the Mac by default; masked
+keyframes are opt-in. On a self-host deploy, "the cloud" is the self-hoster's own server.
+
 All of it goes through the uploader, which is the Mac egress guard: one destination (the configured API host), closed
 schemas with `additionalProperties: false`, the detectors run again, and it fails closed
 ([ADR 0035](adr/0035-mac-egress-guard-and-ledger.md)). Every uploaded batch is written to a local 7-day **egress
@@ -103,6 +107,9 @@ Assets: C1 to C6 data; the ability to commit actions as the user; build sandboxe
 | License bypass | EE feature used without a key | Offline Ed25519 key check at startup and use; the real control is the license terms; core is useful without EE |
 | Insider at Offload | Support staff reads user data | Support access only through time-boxed, audited grants (max 72 h) approved by the tenant owner |
 | Supply chain | Malicious dependency | Exact pins, lockfile in CI (`--frozen-lockfile`), new dependency needs a SPEC line or ADR, actions pinned by SHA before public release, prebuilt sandbox images |
+| Self-host build host takeover | A build worker reaches the host's Docker socket | The `docker` provider talks only to a separate sandbox daemon (compose profile `builds`, or a separate host), never the host socket; the same `SandboxProvider` contract tests and egress allowlist as E2B ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)) |
+| Secrets in the public repo | A key lands in a commit and the repo is public ([OQ-27](OPEN_QUESTIONS.md#oq-27-publish-the-repository-publicly)) | Names only in `.env.example`, secrets hygiene check in CI, a full-history secret scan before the first push ([DEPLOYMENT section 6.5](DEPLOYMENT.md#65-before-the-public-push)), rotation at once after any exposure |
+| Fork pull request on a self-hosted runner | Code from a fork runs on a persistent Mac | No self-hosted runner for `pull_request` jobs on the public repo ([OQ-25](OPEN_QUESTIONS.md#oq-25-ci-capacity-for-macos)) |
 
 ## 5. Masking
 
@@ -230,6 +237,9 @@ Planned for Offload Cloud (owner confirms in [OQ-01](OPEN_QUESTIONS.md#oq-01-clo
 | WorkOS (from M8, Pro) | Login, SSO, directory | Member email, name, IdP attributes | Not used in M1 to M7 |
 
 Self-hosters choose their own; the core ships with no mandatory third party except the model provider they configure.
+A self-host deploy sends nothing to consultance.ai: license keys are verified offline and telemetry is off unless the
+self-hoster turns it on (`OFFLOAD_TELEMETRY=on`: a daily content-free report, [ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md#telemetry)).
+The Mac app's Sparkle update check goes to Offload's download host and carries no user data.
 
 ## 11. Retention, export, forget, wipe
 

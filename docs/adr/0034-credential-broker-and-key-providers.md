@@ -1,6 +1,6 @@
 # 0034. Credential broker and key providers
 
-Status: accepted · Date: 2026-11-14
+Status: accepted, revised 2026-11-14 · Date: 2026-11-14
 
 ## Context
 The vault decrypted credentials inside the process that also runs model steps, so "models never open a gate" was a
@@ -41,3 +41,8 @@ no key provider without a cloud KMS (review-c P1(3)).
 
 ## Sources
 Review-c P1(3); PR #42 A§13.3 (connector broker); old `brain/src/connectors/secrets.ts`.
+
+## Revisions
+- 2026-11-14 (decision pass D): on Kubernetes with a KMS key provider the broker runs as its own Deployment and
+  ServiceAccount (workload identity is per pod), reached over a namespace-internal Service with the service token and
+  mTLS instead of a local socket ([ADR 0037](0037-hosting-cloud-and-self-host-parity.md)).

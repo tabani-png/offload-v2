@@ -1,18 +1,190 @@
-# Local development and the smallest self-host footprint: Postgres 17 with pgvector.
-# Object storage uses the local-disk adapter in dev (OFFLOAD_OBJECT_STORE_URL empty).
-# Services are not listed yet: there is no feature code. See docs/ARCHITECTURE.md#15-deployment.
+# Offload self-host on one host, and local development. Skeleton: there is no feature code and no published image yet,
+# so the offload services do not start until the image exists. Plan and steps: docs/DEPLOYMENT.md section 11.
+# Decision: docs/adr/0037-hosting-cloud-and-self-host-parity.md (same image and features as Offload Cloud).
+#
+# Run from the repo root:
+#   docker compose --env-file .env -f infra/docker-compose/compose.yaml up -d
+# Development, Postgres only:
+#   docker compose --env-file .env -f infra/docker-compose/compose.yaml up -d postgres
+# Builds with the docker sandbox provider (optional):
+#   docker compose --env-file .env -f infra/docker-compose/compose.yaml --profile builds up -d
+#
+# No secret values live in this file. Values come from .env (names in .env.example; .env is git-ignored) and from
+# files named by *_FILE variables. Image tags are placeholders: pin a release tag and digest before real use.
 name: offload
+
+x-offload-image: &offload-image "${OFFLOAD_IMAGE:-ghcr.io/OWNER/offload}:${OFFLOAD_VERSION:-0.0.0}"
+
+x-offload-env: &offload-env
+  env_file:
+    - path: ../../.env
+      required: false
+
 services:
   postgres:
+    # Postgres 17 with pgvector. The one required datastore.
     image: pgvector/pgvector:pg17
     environment:
       POSTGRES_DB: offload
       POSTGRES_USER: offload_migrator
-      # Dev only. Set POSTGRES_PASSWORD in your shell; never commit a value.
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in your shell}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     ports:
+      # Loopback only, for development tools. Remove for a production self-host.
       - "127.0.0.1:54329:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    # dev: lets the loopback port above reach Postgres. Remove it together with the port for a production self-host.
+    networks: [backend, dev]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U offload_migrator -d offload"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  objectstore:
+    # Any S3-compatible store works. Placeholder image: MinIO is AGPL-3.0 and its maintainers stopped publishing free
+    # community images in late 2025; verify the image source and license, or use another S3-compatible store
+    # (or an external bucket, then delete this service and objectstore-init). See DEPLOYMENT.md section 11.
+    image: ${OBJECT_STORE_IMAGE:-minio/minio:PIN-A-RELEASE-TAG}
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${OBJECT_STORE_ROOT_USER:?set OBJECT_STORE_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${OBJECT_STORE_ROOT_PASSWORD:?set OBJECT_STORE_ROOT_PASSWORD in .env}
+    volumes:
+      - objdata:/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  objectstore-init:
+    # One-off: creates the bucket named by OFFLOAD_OBJECT_STORE_BUCKET with versioning on. Placeholder image.
+    image: ${OBJECT_STORE_CLIENT_IMAGE:-minio/mc:PIN-A-RELEASE-TAG}
+    depends_on:
+      objectstore:
+        condition: service_healthy
+    environment:
+      OBJECT_STORE_ROOT_USER: ${OBJECT_STORE_ROOT_USER:?set OBJECT_STORE_ROOT_USER in .env}
+      OBJECT_STORE_ROOT_PASSWORD: ${OBJECT_STORE_ROOT_PASSWORD:?set OBJECT_STORE_ROOT_PASSWORD in .env}
+      OFFLOAD_OBJECT_STORE_BUCKET: ${OFFLOAD_OBJECT_STORE_BUCKET:?set OFFLOAD_OBJECT_STORE_BUCKET in .env}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        mc alias set local http://objectstore:9000 "$$OBJECT_STORE_ROOT_USER" "$$OBJECT_STORE_ROOT_PASSWORD" &&
+        mc mb --ignore-existing "local/$$OFFLOAD_OBJECT_STORE_BUCKET" &&
+        mc version enable "local/$$OFFLOAD_OBJECT_STORE_BUCKET"
+    networks: [backend]
+    restart: "no"
+
+  migrate:
+    # One-off: offload migrate as offload_migrator (DATABASE_MIGRATOR_URL). Refuses to skip a minor release.
+    image: *offload-image
+    <<: *offload-env
+    command: ["offload", "migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+    restart: "no"
+
+  broker:
+    # Credential broker: the only process with decrypt rights (ADR 0034). Gets the master key file; nothing else does.
+    image: *offload-image
+    <<: *offload-env
+    command: ["offload", "broker"]
+    environment:
+      OFFLOAD_MASTER_KEY_FILE: /run/secrets/offload_master_key
+      OFFLOAD_BROKER_SOCKET: /run/offload-broker/broker.sock
+    secrets:
+      - offload_master_key
+    volumes:
+      - broker-socket:/run/offload-broker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [backend, egress]
+    healthcheck:
+      test: ["CMD", "offload", "healthcheck", "--broker"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  serve:
+    # offload serve: api, brain, builder and runtime modules in one process (ADR 0023). The only published port.
+    image: *offload-image
+    <<: *offload-env
+    command: ["offload", "serve"]
+    environment:
+      OFFLOAD_BROKER_SOCKET: /run/offload-broker/broker.sock
+      OFFLOAD_OBJECT_STORE_URL: ${OFFLOAD_OBJECT_STORE_URL:-http://objectstore:9000}
+      # Telemetry stays off unless the self-hoster sets OFFLOAD_TELEMETRY=on in .env.
+      OFFLOAD_TELEMETRY: ${OFFLOAD_TELEMETRY:-off}
+    volumes:
+      - broker-socket:/run/offload-broker
+      # Client certificates for the sandbox daemon (profile "builds"); empty otherwise.
+      - sandbox-certs:/run/offload-sandbox-certs:ro
+    ports:
+      # Loopback only. Put a TLS reverse proxy in front; OFFLOAD_PUBLIC_BASE_URL is its public origin.
+      - "127.0.0.1:${OFFLOAD_HTTP_PORT:-8080}:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      broker:
+        condition: service_healthy
+      objectstore:
+        condition: service_healthy
+    networks: [backend, egress]
+    healthcheck:
+      # GET /readyz: database and object store reachable (docs/API.md section 2, Operations).
+      test: ["CMD", "offload", "healthcheck", "--url", "http://127.0.0.1:8080/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  sandbox:
+    # Optional, profile "builds": a separate Docker daemon for the docker sandbox provider, so build workers never get
+    # the host's Docker socket. Prefer a separate Docker host. Set OFFLOAD_SANDBOX_PROVIDER=docker and
+    # OFFLOAD_SANDBOX_DOCKER_HOST=tcp://sandbox:2376 in .env. container-use on Dagger is the alternative provider.
+    profiles: [builds]
+    image: ${SANDBOX_DOCKER_IMAGE:-docker:PIN-A-RELEASE-TAG-dind-rootless}
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: /certs
+    volumes:
+      - sandbox-certs:/certs
+      - sandbox-data:/var/lib/docker
+    networks: [backend, egress]
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+secrets:
+  offload_master_key:
+    # A 32-byte key file for the local key provider, readable only by you. Path from .env; the value never lives here.
+    file: ${OFFLOAD_MASTER_KEY_FILE:-./missing-master-key-file}
+
+networks:
+  # No outside access: Postgres, the object store and the broker socket's peers.
+  backend:
+    internal: true
+  # Outbound access for model calls, connectors and sandboxes.
+  egress: {}
+  # Development only: reach Postgres from the host's loopback port.
+  dev: {}
+
 volumes:
   pgdata:
+  objdata:
+  broker-socket:
+  sandbox-certs:
+  sandbox-data:

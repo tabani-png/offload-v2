@@ -1,0 +1,4 @@
+{{- /*
+Placeholder, renders nothing (M8).
+Ingress for ingress.host with TLS required; backend is the serve Service only.
+*/ -}}

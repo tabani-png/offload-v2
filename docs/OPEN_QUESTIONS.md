@@ -4,43 +4,54 @@ Decisions only Muhammad can make. Each has options and a **recommended default**
 question stays here, marked, until he answers. Ordered by how much they block, most blocking first: by the earliest
 milestone in the "Blocks" column (M0 first), then by how much of that milestone waits on it. New questions get the
 next free id, so ids are not in order. When one is answered, write the answer under it, update the docs that cite it,
-and add an ADR if it changes a decision.
+and add an ADR if it changes a decision. Decided questions keep their entry and id (nothing is renumbered) and move
+to the end of the table.
 Milestones are the ones in [ROADMAP.md](ROADMAP.md).
 
-Status key: **open** (building on the default), **answered by evidence, owner to confirm**, **answered**.
+Status key: **open** (building on the default), **partly decided** (some parts answered, the rest open with
+defaults), **Decided 2026-11-14 (owner)** (answered in the owner's own words, quoted under the question), **answered**
+(settled by evidence or a standing rule).
 
-| # | Question | Default | Blocks |
-|---|---|---|---|
-| [OQ-16](#oq-16-mac-distribution-and-signing) | Mac distribution, signing, bundle id | Developer ID + notarized DMG + Sparkle; `ai.offload.mac` | M0 operator items, M3 |
-| [OQ-25](#oq-25-ci-capacity-for-macos) | CI capacity for macOS | self-hosted Mac for PRs, hosted `macos-26` for releases | M0 (CI `mac` job, O12) |
-| [OQ-12](#oq-12-relicensing-code-from-the-old-repo) | Relicensing old-repo code | relicense under the v2 license | M1 (first port: audit chain writer in m1-03) |
-| [OQ-06](#oq-06-identity-provider-for-offload-cloud) | Identity provider | one OIDC provider (Google) now; WorkOS AuthKit from M8 | M1 (login), M8 (WorkOS) |
-| [OQ-01](#oq-01-cloud-hosting-provider-and-region) | Cloud host and region | AWS `ca-central-1` | M1 deploy (operator item O7) |
-| [OQ-24](#oq-24-who-owns-the-oauth-clients) | Who owns the OAuth clients | consultance.ai Internal client now; verified client before outside users | M1 (login), M2 (connectors), M8 |
-| [OQ-22](#oq-22-your-first-hand-fed-task-and-top-admin-drains) | Your first hand-fed task and top 5 admin drains | Stripe payouts → finance sheet (illustrative) | M2 |
-| [OQ-05](#oq-05-model-provider-terms-and-monthly-model-budget) | Model provider terms, monthly budget | Anthropic API, standard retention, $50/month | M2 |
-| [OQ-02](#oq-02-raw-ttl-for-masked-observations-in-the-cloud) | Cloud retention for masked observations and connector content | metadata 30 days, text 7 days, connector content 30 days | M2 (connector content), M3 (observations) |
-| [OQ-21](#oq-21-drop-mutation-score-from-the-build-winner-rule) | Drop mutation score from the build winner rule | yes, dropped | M2 |
-| [OQ-07](#oq-07-design-budget-before-ok-build) | Design budget before OK, build | $0.60 per opportunity | M2 |
-| [OQ-08](#oq-08-sandbox-provider-for-cloud-builds) | Sandbox provider for cloud builds | E2B | M2 |
-| [OQ-10](#oq-10-build-progress-screen-rows) | Build progress rows: check groups or workers | check groups | M2 (Build progress view) |
-| [OQ-26](#oq-26-backfill-data-captured-before-upload-consent) | Upload days captured before consent | opt-in, off by default | M3 |
-| [OQ-17](#oq-17-privacy-policy-terms-and-dpa) | Privacy policy, terms, DPA | lawyer-reviewed before any second user | M3 (screen 5 links), M8 |
-| [OQ-03](#oq-03-keep-the-derived-user-model-long-term) | Keep the derived user model long term | yes, with controls | M5 |
-| [OQ-04](#oq-04-keyframes-to-the-cloud) | Masked keyframes to the cloud | off | M5 |
-| [OQ-20](#oq-20-brand-logos-in-the-app) | Third-party brand logos in the app | monograms until reviewed | M5 (onboarding connect step) |
-| [OQ-23](#oq-23-may-the-mac-client-run-deployed-fixes-locally) | Mac client runs device steps of deployed fixes | typed commands only, attended, per-step approval, from M6 | M6 |
-| [OQ-09](#oq-09-graduation-threshold) | Graduation threshold | 5 clean runs + your OK | M6 |
-| [OQ-14](#oq-14-optional-graphiti-adapter-and-graph-backend-licenses) | graphiti adapter in distribution | not shipped by default | M7 |
-| [OQ-13](#oq-13-plan-contents-and-prices) | Plan contents and prices | single-player core, multiplayer paid | M8 |
-| [OQ-11](#oq-11-license-for-the-core-and-for-ee) | License for core and `ee/` | Apache-2.0 + commercial EE | public release (M8) |
-| [OQ-15](#oq-15-monitoring-law-features-for-teams) | Per-person team features | Enterprise only, off by default | M8/M9 |
-| [OQ-18](#oq-18-which-cortexa) | Which Cortexa did you mean | cortexa.network | none |
-| [OQ-19](#oq-19-what-is-fable-52-and-should-it-shape-the-architecture) | What is Fable 5.2 | answered: Claude Fable 5.2, dev-time only (architecture and review) | none |
+Owner answers on 2026-11-14 (decision pass D): OQ-13 (plan split), OQ-16 (b) (Apple enrolment), and three new entries
+for answers that had no question yet: OQ-27 (public repo), OQ-28 (masked text to the cloud), OQ-29 (hosting). They
+also changed the defaults of OQ-25 (a public repo should not use a self-hosted runner for PR jobs) and the urgency of
+OQ-11 (a public repo with no license grants no rights).
+
+| # | Question | Status | Default or decision | Blocks |
+|---|---|---|---|---|
+| [OQ-16](#oq-16-mac-distribution-and-signing) | Mac distribution, signing, bundle id | partly decided: (b) enrolment | enrol as consultance.ai (decided, owner does it); Developer ID + notarized DMG + Sparkle; `ai.offload.mac` | M0 operator items, M3 |
+| [OQ-25](#oq-25-ci-capacity-for-macos) | CI capacity for macOS | open, default revised | hosted `macos-26` for PRs and releases; no self-hosted runner on the public repo | M0 (CI `mac` job, O12) |
+| [OQ-11](#oq-11-license-for-the-core-and-for-ee) | License for core and `ee/` | open | Apache-2.0 + commercial EE | the public push (operator), public release (M8) |
+| [OQ-12](#oq-12-relicensing-code-from-the-old-repo) | Relicensing old-repo code | open | relicense under the v2 license | M1 (first port: audit chain writer in m1-03) |
+| [OQ-06](#oq-06-identity-provider-for-offload-cloud) | Identity provider | open | one OIDC provider (Google) now; WorkOS AuthKit from M8 | M1 (login), M8 (WorkOS) |
+| [OQ-01](#oq-01-cloud-hosting-provider-and-region) | Cloud provider and region for Offload Cloud | open (hosting modes decided in OQ-29) | AWS `ca-central-1` | M1 deploy (operator item O7) |
+| [OQ-24](#oq-24-who-owns-the-oauth-clients) | Who owns the OAuth clients | open | consultance.ai Internal client now; verified client before outside users | M1 (login), M2 (connectors), M8 |
+| [OQ-22](#oq-22-your-first-hand-fed-task-and-top-admin-drains) | Your first hand-fed task and top 5 admin drains | open | Stripe payouts → finance sheet (illustrative) | M2 |
+| [OQ-05](#oq-05-model-provider-terms-and-monthly-model-budget) | Model provider terms, monthly budget | open | Anthropic API, standard retention, $50/month | M2 |
+| [OQ-02](#oq-02-raw-ttl-for-masked-observations-in-the-cloud) | Cloud retention for masked observations and connector content | open | metadata 30 days, text 7 days, connector content 30 days | M2 (connector content), M3 (observations) |
+| [OQ-21](#oq-21-drop-mutation-score-from-the-build-winner-rule) | Drop mutation score from the build winner rule | open | yes, dropped | M2 |
+| [OQ-07](#oq-07-design-budget-before-ok-build) | Design budget before OK, build | open | $0.60 per opportunity | M2 |
+| [OQ-08](#oq-08-sandbox-provider-for-cloud-builds) | Sandbox provider for cloud builds | open | E2B | M2 |
+| [OQ-10](#oq-10-build-progress-screen-rows) | Build progress rows: check groups or workers | open | check groups | M2 (Build progress view) |
+| [OQ-26](#oq-26-backfill-data-captured-before-upload-consent) | Upload days captured before consent | open | opt-in, off by default | M3 |
+| [OQ-17](#oq-17-privacy-policy-terms-and-dpa) | Privacy policy, terms, DPA | open | lawyer-reviewed before any second user | M3 (screen 5 links), M8 |
+| [OQ-03](#oq-03-keep-the-derived-user-model-long-term) | Keep the derived user model long term | open | yes, with controls | M5 |
+| [OQ-04](#oq-04-keyframes-to-the-cloud) | Masked keyframes to the cloud | open | opt-in, off by default | M5 |
+| [OQ-20](#oq-20-brand-logos-in-the-app) | Third-party brand logos in the app | open | monograms until reviewed | M5 (onboarding connect step) |
+| [OQ-23](#oq-23-may-the-mac-client-run-deployed-fixes-locally) | Mac client runs device steps of deployed fixes | open | typed commands only, attended, per-step approval, from M6 | M6 |
+| [OQ-09](#oq-09-graduation-threshold) | Graduation threshold | open | 5 clean runs + your OK | M6 |
+| [OQ-14](#oq-14-optional-graphiti-adapter-and-graph-backend-licenses) | graphiti adapter in distribution | open | not shipped by default | M7 |
+| [OQ-13](#oq-13-plan-contents-and-prices) | Plan contents and prices | partly decided: split | single-player core free, multiplayer paid via Pro (decided); prices open | M8 (prices, billing) |
+| [OQ-15](#oq-15-monitoring-law-features-for-teams) | Per-person team features | open | Enterprise only, off by default | M8/M9 |
+| [OQ-18](#oq-18-which-cortexa) | Which Cortexa did you mean | open | cortexa.network | none |
+| [OQ-27](#oq-27-publish-the-repository-publicly) | Publish the repository publicly | Decided 2026-11-14 (owner) | public, as `tabani-png/offload-v2`; the operator pushes | none (operator pushes after the checklist) |
+| [OQ-28](#oq-28-masked-screen-text-to-the-cloud) | Masked screen text to the cloud | Decided 2026-11-14 (owner) | yes; pixels stay on the Mac by default | none |
+| [OQ-29](#oq-29-hosting-offload-cloud-and-self-host) | Hosting: Offload Cloud and self-host | Decided 2026-11-14 (owner) | both, at feature parity ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)) | none |
+| [OQ-19](#oq-19-what-is-fable-52-and-should-it-shape-the-architecture) | What is Fable 5.2 | answered | Claude Fable 5.2, dev-time only (architecture and review) | none |
 
 ## OQ-16: Mac distribution and signing
 
-Status: open.
+Status: **partly decided**. Sub-question (b) Decided 2026-11-14 (owner); (a) and (c) open.
 - **Question**: How is the Mac client signed and distributed, and what is its bundle id?
 - **Options**: ad-hoc signed builds for you only; Developer ID signed + notarized DMG with Sparkle updates; Mac App
   Store (sandboxing conflicts with Accessibility and screen capture needs).
@@ -51,24 +62,41 @@ Status: open.
 - **Sub-questions**:
   - (a) Bundle id domain: `ai.offload.mac` if you control `offload.ai`; otherwise an id under `consultance.ai`
     (for example `ai.consultance.offload.mac`). Default `ai.offload.mac`. Blocks M3 (first signed build).
-  - (b) Apple Developer enrolment: who is the Account Holder. Default: consultance.ai as an organisation, started in
-    M0 because the D-U-N-S number has a lead time. Blocks M3.
+  - (b) Apple Developer enrolment: who is the Account Holder. **Decided 2026-11-14 (owner)**: "Yes, enrol under
+    consultance.ai". Enrolment is as the organisation consultance.ai. The owner does the enrolment himself and is the
+    Account Holder (operator item O1). It starts now because the D-U-N-S number has a lead time of days to weeks. Agents
+    do nothing for this item except keep the docs ready for the Team ID.
   - (c) A staging build id `ai.offload.mac.internal`, added before any second user
     ([DEPLOYMENT section 12](DEPLOYMENT.md#12-environments)). Default yes. Blocks M8.
 - **Affects**: [ADR 0024](adr/0024-client-stacks.md), [DEPLOYMENT.md](DEPLOYMENT.md), operator items O1 to O3 and O11.
 
 ## OQ-25: CI capacity for macOS
 
-Status: open.
+Status: open, **default revised 2026-11-14** because the repository will be public ([OQ-27](#oq-27-publish-the-repository-publicly)).
 - **Question**: Where do the macOS CI jobs run? Hosted macOS minutes cost about ten times Linux minutes, and the old
   repo ran out of them.
-- **Options**: hosted macOS minutes only; a dedicated self-hosted Mac for PR jobs (private repo only) with hosted
-  `macos-26` for releases.
-- **Recommended default**: a self-hosted Mac for PR jobs plus hosted `macos-26` for releases (PR #42's recommendation).
-  Hosted macOS 14 images were retired on 2026-11-02, so the macOS 14 minimum is tested on that Mac. Keep macOS 14 as
-  the minimum.
+- **Options**: hosted macOS runners only; a dedicated self-hosted Mac for PR jobs with hosted `macos-26` for releases
+  (the previous default, PR #42's recommendation, which assumed a private repo).
+- **Recommended default (revised)**: hosted `macos-26` for PR jobs and releases. On a public repository GitHub's
+  standard hosted runners are free, so the cost reason for a self-hosted Mac goes away (check GitHub's current billing
+  page before relying on it). GitHub advises against self-hosted runners on public repositories, because a pull request
+  from a fork can run code on the runner. If a self-hosted Mac is used at all, it runs only manually triggered jobs from
+  `main` (for example the macOS 14 checks), never `pull_request` jobs. Hosted macOS 14 images were retired on
+  2026-11-02, so the macOS 14 minimum is tested on a local Mac. Keep macOS 14 as the minimum.
 - **Blocks**: M0 (CI `mac` job), operator item O12.
 - **Affects**: `.github/workflows/ci.yml`, [DEPLOYMENT section 6](DEPLOYMENT.md#6-ci).
+
+## OQ-11: License for the core and for EE
+
+Status: open. **More urgent since 2026-11-14**: the repository will be public ([OQ-27](#oq-27-publish-the-repository-publicly)).
+- **Question**: Which licenses?
+- **Options**: core Apache-2.0, MIT, AGPL-3.0, or fair-code (Sustainable Use); EE commercial (Langfuse style) or BSL.
+- **Recommended default**: **Apache-2.0 core** (patent grant) + **commercial Offload Enterprise License for `ee/`**,
+  source-visible, production use needs a key.
+- **Blocks**: the public push, in practice. Pushing with the placeholder `LICENSE` is possible, but then the code is
+  visible and nobody may use, copy or contribute to it: public is not open source. Recommended: answer before the
+  operator pushes, or push knowingly with the placeholder.
+- **Affects**: `LICENSE`, `ee/LICENSE`, [OPEN_CORE.md](OPEN_CORE.md#1-license).
 
 ## OQ-12: Relicensing code from the old repo
 
@@ -79,6 +107,8 @@ Status: open.
 - **Recommended default**: yes for everything you wrote. Third-party pieces keep their own licenses in `NOTICE`.
 - **Blocks**: M1. The first port is the audit chain writer (old `control/src/audit`) in slice
   [m1-03](../slices/m1-03-tenancy-rls/SPEC.md); the Mac capture port follows in M3.
+- **Note**: publishing the repo ([OQ-27](#oq-27-publish-the-repository-publicly)) does not need this answer while no
+  old-repo code is ported; the docs describe old code but do not copy it. The first port does.
 - **Affects**: every port in [MIGRATION.md](MIGRATION.md).
 
 ## OQ-06: Identity provider for Offload Cloud
@@ -94,7 +124,9 @@ Status: open.
 
 ## OQ-01: Cloud hosting provider and region
 
-Status: open.
+Status: open. The hosting **modes** are decided (Offload Cloud and self-host at parity,
+[OQ-29](#oq-29-hosting-offload-cloud-and-self-host)); the provider and region for Offload Cloud stay open with this
+default.
 - **Question**: Where does Offload Cloud run first?
 - **Options**: (a) AWS `ca-central-1` (Montreal): managed Postgres 17 with pgvector, S3, KMS, Canadian residency.
   (b) GCP `northamerica-northeast2` (Toronto). (c) Fly.io / Render / Railway: simpler, weaker KMS and residency story.
@@ -137,15 +169,15 @@ Status: open.
 - **Recommended default**: Anthropic API, standard retention, masked and pseudonymised text only, for your tenant of
   one; **$50/month** cap (builds are capped separately at $4.00 each and count toward it). Zero data retention is an
   operator item (O10) with a lead time and must be in place before any second user. The router allowlists the product
-  models (Opus, Sonnet, Haiku); per PR #42, Fable and Mythos are not available under zero retention. BYOK is a default
-  pending [OQ-13](#oq-13-plan-contents-and-prices).
+  models (Opus, Sonnet, Haiku); per PR #42, Fable and Mythos are not available under zero retention. BYOK is a default (an
+  open sub-question of [OQ-13](#oq-13-plan-contents-and-prices)).
 - **Note**: onboarding screen 5 names Anthropic as the model provider and says "Offload doesn't sell your data". Any
   "not used for training" or zero-retention wording waits on operator item O10.
 - **Affects**: [ADR 0021](adr/0021-model-router-and-builders.md), `tenants.monthly_model_budget_usd`.
 
 ## OQ-02: Raw TTL for masked observations in the cloud
 
-Status: open.
+Status: open. That masked text is uploaded at all is decided ([OQ-28](#oq-28-masked-screen-text-to-the-cloud)); how long it stays is not.
 - **Question**: How long does masked and connector data stay in the cloud before deletion? Three numbers:
   C1 metadata (focus, titles, hosts, idle), C1 text snapshots (masked screen text), and C6 connector content (fixture
   reads and instant reads).
@@ -217,6 +249,9 @@ Status: open.
 - **Note**: the "What leaves your Mac" screen ([ONBOARDING screen 5](ONBOARDING.md#screen-5-what-leaves-your-mac))
   links to the privacy policy and terms, so a plain-language version for you is needed by M3 (operator item O15);
   the lawyer-reviewed version is needed before any second user.
+- **Hosting**: the policy and DPA cover Offload Cloud. A self-hoster runs their own deployment and is responsible for
+  their own data ([OQ-29](#oq-29-hosting-offload-cloud-and-self-host)); Offload receives nothing from it unless they
+  turn on telemetry.
 - **Affects**: M3 copy (screen 5 links), M8 exit.
 
 ## OQ-03: Keep the derived user model long term
@@ -231,7 +266,7 @@ Status: open.
 
 ## OQ-04: Keyframes to the cloud
 
-Status: open.
+Status: open. Not changed by [OQ-28](#oq-28-masked-screen-text-to-the-cloud): that answer covers masked text only; pixels stay on the Mac by default.
 - **Question**: Should masked keyframes ever leave the Mac (for captioning by Haiku)?
 - **Options**: (a) never; (b) opt-in per user (`keyframes_to_cloud`), default off; (c) on by default.
 - **Recommended default**: (b), default off. Understanding works from metadata and masked text; images are an
@@ -281,7 +316,8 @@ Status: open.
 
 ## OQ-13: Plan contents and prices
 
-Status: open.
+Status: **partly decided**. The split is **Decided 2026-11-14 (owner)**: "One person free, teams pay." Prices and
+the sub-questions below stay open with their defaults.
 - **Question**: What is free, what is Pro, what is Enterprise, and what do Pro and Enterprise cost? (Pricing page v3
   labels prices as proposals. These docs set no prices.)
 - **Options**:
@@ -294,27 +330,24 @@ Status: open.
     hosting plus budgets. Weak: with an Apache-2.0 core anyone can host the same thing.
   - (c) **Fair-code core** (n8n's Sustainable Use License): protects hosting, but the core is no longer OSI open source,
     which you asked for.
-- **Recommended default**: (a). Every plan-split value in [OPEN_CORE.md](OPEN_CORE.md#2-feature-split) is marked
-  "default, pending OQ-13".
-- **Sub-questions** (each has a default in OPEN_CORE.md):
+- **Decision**: option (a). Single-player core is free. Multiplayer (team tenants, invites, workspaces, shared fixes,
+  team review) is paid through Pro. Enterprise adds SSO/SCIM, approval chains, SIEM and audit export, BYOC and support.
+  Options (b) and (c) are closed. Both plans run on Offload Cloud and self-host, switched on by a license key
+  ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)). Recorded in [OPEN_CORE.md](OPEN_CORE.md#2-feature-split)
+  and [ADR 0015](adr/0015-open-core-layout-and-license-gating.md).
+- **Still open**: the prices of Pro and Enterprise. Enterprise items beyond the owner's list (custom Cedar policies,
+  external audit anchor sink, legal hold, configurable retention, dedicated deployment) are Enterprise by default.
+- **Sub-questions** (open; each has a default in OPEN_CORE.md):
   - (a) Is there a free hosted tier on Offload Cloud, and who pays its model and sandbox costs? Default: no free hosted
-    tier beyond your own tenant; free means self-host.
-  - (b) What exactly is in Pro? Default: team tenants, shared fix library, team weekly review, onboarding help for
-    teams new to AI, higher budgets.
+    tier beyond your own tenant; free means self-host. Your words "One person free" could also mean a free hosted
+    tier for one person; please confirm which.
+  - (b) What exactly is in Pro? Decided in outline (multiplayer). Default extras: onboarding help for teams new to AI,
+    higher budgets, and a Pro key for self-hosters (parity).
   - (c) How are seats enforced? Default: warn when over, block new invites after 30 days, never block existing members
     or safety features.
   - (d) Support tiers? Default: community (Free), email (Pro), SLA (Enterprise).
   - Also: team size for Pro (default 3 to 20) and BYOK for every tenant (default yes).
 - **Affects**: OPEN_CORE.md, [ADR 0015](adr/0015-open-core-layout-and-license-gating.md), web app billing (M8).
-
-## OQ-11: License for the core and for EE
-
-Status: open.
-- **Question**: Which licenses?
-- **Options**: core Apache-2.0, MIT, AGPL-3.0, or fair-code (Sustainable Use); EE commercial (Langfuse style) or BSL.
-- **Recommended default**: **Apache-2.0 core** (patent grant) + **commercial Offload Enterprise License for `ee/`**,
-  source-visible, production use needs a key.
-- **Affects**: `LICENSE`, `ee/LICENSE`, [OPEN_CORE.md](OPEN_CORE.md#1-license).
 
 ## OQ-15: Monitoring-law features for teams
 
@@ -335,6 +368,48 @@ Status: open.
   governed flows ([ADR 0017](adr/0017-policy-engine-cedar.md)). No code. "A rule id on every decision" comes from the
   research Page, not from either Cortexa.
 - **Affects**: nothing blocking.
+
+## OQ-27: Publish the repository publicly
+
+Status: **Decided 2026-11-14 (owner)**.
+- **Question**: Should the v2 repository be published, and public or private?
+- **Answer** (owner's words): "Yes, create a public repo and push".
+- **Decision**: the repository is published **public** as `tabani-png/offload-v2`. The operator (the owner) creates it
+  and pushes later. Agents still never create a remote, push or use `gh` ([CLAUDE.md](../CLAUDE.md)).
+- **Consequences**:
+  - A public repo with the placeholder `LICENSE` grants no rights, so [OQ-11](#oq-11-license-for-the-core-and-for-ee)
+    is now urgent.
+  - CI: no self-hosted runner for PR jobs on a public repo ([OQ-25](#oq-25-ci-capacity-for-macos), default revised).
+  - The whole git history becomes public. The pre-publish checklist is in
+    [DEPLOYMENT section 6.5](DEPLOYMENT.md#65-before-the-public-push).
+- **Affects**: [README.md](../README.md), [DEPLOYMENT.md](DEPLOYMENT.md#65-before-the-public-push), operator item O4.
+
+## OQ-28: Masked screen text to the cloud
+
+Status: **Decided 2026-11-14 (owner)**.
+- **Question**: May masked, pseudonymised screen text leave the Mac for the cloud brain? (The docs assumed yes,
+  [ADR 0007](adr/0007-cloud-brain-thin-mac-client.md); the owner had not said it in so many words.)
+- **Answer** (owner's words): "Yes, masked text can go to the cloud".
+- **Decision**: masked text snapshots are uploaded after upload consent, as in
+  [SECURITY_PRIVACY section 3](SECURITY_PRIVACY.md#3-what-leaves-the-mac). Pixels still stay on the Mac by default.
+  Masked keyframes stay opt-in and off by default ([OQ-04](#oq-04-keyframes-to-the-cloud), still open). How long text
+  stays is still [OQ-02](#oq-02-raw-ttl-for-masked-observations-in-the-cloud).
+- **Affects**: [ADR 0005](adr/0005-masked-text-only-reaches-models.md), [ADR 0007](adr/0007-cloud-brain-thin-mac-client.md),
+  [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md#3-what-leaves-the-mac), [ONBOARDING screen 5](ONBOARDING.md#screen-5-what-leaves-your-mac).
+
+## OQ-29: Hosting: Offload Cloud and self-host
+
+Status: **Decided 2026-11-14 (owner)**.
+- **Question**: Is Offload hosted by consultance.ai, self-hosted by customers, or both?
+- **Answer** (owner's words): "We'll make it self-hostable as well as the cloud hostable".
+- **Decision**: both, at **feature parity**: one codebase and one image set; docker compose for one host and a Helm
+  chart for Kubernetes; `ee/` gated by the same license key mechanism in both (Offload Cloud uses its own key per
+  tenant plan; self-host uses the customer's key); telemetry off by default for self-host. Recorded in
+  [ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md).
+- **Still open**: the cloud provider and region for Offload Cloud ([OQ-01](#oq-01-cloud-hosting-provider-and-region),
+  default AWS `ca-central-1`).
+- **Affects**: [DEPLOYMENT.md](DEPLOYMENT.md#11-self-host), [OPEN_CORE.md](OPEN_CORE.md), `infra/docker-compose`,
+  `infra/helm/offload`, [ROADMAP M8](ROADMAP.md#m8-self-host-and-pro).
 
 ## OQ-19: What is Fable 5.2 and should it shape the architecture?
 

@@ -5,12 +5,18 @@ Do it twice. Offload takes the third.
 Offload notices the back-office work you repeat, builds a fix for it after you say OK, installs it after you say OK
 again, and tells you how many hours it saved. A product of consultance.ai.
 
-**Status: architecture only.** This repo holds the v2 design docs and an empty monorepo skeleton. There is no feature
-code yet. The first milestones run Offload for one person (the owner) end to end: M1 builds the foundations, M2 runs a
-hand-fed loop first (one task he names, built, deployed and run on his real accounts), and M3 brings capture to the
-cloud in parallel. Slice specs with named red tests are ready for M1 (`m1-01` to `m1-05`) and M3 (`m3-01`, `m3-02`).
-Owner decisions are open with recommended defaults in [OPEN_QUESTIONS](docs/OPEN_QUESTIONS.md). See
+**Status: architecture and docs only, public.** This repo holds the v2 design docs and an empty monorepo skeleton,
+and it is meant to be read in the open ([OQ-27](docs/OPEN_QUESTIONS.md#oq-27-publish-the-repository-publicly)). There
+is no feature code yet. No license is chosen yet, so no rights are granted ([License](#license)).
+
+The first milestones run Offload for one person (the owner) end to end: M1 builds the foundations, M2 runs a hand-fed
+loop first (one task he names, built, deployed and run on his real accounts), and M3 brings capture to the cloud in
+parallel. Slice specs with named red tests are ready for M1 (`m1-01` to `m1-05`) and M3 (`m3-01`, `m3-02`). See
 [ROADMAP](docs/ROADMAP.md).
+
+Decided by the owner: one person free, teams pay; Offload Cloud and self-host with the same features; masked screen
+text may go to the cloud, pixels stay on the Mac. Prices and the other owner decisions are open with recommended
+defaults in [OPEN_QUESTIONS](docs/OPEN_QUESTIONS.md).
 
 ## How it works
 
@@ -23,6 +29,8 @@ Owner decisions are open with recommended defaults in [OPEN_QUESTIONS](docs/OPEN
 5. A second OK installs it, after you read what it will do and with which accounts. It asks before sending anything
    until it has earned your trust.
 6. It measures the hours saved and shows them next to the estimate every week.
+
+One person uses it free. Teams pay. Run it on Offload Cloud or on your own servers, with the same features.
 
 ## Read order
 
@@ -39,14 +47,14 @@ Owner decisions are open with recommended defaults in [OPEN_QUESTIONS](docs/OPEN
 |---|---|
 | [PRODUCT](docs/PRODUCT.md) | Vision, personas, jobs, screens, copy rules, non-goals |
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | Every component with a diagram, and the end-to-end sequence |
-| [ADRs](docs/adr/README.md) | 36 decisions, one per file |
+| [ADRs](docs/adr/README.md) | 37 decisions, one per file |
 | [DATA_MODEL](docs/DATA_MODEL.md) | Tables, keys, tenancy, bi-temporal fields, retention |
 | [API](docs/API.md) | REST, device ingest, MCP server, webhooks, events |
 | [SECURITY_PRIVACY](docs/SECURITY_PRIVACY.md) | Threat model, data classes, what leaves the Mac, sandboxes |
 | [OPEN_CORE](docs/OPEN_CORE.md) | License, Free / Pro / Enterprise split, gating |
 | [ROADMAP](docs/ROADMAP.md) | Milestones M0 to M9 with acceptance tests |
 | [ONBOARDING](docs/ONBOARDING.md) | First-run flow, permissions, skip paths, re-consent |
-| [DEPLOYMENT](docs/DEPLOYMENT.md) | Signing, notarization, Sparkle, hosting |
+| [DEPLOYMENT](docs/DEPLOYMENT.md) | Signing, notarization, Sparkle, Offload Cloud and self-host side by side |
 | [MIGRATION](docs/MIGRATION.md) | What is harvested from the old repo and its branches |
 | [OPEN_QUESTIONS](docs/OPEN_QUESTIONS.md) | Owner decisions, each with a recommended default |
 | [GLOSSARY](docs/GLOSSARY.md) | The one vocabulary |
@@ -72,7 +80,7 @@ packages/masking    server-side masking and transport leak scan
 packages/license    offline license-key verification
 packages/testkit    fixtures, fake connector, fakes
 ee/                 Enterprise code (identity, governance, audit-export, server-ee); see ee/LICENSE
-infra/              docker-compose (Postgres 17 + pgvector), Helm placeholder
+infra/              self-host skeletons: docker-compose (one host), Helm chart (Kubernetes)
 slices/             slice specs and verify scripts (_template, M1, M3)
 scripts/            harness: verify-all, license boundary, slices, doc links, copy, secrets, workflows
 docs/               everything above
@@ -101,5 +109,6 @@ builds only on macOS (`cd apps/mac && swift build && swift test`, CI job `mac`).
 ## License
 
 Pending the owner's decision ([OQ-11](docs/OPEN_QUESTIONS.md#oq-11-license-for-the-core-and-for-ee)). Recommended
-default: Apache-2.0 for the core and a commercial license for `ee/`. Until then no license is granted. See
+default: Apache-2.0 for the core and a commercial license for `ee/`. Until then no license is granted: the repo is
+public to read, not yet open source. See
 [LICENSE](LICENSE), [ee/LICENSE](ee/LICENSE) and [NOTICE](NOTICE).

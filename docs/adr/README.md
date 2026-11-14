@@ -28,7 +28,7 @@ They are inputs, not part of this repo. [MIGRATION.md](../MIGRATION.md) maps eac
 | [0012](0012-builder-policy-one-worker-held-out-fan-out.md) | Builder policy: 1 worker + held-out check, fan out on failure, $4 cap | accepted, revised 2026-11-14 |
 | [0013](0013-tenancy-and-rls.md) | Tenancy: tenant, workspace, member; Postgres RLS | accepted, revised 2026-11-14 |
 | [0014](0014-identity.md) | Identity: one OIDC provider in core, SAML/SCIM in EE, device keys | accepted, revised 2026-11-14 |
-| [0015](0015-open-core-layout-and-license-gating.md) | Open-core layout (`ee/`) and runtime license gating | accepted, revised 2026-11-14; license text pending OQ-11, plan split pending OQ-13 |
+| [0015](0015-open-core-layout-and-license-gating.md) | Open-core layout (`ee/`) and runtime license gating | accepted, revised 2026-11-14; plan split decided (OQ-13), license text pending OQ-11, prices open |
 | [0016](0016-no-dry-run.md) | No dry run: verify inside the build, ask before commit after deploy | accepted, revised 2026-11-14 |
 | [0017](0017-policy-engine-cedar.md) | Policy engine: TypeScript rules first, Cedar for custom policies | accepted, revised 2026-11-14 |
 | [0018](0018-audit-log-hash-chain.md) | Audit log: append-only, hash-chained, anchored | accepted, revised 2026-11-14 |
@@ -47,6 +47,7 @@ They are inputs, not part of this repo. [MIGRATION.md](../MIGRATION.md) maps eac
 | [0031](0031-build-infrastructure-failures.md) | Build infrastructure failures: `infra_failed` and the sandbox reaper | accepted |
 | [0032](0032-deploy-approval-binds-definition.md) | Deploy approval binds a readable definition | accepted |
 | [0033](0033-pinned-connector-resolution-and-launch-catalog.md) | Connector resolution pinned at design time; launch catalog | accepted |
-| [0034](0034-credential-broker-and-key-providers.md) | Credential broker and key providers | accepted |
+| [0034](0034-credential-broker-and-key-providers.md) | Credential broker and key providers | accepted, revised 2026-11-14 |
 | [0035](0035-mac-egress-guard-and-ledger.md) | Mac egress guard and local egress ledger | accepted |
 | [0036](0036-opportunity-sources-and-instant-read.md) | Opportunity sources and the instant read | accepted |
+| [0037](0037-hosting-cloud-and-self-host-parity.md) | Hosting: Offload Cloud and self-host at parity | accepted (owner decision OQ-29) |

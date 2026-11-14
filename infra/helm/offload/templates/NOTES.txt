@@ -1,1 +1,2 @@
-Offload chart placeholder. No workloads are defined yet. See docs/ROADMAP.md (M8).
+Offload chart skeleton. No workloads are defined yet; templates arrive in M8.
+Plan: docs/DEPLOYMENT.md section 11 and docs/adr/0037-hosting-cloud-and-self-host-parity.md.

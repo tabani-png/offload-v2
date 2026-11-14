@@ -706,7 +706,7 @@ sequenceDiagram
 | SIEM streaming, external anchor sink, legal hold, configurable retention | | yes |
 | One OIDC provider or magic link, roles owner/admin/member/auditor | yes | |
 | SAML SSO, enforced SSO, SCIM, custom roles | | yes |
-| Team tenants: invites, workspaces, shared fixes, team review (default, pending [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)) | | yes |
+| Team tenants: invites, workspaces, shared fixes, team review (decided 2026-11-14, [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)) | | yes |
 | Data residency choice, BYOC, dedicated deployment | | yes |
 
 ```mermaid
@@ -769,14 +769,18 @@ sequenceDiagram
 | Mode | What runs | Who |
 |---|---|---|
 | Offload Cloud, tenant of one | `offload serve` + `offload broker`, managed Postgres 17 + pgvector, S3, E2B, one OIDC provider | Muhammad first |
-| Offload Cloud, Pro (M8) | Same, optionally split into four processes; WorkOS AuthKit; team tenants per [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices) | Pro teams |
-| Self-host (core) | Same images; Postgres + S3-compatible storage; `docker` or `container-use` sandboxes; any OIDC or magic link; `local` key provider | Free users, developers |
-| Enterprise self-host | Core + `@offload-ee/server-ee` entry + license key | Enterprise |
+| Offload Cloud, Pro (M8) | Same, optionally split into four processes; WorkOS AuthKit; team tenants (decided, [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)) | Pro teams |
+| Self-host (core) | Same image and features as Offload Cloud (decided, [ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)); Postgres + S3-compatible storage; `docker` or `container-use` sandboxes; any OIDC or magic link; `local` key provider; telemetry off | Free users, developers, Pro teams with a key |
+| Enterprise self-host | Core + `@offload-ee/server-ee` entry (`offload serve --ee`) + license key, gated exactly as on Offload Cloud | Enterprise |
 | Enterprise BYOC / dedicated | Offload-operated stack in the customer's cloud account, or a dedicated database per tenant | Enterprise |
 
-Hosting provider and region for Offload Cloud: [OQ-01](OPEN_QUESTIONS.md#oq-01-cloud-hosting-provider-and-region)
-(default AWS `ca-central-1`). `infra/docker-compose` has Postgres for dev; `infra/helm/offload` is a placeholder chart
-(real templates in M8). Mac signing, notarization and Sparkle are in [DEPLOYMENT.md](DEPLOYMENT.md).
+Offload Cloud and self-host run at feature parity: one codebase, one image set, the same license key mechanism, and
+one parity suite run against both ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md), owner decision
+[OQ-29](OPEN_QUESTIONS.md#oq-29-hosting-offload-cloud-and-self-host)). Hosting provider and region for Offload Cloud
+stay open: [OQ-01](OPEN_QUESTIONS.md#oq-01-cloud-hosting-provider-and-region) (default AWS `ca-central-1`).
+`infra/docker-compose` is the one-host self-host skeleton (Postgres, S3-compatible store, migrate, broker, serve,
+optional sandbox daemon); `infra/helm/offload` is a chart skeleton (real templates in M8). Steps are in
+[DEPLOYMENT section 11](DEPLOYMENT.md#11-self-host). Mac signing, notarization and Sparkle are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ```mermaid
 flowchart TB

@@ -15,9 +15,11 @@ on a cloud backend and the Mac client to be capture and UI only. Some fixes stil
   ([ADR 0025](0025-execution-placement-and-mac-actuator.md)). It does no understanding, ranking or building.
 - The cloud does: ingest, understanding, the long-term user model, opportunity finding, fix design, building in
   sandboxes, running cloud routine steps, governance and measurement. The routine runtime decides where each step runs.
-- What leaves the Mac by default, said plainly: **text from the screen is uploaded**, masked and pseudonymised, along
+- What leaves the Mac by default, said plainly: **text from the screen is uploaded** (decided by the owner on
+  2026-11-14: "Yes, masked text can go to the cloud", [OQ-28](../OPEN_QUESTIONS.md#oq-28-masked-screen-text-to-the-cloud)), masked and pseudonymised, along
   with app names, window titles, URL hosts, idle transitions and the user's answers. Pixels, unmasked text and
-  keystrokes never leave ([SECURITY_PRIVACY.md](../SECURITY_PRIVACY.md#3-what-leaves-the-mac)).
+  keystrokes never leave ([SECURITY_PRIVACY.md](../SECURITY_PRIVACY.md#3-what-leaves-the-mac)). Masked keyframes
+  stay on the Mac unless the user opts in ([OQ-04](../OPEN_QUESTIONS.md#oq-04-keyframes-to-the-cloud)).
 - Cloud retention of uploaded observations is split: metadata 30 days, text snapshots 7 days ([OQ-02](../OPEN_QUESTIONS.md#oq-02-raw-ttl-for-masked-observations-in-the-cloud)).
 - The Mac keeps a 7-day encrypted local buffer (AES-256-GCM day files, keys wrapped by a Keychain master key) so
   uploads survive being offline, and a 7-day local egress ledger of what was sent ([ADR 0035](0035-mac-egress-guard-and-ledger.md)).
@@ -40,3 +42,5 @@ Owner brief; old ADR 0013, 0014, 0103; `/workspace/offload-app/spec.md` section 
 ## Revisions
 - 2026-11-14: the Mac runs typed device commands from M6 (review-c P0-1, review-b P0-5); plain wording that screen
   text is uploaded and split C1 TTLs (review-c P1(7)); local egress ledger.
+- 2026-11-14 (decision pass D): masked screen text upload confirmed by the owner (OQ-28); pixels stay on the Mac by
+  default, keyframes opt-in.

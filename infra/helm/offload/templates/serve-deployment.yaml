@@ -1,0 +1,7 @@
+{{- /*
+Placeholder, renders nothing (M8).
+Deployment for the offload pod: container serve (offload serve: api, brain, builder, runtime; readiness GET
+/readyz, liveness GET /healthz) and, with keyProvider.type=file, container broker (offload broker, its own process,
+ADR 0034), joined by a Unix socket in an emptyDir. The master key Secret is mounted into the broker container only.
+Env from values and existingSecret refs.
+*/ -}}

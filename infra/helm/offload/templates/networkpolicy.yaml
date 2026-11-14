@@ -1,0 +1,6 @@
+{{- /*
+Placeholder, renders nothing (M8).
+NetworkPolicy: ingress to serve only from the ingress controller on 8080; ingress to a separate broker only from
+serve pods; egress to Postgres, the object store, the model provider, the sandbox provider and connector hosts;
+everything else denied.
+*/ -}}

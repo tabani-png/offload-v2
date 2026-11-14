@@ -1,0 +1,6 @@
+{{- /*
+Placeholder, renders nothing (M8).
+Only with keyProvider.type aws-kms or gcp-kms: the broker as its own Deployment with its own ServiceAccount, so
+only it holds the KMS decrypt grant (workload identity is per pod). Reached by serve over a namespace-internal
+Service with the service token and mTLS.
+*/ -}}
