@@ -267,8 +267,8 @@ runs code from a fork.
 
 The repository will be public ([OQ-27](OPEN_QUESTIONS.md#oq-27-publish-the-repository-publicly)), and so will its
 whole git history. The operator checks, before the first push:
-- [ ] The license question is answered ([OQ-11](OPEN_QUESTIONS.md#oq-11-license-for-the-core-and-for-ee)), or the
-      repo is pushed knowingly with the placeholder `LICENSE` (visible, but no rights granted).
+- [x] The license question is answered ([OQ-11](OPEN_QUESTIONS.md#oq-11-license-for-the-core-and-for-ee), decided
+      2026-11-14): MIT core, Offload Enterprise License for `ee/` (draft, legal review before the first paid customer).
 - [ ] A secret scan over the full history (for example gitleaks) finds nothing; `scripts/check-secrets-hygiene.sh`
       passes; no `.env` file is tracked.
 - [ ] Nothing private is in the docs or history beyond what the owner chose to publish (names, the old repo's PR

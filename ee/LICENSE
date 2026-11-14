@@ -1,15 +1,51 @@
-Offload Enterprise License: PENDING OWNER DECISION
+Offload Enterprise License
 
-Copyright (c) 2026 Muhammad Ali Tabani / consultance.ai. All rights reserved.
+DRAFT: pending legal review before first paid customer (OQ-11).
 
-Everything under this ee/ directory is Offload Enterprise code. It is not
-covered by the root LICENSE.
+Copyright (c) 2026 Muhammad Ali Tabani / consultance.ai
 
-Recommended default (OQ-11 in docs/OPEN_QUESTIONS.md): a commercial license in
-the style of the Langfuse Enterprise License. The source is visible and may be
-read and modified for development and testing. Production use requires a valid
-Offload Enterprise license key (OFFLOAD_EE_LICENSE_KEY) and a subscription
-agreement.
+This license covers everything under the "ee/" directory of the Offload
+repository (the "Enterprise Software"). It does not cover content outside
+"ee/", which is under the MIT license in the root LICENSE file. The licensor is
+Muhammad Ali Tabani / consultance.ai (the "Licensor").
 
-Until the owner replaces this file with the final text, no license is granted
-to copy, modify, distribute or use this code.
+1. Production use. You may use the Enterprise Software in production only if
+   you (and any entity you act for) both:
+   (a) hold a valid Offload license key issued by the Licensor for the plan,
+       features and number of user seats you use, supplied to the software
+       through OFFLOAD_EE_LICENSE_KEY; and
+   (b) have agreed to, and comply with, the Offload Subscription Terms
+       available at <TODO: subscription terms URL, not yet published (OQ-17)>,
+       or another written agreement with the Licensor that governs your use.
+   These conditions are the same whether the Enterprise Software runs on
+   Offload Cloud (operated by the Licensor) or is self-hosted by you.
+
+2. Development and testing. Without a license key or subscription, you may
+   copy, run and modify the Enterprise Software for development and testing
+   only, and not in production.
+
+3. Modifications. Subject to section 1, you may modify the Enterprise Software
+   and publish patches to it. The Licensor (and its licensors, where
+   applicable) owns all right, title and interest in and to any modifications
+   and patches you make to the Enterprise Software, including those made for
+   development and testing. Modifications and patches may be used, copied,
+   modified, displayed, distributed or otherwise exploited only under a valid
+   Offload license key for the correct plan and number of user seats.
+
+4. Restrictions. Except as expressly allowed above, you may not copy, merge,
+   publish, distribute, sublicense or sell the Enterprise Software or any part
+   of it, and you may not remove, disable or circumvent the license key check.
+   No rights are granted beyond those expressly stated in this license.
+
+5. Third-party components. Third-party components incorporated into the
+   Enterprise Software are licensed under the original license provided by the
+   owner of each component (see NOTICE), not under this license.
+
+6. No warranty, no liability. THE ENTERPRISE SOFTWARE IS PROVIDED "AS IS",
+   WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+   TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+   NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+   LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+   CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+   ENTERPRISE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE ENTERPRISE
+   SOFTWARE, EXCEPT AS A SEPARATE WRITTEN AGREEMENT WITH THE LICENSOR STATES.

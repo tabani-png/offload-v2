@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "HTTP edge (Hono): public REST, device ingest, Offload MCP server, inbound webhooks, auth.",
-  "license": "SEE LICENSE IN ../../LICENSE",
+  "license": "MIT",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",

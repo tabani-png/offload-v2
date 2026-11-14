@@ -7,7 +7,7 @@ again, and tells you how many hours it saved. A product of consultance.ai.
 
 **Status: architecture and docs only, public.** This repo holds the v2 design docs and an empty monorepo skeleton,
 and it is meant to be read in the open ([OQ-27](docs/OPEN_QUESTIONS.md#oq-27-publish-the-repository-publicly)). There
-is no feature code yet. No license is chosen yet, so no rights are granted ([License](#license)).
+is no feature code yet. The core is MIT; `ee/` is under the Offload Enterprise License ([License](#license)).
 
 The first milestones run Offload for one person (the owner) end to end: M1 builds the foundations, M2 runs a hand-fed
 loop first (one task he names, built, deployed and run on his real accounts), and M3 brings capture to the cloud in
@@ -109,7 +109,9 @@ builds only on macOS (`cd apps/mac && swift build && swift test`, CI job `mac`).
 
 ## License
 
-Pending the owner's decision ([OQ-11](docs/OPEN_QUESTIONS.md#oq-11-license-for-the-core-and-for-ee)). Recommended
-default: Apache-2.0 for the core and a commercial license for `ee/`. Until then no license is granted: the repo is
-public to read, not yet open source. See
-[LICENSE](LICENSE), [ee/LICENSE](ee/LICENSE) and [NOTICE](NOTICE).
+Decided 2026-11-14 ([OQ-11](docs/OPEN_QUESTIONS.md#oq-11-license-for-the-core-and-for-ee),
+[ADR 0038](docs/adr/0038-license-mit-core-commercial-ee.md)). Everything outside `ee/` is MIT (Expat). Everything under
+`ee/` is under the Offload Enterprise License: source-available, free for development and testing, production use
+needs a license key and a subscription. The `ee/` text is a draft pending legal review before the first paid customer.
+Third-party components keep their own licenses. See [LICENSE](LICENSE), [ee/LICENSE](ee/LICENSE) and
+[NOTICE](NOTICE).

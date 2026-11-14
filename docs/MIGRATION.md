@@ -11,8 +11,9 @@ where the home is being decided (for example "the ADR on where fixes run"). Mac 
 the SwiftPM targets in `apps/mac/Package.swift` (`OffloadContracts`, `OffloadStore`, `OffloadMasker`,
 `OffloadObserver`, `OffloadUploader`, `OffloadImport`, `OffloadActuator`, and the app target `OffloadMac`).
 
-**Licensing.** Old code is "all rights reserved" by its owner. Porting it under the v2 license waits on
-[OQ-12](OPEN_QUESTIONS.md#oq-12-relicensing-code-from-the-old-repo); the default is yes. Third-party code keeps its
+**Licensing.** Old code is "all rights reserved" by its owner. Porting it under the v2 license (MIT for core, the
+Offload Enterprise License for `ee/`) waits on
+[OQ-12](OPEN_QUESTIONS.md#oq-12-relicensing-code-from-the-old-repo); the default is yes, relicense it (the owner owns it). Third-party code keeps its
 notice in [NOTICE](../NOTICE), added in the same commit as the port.
 
 **Review rule for ports.** Much of PR #43 and the first commits of PR #44 were written before the owner's rule that
@@ -53,7 +54,7 @@ code ported by a Claude Code worker, and a Claude Code (Opus) review before merg
 | Old path | Fate | v2 home | Why |
 |---|---|---|---|
 | `README.md` | context | [README.md](../README.md) | Old product pitch (local brain, 7-day promise) no longer true |
-| `LICENSE` ("all rights reserved") | drop | `LICENSE` (pending [OQ-11](OPEN_QUESTIONS.md#oq-11-license-for-the-core-and-for-ee)) | Relicensing is [OQ-12](OPEN_QUESTIONS.md#oq-12-relicensing-code-from-the-old-repo) |
+| `LICENSE` ("all rights reserved") | drop | `LICENSE` (MIT core, [OQ-11](OPEN_QUESTIONS.md#oq-11-license-for-the-core-and-for-ee) decided) | Relicensing is [OQ-12](OPEN_QUESTIONS.md#oq-12-relicensing-code-from-the-old-repo) |
 | `AGENTS.md`, `CLAUDE.md`, `docs/adam-rules.md`, `docs/adam-folder-contract.md` | rewrite | [AGENTS.md](../AGENTS.md), [CLAUDE.md](../CLAUDE.md) | Same rules (tests first, scope, no merge to main), one place |
 | `adam.json` (`tests_first_strict`, `max_parallel_builders: 4`, `auto_merge_to_main: false`) | rewrite | AGENTS.md | Same intent; no separate config file |
 | `adam/context/*`, `adam/memory/*` (founder, preferences, research notes incl. `research/11-rea-clicky.md`) | context | | Background on the owner and earlier research; nothing to port |

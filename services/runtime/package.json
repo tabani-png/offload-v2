@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Routine runtime: schedules, triggers, durable runs, item journal, ask-before-commit, hs-1 measurement.",
-  "license": "SEE LICENSE IN ../../LICENSE",
+  "license": "MIT",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",

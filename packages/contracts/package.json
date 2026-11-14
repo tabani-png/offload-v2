@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Contracts: JSON Schema 2020-12 + zod schemas for REST, ingest, MCP tools, webhooks and events. Source of generated Swift types.",
-  "license": "SEE LICENSE IN ../../LICENSE",
+  "license": "MIT",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",

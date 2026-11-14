@@ -1,6 +1,6 @@
 # 0015. Open-core layout (`ee/`) and runtime license gating
 
-Status: accepted, revised 2026-11-14; license texts pending [OQ-11](../OPEN_QUESTIONS.md#oq-11-license-for-the-core-and-for-ee), plan split decided 2026-11-14 ([OQ-13](../OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)), prices open · Date: 2026-11-14
+Status: accepted, revised 2026-11-14; licenses decided 2026-11-14 ([OQ-11](../OPEN_QUESTIONS.md#oq-11-license-for-the-core-and-for-ee), [ADR 0038](0038-license-mit-core-commercial-ee.md)), plan split decided 2026-11-14 ([OQ-13](../OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices)), prices open · Date: 2026-11-14
 
 ## Context
 Offload will be open core: a free core, Pro (teams) and Enterprise (governance, SSO/SCIM, deployment options). The
@@ -31,9 +31,9 @@ outside the core must be something a hosted clone cannot just switch on ([design
   chains, SIEM/audit export, BYOC and support; custom policies and the external audit anchor sink are Enterprise by
   default. One gate (team tenant creation) is easy to enforce. Prices are not decided.
 - **Pro runs one EE feature**: `teams`.
-- **Licenses (recommended default, owner decision OQ-11)**: Apache-2.0 for core (patent grant), a commercial
-  Enterprise license for `ee/`, source-visible, production use needs a key. Until decided, `LICENSE` and `ee/LICENSE`
-  are placeholders that grant nothing.
+- **Licenses (decided 2026-11-14, OQ-11, [ADR 0038](0038-license-mit-core-commercial-ee.md))**: MIT for core; the
+  Offload Enterprise License for `ee/` (proprietary, source-available, dev and test use free, production use needs a
+  key and a subscription; draft pending legal review).
 - **What is EE** is listed in [OPEN_CORE.md](../OPEN_CORE.md#2-feature-split). Safety features (gates, masking,
   basic audit log, kill switches, forget/export) are core: trust is not an upgrade.
 
@@ -53,6 +53,8 @@ outside the core must be something a hosted clone cannot just switch on ([design
 Langfuse, n8n, Temporal and Composio licensing (summarized in [OPEN_CORE.md](../OPEN_CORE.md#4-how-others-split)).
 
 ## Revisions
+- 2026-11-14 (license decision): OQ-11 decided, MIT core and the Offload Enterprise License for `ee/`
+  ([ADR 0038](0038-license-mit-core-commercial-ee.md)); the Apache-2.0 default is replaced.
 - 2026-11-14 (decision pass D): plan split decided by the owner (OQ-13); hosting-only Pro and fair-code core
   alternatives closed; license gating per tenant plan, identical in Cloud and self-host (ADR 0037).
 - 2026-11-14: recommended default plan split "single-player core, multiplayer paid", all split values pending OQ-13

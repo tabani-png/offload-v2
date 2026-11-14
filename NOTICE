@@ -1,7 +1,10 @@
 Offload v2
 Copyright (c) 2026 Muhammad Ali Tabani / consultance.ai
 
-License: pending owner decision. See LICENSE and docs/OPEN_QUESTIONS.md (OQ-11).
+License: MIT for everything outside ee/ (see LICENSE); the Offload Enterprise
+License for ee/ (see ee/LICENSE, a draft pending legal review). Decided
+2026-11-14 (OQ-11 in docs/OPEN_QUESTIONS.md, ADR 0038). Third-party components
+keep their own licenses, listed below.
 
 Third-party code included in this repository
 ============================================
@@ -123,8 +126,8 @@ Simple Icons 16.37.0 (https://simpleicons.org)
 Prior Offload code
 ==================
 Parts of this design are harvested from the owner's earlier repository, which is
-"all rights reserved". Relicensing that code under the chosen v2 license is the
-owner's decision (OQ-12). The old repo's five notice files (root NOTICE on
+"all rights reserved". The owner owns it; relicensing it under MIT (core) when it
+is ported is the default, still an open owner decision (OQ-12). The old repo's five notice files (root NOTICE on
 wip/s34-mac, feat/capture-from-clicky and feat/build-loop;
 brain/src/usermodel/NOTICE.md on feat/user-model-gum-graphiti;
 app/Resources/Logos/NOTICE.md on ui/mac-audit-fixes) are merged into this file.

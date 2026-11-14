@@ -15,14 +15,14 @@ defaults), **Decided 2026-11-14 (owner)** (answered in the owner's own words, qu
 Owner answers on 2026-11-14 (decision pass D): OQ-13 (plan split), OQ-16 (b) (Apple enrolment), and three new entries
 for answers that had no question yet: OQ-27 (public repo), OQ-28 (masked text to the cloud), OQ-29 (hosting). They
 also changed the defaults of OQ-25 (a public repo should not use a self-hosted runner for PR jobs) and the urgency of
-OQ-11 (a public repo with no license grants no rights).
+OQ-11. OQ-11 was then answered the same day: MIT core, Offload Enterprise License for `ee/`
+([ADR 0038](adr/0038-license-mit-core-commercial-ee.md)).
 
 | # | Question | Status | Default or decision | Blocks |
 |---|---|---|---|---|
 | [OQ-16](#oq-16-mac-distribution-and-signing) | Mac distribution, signing, bundle id | partly decided: (b) enrolment | enrol as consultance.ai (decided, owner does it); Developer ID + notarized DMG + Sparkle; `ai.offload.mac` | M0 operator items, M3 |
 | [OQ-25](#oq-25-ci-capacity-for-macos) | CI capacity for macOS | open, default revised | hosted `macos-26` for PRs and releases; no self-hosted runner on the public repo | M0 (CI `mac` job, O12) |
-| [OQ-11](#oq-11-license-for-the-core-and-for-ee) | License for core and `ee/` | open | Apache-2.0 + commercial EE | the public push (operator), public release (M8) |
-| [OQ-12](#oq-12-relicensing-code-from-the-old-repo) | Relicensing old-repo code | open | relicense under the v2 license | M1 (first port: audit chain writer in m1-03) |
+| [OQ-12](#oq-12-relicensing-code-from-the-old-repo) | Relicensing old-repo code | open | relicense under MIT (core) when ported; the owner owns it | M1 (first port: audit chain writer in m1-03) |
 | [OQ-06](#oq-06-identity-provider-for-offload-cloud) | Identity provider | open | one OIDC provider (Google) now; WorkOS AuthKit from M8 | M1 (login), M8 (WorkOS) |
 | [OQ-01](#oq-01-cloud-hosting-provider-and-region) | Cloud provider and region for Offload Cloud | open (hosting modes decided in OQ-29) | AWS `ca-central-1` | M1 deploy (operator item O7) |
 | [OQ-24](#oq-24-who-owns-the-oauth-clients) | Who owns the OAuth clients | open | consultance.ai Internal client now; verified client before outside users | M1 (login), M2 (connectors), M8 |
@@ -47,6 +47,7 @@ OQ-11 (a public repo with no license grants no rights).
 | [OQ-27](#oq-27-publish-the-repository-publicly) | Publish the repository publicly | Decided 2026-11-14 (owner) | public, as `tabani-png/offload-v2`; the operator pushes | none (operator pushes after the checklist) |
 | [OQ-28](#oq-28-masked-screen-text-to-the-cloud) | Masked screen text to the cloud | Decided 2026-11-14 (owner) | yes; pixels stay on the Mac by default | none |
 | [OQ-29](#oq-29-hosting-offload-cloud-and-self-host) | Hosting: Offload Cloud and self-host | Decided 2026-11-14 (owner) | both, at feature parity ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)) | none |
+| [OQ-11](#oq-11-license-for-the-core-and-for-ee) | License for core and `ee/` | Decided 2026-11-14 (owner) | MIT core + Offload Enterprise License for `ee/` (draft, legal review pending) ([ADR 0038](adr/0038-license-mit-core-commercial-ee.md)) | none (legal review before the first paid customer) |
 | [OQ-19](#oq-19-what-is-fable-52-and-should-it-shape-the-architecture) | What is Fable 5.2 | answered | Claude Fable 5.2, dev-time only (architecture and review) | none |
 
 ## OQ-16: Mac distribution and signing
@@ -88,15 +89,24 @@ Status: open, **default revised 2026-11-14** because the repository will be publ
 
 ## OQ-11: License for the core and for EE
 
-Status: open. **More urgent since 2026-11-14**: the repository will be public ([OQ-27](#oq-27-publish-the-repository-publicly)).
+Status: **Decided 2026-11-14 (owner)**. The `ee/` text is a draft pending legal review.
 - **Question**: Which licenses?
 - **Options**: core Apache-2.0, MIT, AGPL-3.0, or fair-code (Sustainable Use); EE commercial (Langfuse style) or BSL.
-- **Recommended default**: **Apache-2.0 core** (patent grant) + **commercial Offload Enterprise License for `ee/`**,
-  source-visible, production use needs a key.
-- **Blocks**: the public push, in practice. Pushing with the placeholder `LICENSE` is possible, but then the code is
-  visible and nobody may use, copy or contribute to it: public is not open source. Recommended: answer before the
-  operator pushes, or push knowingly with the placeholder.
-- **Affects**: `LICENSE`, `ee/LICENSE`, [OPEN_CORE.md](OPEN_CORE.md#1-license).
+- **Previous default**: Apache-2.0 core (patent grant) + commercial Offload Enterprise License for `ee/`.
+- **Answer** (owner's words, to "License for the open core"): "wtv clicky has done". farzaa/clicky is MIT ("MIT
+  License / Copyright (c) 2026 Farza").
+- **Decision**: **MIT (Expat) for everything outside `ee/`**, with a PostHog-style preamble in the root `LICENSE`
+  (`ee/` under `ee/LICENSE`, third-party components under their own licenses). **`ee/` is under the Offload Enterprise
+  License**: source-available and commercial, in the PostHog/Cal.com pattern. Development and testing use is free;
+  production use needs a valid license key (`OFFLOAD_EE_LICENSE_KEY`) and agreement to the Offload subscription terms;
+  modifications belong to the licensor; no redistribution or resale. Identical on Offload Cloud and self-host
+  ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)). Recorded in
+  [ADR 0038](adr/0038-license-mit-core-commercial-ee.md).
+- **Still to do**: legal review of `ee/LICENSE` before the first paid customer (the file says DRAFT); publish the
+  subscription terms and put their URL in `ee/LICENSE` ([OQ-17](#oq-17-privacy-policy-terms-and-dpa)); a CLA for
+  `ee/` contributions. MIT has no explicit patent grant (Apache-2.0 has one); accepted.
+- **Affects**: `LICENSE`, `ee/LICENSE`, `NOTICE`, package manifests, [OPEN_CORE.md](OPEN_CORE.md#1-license),
+  [ADR 0015](adr/0015-open-core-layout-and-license-gating.md).
 
 ## OQ-12: Relicensing code from the old repo
 
@@ -104,7 +114,9 @@ Status: open.
 - **Question**: The old repo is "all rights reserved" (yours). May its code be relicensed under the v2 license when
   ported?
 - **Options**: yes for everything; yes except named parts; no (rewrite clean-room).
-- **Recommended default**: yes for everything you wrote. Third-party pieces keep their own licenses in `NOTICE`.
+- **Recommended default**: yes for everything you wrote, under MIT for core (and the Offload Enterprise License for
+  anything ported into `ee/`), now that OQ-11 is decided. You own the old code, so relicensing is yours to grant.
+  Third-party pieces keep their own licenses in `NOTICE`.
 - **Blocks**: M1. The first port is the audit chain writer (old `control/src/audit`) in slice
   [m1-03](../slices/m1-03-tenancy-rls/SPEC.md); the Mac capture port follows in M3.
 - **Note**: publishing the repo ([OQ-27](#oq-27-publish-the-repository-publicly)) does not need this answer while no
@@ -327,7 +339,7 @@ the sub-questions below stay open with their defaults.
     an external audit anchor sink, BYOC and support. One gate (team tenant creation), easy to enforce; a hosted clone
     of the core gets only the single-player product.
   - (b) **Hosting-only Pro** (the previous default): all features except EE governance are core; Pro is Offload Cloud
-    hosting plus budgets. Weak: with an Apache-2.0 core anyone can host the same thing.
+    hosting plus budgets. Weak: with a permissive (MIT) core anyone can host the same thing.
   - (c) **Fair-code core** (n8n's Sustainable Use License): protects hosting, but the core is no longer OSI open source,
     which you asked for.
 - **Decision**: option (a). Single-player core is free. Multiplayer (team tenants, invites, workspaces, shared fixes,
@@ -377,8 +389,8 @@ Status: **Decided 2026-11-14 (owner)**.
 - **Decision**: the repository is published **public** as `tabani-png/offload-v2`. The operator (the owner) creates it
   and pushes later. Agents still never create a remote, push or use `gh` ([CLAUDE.md](../CLAUDE.md)).
 - **Consequences**:
-  - A public repo with the placeholder `LICENSE` grants no rights, so [OQ-11](#oq-11-license-for-the-core-and-for-ee)
-    is now urgent.
+  - A public repo needs a real license, so [OQ-11](#oq-11-license-for-the-core-and-for-ee) became urgent; it was
+    decided the same day (MIT core, Offload Enterprise License for `ee/`).
   - CI: no self-hosted runner for PR jobs on a public repo ([OQ-25](#oq-25-ci-capacity-for-macos), default revised).
   - The whole git history becomes public. The pre-publish checklist is in
     [DEPLOYMENT section 6.5](DEPLOYMENT.md#65-before-the-public-push).

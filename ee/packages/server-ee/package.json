@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Enterprise composition root: imports core services and registers ee plugins after license check.",
-  "license": "SEE LICENSE IN ../../../ee/LICENSE",
+  "license": "SEE LICENSE IN ../../LICENSE",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",

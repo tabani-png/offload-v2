@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Policy engine port (Cedar) and the built-in core policies: gates, step classes, graduation.",
-  "license": "SEE LICENSE IN ../../LICENSE",
+  "license": "MIT",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",

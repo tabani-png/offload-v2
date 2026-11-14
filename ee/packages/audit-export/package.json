@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Enterprise: audit log export and SIEM streaming, configurable retention.",
-  "license": "SEE LICENSE IN ../../../ee/LICENSE",
+  "license": "SEE LICENSE IN ../../LICENSE",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",

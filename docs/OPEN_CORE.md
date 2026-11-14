@@ -9,20 +9,24 @@ feature parity ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)).
 
 ## 1. License
 
-| Part | Recommended default | Status |
+**Decided 2026-11-14 (owner)**: "wtv clicky has done" (farzaa/clicky is MIT). Record:
+[OQ-11](OPEN_QUESTIONS.md#oq-11-license-for-the-core-and-for-ee), [ADR 0038](adr/0038-license-mit-core-commercial-ee.md).
+
+| Part | License | Status |
 |---|---|---|
-| Everything outside `ee/` (core) | **Apache-2.0** (permissive, explicit patent grant) | Pending owner decision [OQ-11](OPEN_QUESTIONS.md#oq-11-license-for-the-core-and-for-ee) |
-| `ee/` | **Offload Enterprise License** (commercial, source-visible; dev and test use allowed; production use needs a license key and subscription), modelled on the Langfuse EE license | Pending OQ-11 |
-| Code harvested from the old repo | Owner's own code, currently "all rights reserved"; relicensing is his call | Pending [OQ-12](OPEN_QUESTIONS.md#oq-12-relicensing-code-from-the-old-repo) |
+| Everything outside `ee/` (core) | **MIT (Expat)**, root [`LICENSE`](../LICENSE) with a PostHog-style preamble naming `ee/` and third-party exceptions | Decided ([OQ-11](OPEN_QUESTIONS.md#oq-11-license-for-the-core-and-for-ee)) |
+| `ee/` | **Offload Enterprise License** ([`ee/LICENSE`](../ee/LICENSE)): proprietary, source-available; dev and test use allowed without a key; production use needs a license key (`OFFLOAD_EE_LICENSE_KEY`) and a subscription; modelled on the PostHog `ee/` license (Cal.com uses the same pattern) | Decided; text is a **draft pending legal review** before the first paid customer |
+| Code harvested from the old repo | Owner's own code, "all rights reserved"; default is to relicense it under MIT when ported | Open, [OQ-12](OPEN_QUESTIONS.md#oq-12-relicensing-code-from-the-old-repo) |
 | Third-party code ported in | Keeps its own license; listed in `NOTICE` | Rule in [AGENTS.md](../AGENTS.md#license-boundary-and-notices) |
 
-Until OQ-11 is answered, `LICENSE` and `ee/LICENSE` are placeholders that grant nothing. The repository will be
-published as a public repository (owner decision, [OQ-27](OPEN_QUESTIONS.md#oq-27-publish-the-repository-publicly)).
-Public is not the same as open source: until OQ-11 is answered, people can read the code but have no license to use it.
+The repository is public ([OQ-27](OPEN_QUESTIONS.md#oq-27-publish-the-repository-publicly)) and the core is open
+source under MIT. `ee/` is readable but not open source. Package manifests say `"license": "MIT"` in core and
+`"SEE LICENSE IN ../../LICENSE"` (which is `ee/LICENSE`) in `ee/packages/*`.
 
-Why Apache-2.0 and not MIT: the patent grant matters for a product that automates business workflows. Why not a
-fair-code license (n8n's Sustainable Use License) for the core: the owner asked for an open-source core, and fair-code
-is not OSI open source. The owner's OQ-13 answer keeps the core open source; fair-code is no longer an option for the core.
+MIT, not Apache-2.0: MIT has no explicit patent grant; the owner chose MIT (as clicky does) and that is accepted.
+Core contributions come in under MIT (inbound = outbound); `ee/` contributions will need a CLA (follow-up in
+[ADR 0038](adr/0038-license-mit-core-commercial-ee.md)). Why not a fair-code license (n8n's Sustainable Use License)
+for the core: the owner asked for an open-source core, and fair-code is not OSI open source.
 
 ## 2. Feature split
 
@@ -36,7 +40,7 @@ is not OSI open source. The owner's OQ-13 answer keeps the core open source; fai
   list). Custom Cedar policies, the external audit anchor sink, dedicated deployment, configurable retention and legal
   hold are Enterprise by default (details the owner has not ruled on).
 
-Why: with an Apache-2.0 core, anyone can host the same product. Offload self-host is Postgres plus object storage, so
+Why: with an MIT core, anyone can host the same product. Offload self-host is Postgres plus object storage, so
 paid hosting alone (Temporal's model) is a weak moat. One gate, team tenant creation, is easy to enforce and leaves a
 hosted clone with the single-player product only. The alternatives that were open under OQ-13, hosting-only Pro and
 a fair-code core, are closed.
