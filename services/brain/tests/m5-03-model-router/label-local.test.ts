@@ -113,3 +113,47 @@ describe("m5-03 local tier", () => {
     expect(on.provider.tiers()).toEqual(["sonnet", "local"]);
   });
 });
+
+describe("m5-03 local provider", () => {
+  test("LOCAL: the local provider speaks chat completions and reads finish_reason first", async () => {
+    const { byTier, localOpenAICompatible } = await import("../../src/models/providers/local.ts");
+    const { FakeModelProvider } = await import("@offload/testkit/src/models/index.ts");
+    const bodies: Array<Record<string, unknown>> = [];
+    const replies = [
+      { finish_reason: "stop", content: '{"label":"low"}' },
+      { finish_reason: "length", content: '{"lab' },
+      { finish_reason: "content_filter", content: '{"label":"low"}' },
+    ];
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(req) {
+        if (new URL(req.url).pathname !== "/v1/chat/completions") return new Response("no", { status: 404 });
+        bodies.push((await req.json()) as Record<string, unknown>);
+        const r = replies.shift()!;
+        return Response.json({ choices: [{ finish_reason: r.finish_reason, message: { role: "assistant", content: r.content } }], usage: { prompt_tokens: 12, completion_tokens: 4 } });
+      },
+    });
+    try {
+      expect(() => localOpenAICompatible("http://203.0.113.5:11434", "m")).toThrow(LocalModelUrlError);
+      const local = localOpenAICompatible(`http://127.0.0.1:${server.port}`, "qwen-test");
+      const req = { call_id: "c_l", attempt: 1, tier: "local" as const, model: "qwen-test", system: "Classify.", messages: [{ role: "user" as const, content: "Sort." }], max_tokens: 64, schema: { ...LABEL_SCHEMA } };
+      expect(await local.send(req)).toEqual({ content: '{"label":"low"}', stop_reason: "end_turn", usage: { input_tokens: 12, output_tokens: 4, cache_read_tokens: 0 } });
+      expect((await local.send(req)).stop_reason).toBe("max_tokens");
+      const refused = await local.send(req);
+      expect(refused).toMatchObject({ stop_reason: "refusal", content: "" });
+      expect(bodies[0]).toMatchObject({ model: "qwen-test", max_tokens: 64, messages: [{ role: "system", content: "Classify." }, { role: "user", content: "Sort." }] });
+      expect("tools" in bodies[0]!).toBe(false);
+
+      // byTier sends local requests to the local provider and paid ones to the paid provider.
+      const paid = new FakeModelProvider();
+      const both = byTier({ paid, local: new FakeModelProvider({ okContent: "local" }) });
+      expect((await both.send({ ...req, tier: "local" })).content).toBe("local");
+      await both.send({ ...req, tier: "haiku", model: "claude-haiku-5-5" });
+      expect(paid.tiers()).toEqual(["haiku"]);
+      await expect(byTier({ paid }).send(req)).rejects.toThrow();
+    } finally {
+      server.stop(true);
+    }
+  });
+});
