@@ -5,7 +5,8 @@ import { describe, expect, test } from "bun:test";
 import { ApprovalError, MemoryApprovals } from "../../src/approvals.ts";
 import { buildConfig } from "../../src/config.ts";
 import { OkBuildError, okBuild, runBuild } from "../../src/loop.ts";
-import { FIX, harness, hashesOf, MEMBER, T0, TENANT, text, type Verdict } from "./setup.ts";
+import { BuildEnded } from "../../src/store.ts";
+import { checkSet, FIX, harness, hashesOf, HELDOUT_CONTENT, MEMBER, T0, TENANT, text, type Verdict } from "./setup.ts";
 
 const ok = (h: ReturnType<typeof harness>) => okBuild(h.deps, { tenant_id: TENANT, member_id: MEMBER, fix_id: FIX, body: hashesOf(h.fix) });
 const heldOutFailsFirst: Verdict = ({ work, shard }) => {
@@ -26,6 +27,61 @@ describe("p45a hardening", () => {
     expect(old.stages.at(-1)!.note).toContain("no progress");
     await runBuild(h.deps, { tenant_id: TENANT, build_id: fresh.build_id, token: fresh.token });
     expect((await h.store.get(TENANT, fresh.build_id))!.state).toBe("ready");
+  });
+
+  test("LOCK: an orchestrator whose build was recovered as stale stops; it can never write ready over infra_failed", async () => {
+    const h = harness([{ delayMs: 60 }]);
+    const r = await ok(h);
+    const old = runBuild(h.deps, { tenant_id: TENANT, build_id: r.build_id, token: r.token });
+    while (h.worker.turns.length === 0) await new Promise((x) => setTimeout(x, 2));
+    h.clock.now = T0 + h.deps.config.stale_after_ms + 60_000;
+    const fresh = checkSet("held_out", HELDOUT_CONTENT.replace("edges", "edges after recovery"));
+    h.fixes.fixes.get(`${TENANT}/${FIX}`)!.held_out = fresh;
+    const next = await okBuild(h.deps, { tenant_id: TENANT, member_id: MEMBER, fix_id: FIX, body: { ...hashesOf(h.fix), held_out_hash: fresh.hash } });
+    await old;
+    const b = (await h.store.get(TENANT, r.build_id))!;
+    expect(b.state).toBe("infra_failed");
+    expect(b.winner_attempt_id).toBeNull();
+    expect(b.receipt_hash).toBeNull();
+    await expect(h.store.update(TENANT, r.build_id, { state: "ready" }, h.clock.now)).rejects.toBeInstanceOf(BuildEnded);
+    expect(next.build_id).not.toBe(r.build_id);
+  });
+
+  test("LOCK: an attempt beats the build's heartbeat before each try and before its shards", async () => {
+    const h = harness([{ perTry: [{ "slug.ts": "// bad\n" }, { "slug.ts": "// good\n" }] }]);
+    const beats: number[] = [];
+    const real = h.store.heartbeat.bind(h.store);
+    h.store.heartbeat = async (t, id, now) => {
+      beats.push(now);
+      return real(t, id, now);
+    };
+    await h.okAndRun();
+    // try 1, try 2, before the verification shards
+    expect(beats.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("HELDOUT: an attempt row exists from the moment a worker starts, so its held-out check counts as used", async () => {
+    const h = harness([{ delayMs: 30 }]);
+    const r = await ok(h);
+    const run = runBuild(h.deps, { tenant_id: TENANT, build_id: r.build_id, token: r.token });
+    while (h.worker.turns.length === 0) await new Promise((x) => setTimeout(x, 2));
+    const rows = await h.store.attempts(TENANT, r.build_id);
+    expect(rows.map((a) => a.outcome)).toEqual(["running"]);
+    expect(await h.store.heldOutUsed(TENANT, h.fix.brief_id, h.fix.held_out.hash)).toBe(true);
+    await run;
+  });
+
+  test("LOCK: an OK whose approval cannot be minted leaves no queued build holding the lock", async () => {
+    const h = harness();
+    h.approvals.mint = async () => {
+      throw new Error("approvals store down");
+    };
+    await expect(ok(h)).rejects.toThrow();
+    const rows = [...h.store.builds.values()];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.state).toBe("failed");
+    h.approvals.mint = MemoryApprovals.prototype.mint.bind(h.approvals);
+    expect((await ok(h)).build_id).not.toBe(rows[0]!.id);
   });
 
   test("LOCK: a build younger than the stale limit still refuses (409) and is left alone", async () => {

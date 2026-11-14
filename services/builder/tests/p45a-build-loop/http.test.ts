@@ -119,6 +119,24 @@ describe("p45a /v1 builds", () => {
     expect((await a.call("POST", `/v1/builds/${ok.body.build_id}/deploy`, body)).status).toBe(409);
   });
 
+  test("SHIP: a deploy that fails after the approval leaves the build deployable again, and a retry deploys it once", async () => {
+    const a = api();
+    let fail = true;
+    const real = a.deployed;
+    const route = buildRoutes({ ...a.deps, runner: a.runner, routines: { async deploy() { if (fail) throw new Error("runtime down"); real.push(1); return { routine_id: "r", version: 1 }; } } });
+    const ok = await a.call("POST", `/v1/fixes/${FIX}/build-approvals`, hashesOf(a.fix));
+    await a.runner.idle();
+    const b = (await a.call("GET", `/v1/builds/${ok.body.build_id}`)).body;
+    const body = JSON.stringify({ artifact_sha256: b.artifact_sha256, receipt_hash: b.receipt_hash, definition_hash: b.definition_hash });
+    const post = () => route(new Request(`http://offload.test/v1/builds/${ok.body.build_id}/deploy`, { method: "POST", body, headers: { "content-type": "application/json" } }), { tenant_id: TENANT, member_id: MEMBER });
+    expect((await post())!.status).toBe(500);
+    expect((await a.call("GET", `/v1/builds/${ok.body.build_id}`)).body.deployed).toBe(false);
+    fail = false;
+    expect((await post())!.status).toBe(201);
+    expect((await post())!.status).toBe(409);
+    expect(real).toHaveLength(1);
+  });
+
   test("API: GET /v1/builds/{id} shows state, spend against the cap, stages and attempts with check groups; never another tenant's", async () => {
     const a = api();
     const ok = await a.call("POST", `/v1/fixes/${FIX}/build-approvals`, hashesOf(a.fix));

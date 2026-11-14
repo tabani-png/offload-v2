@@ -140,6 +140,18 @@ describe("p45b measured saving", () => {
     expect(summarize({ ...SHIP, estimated_minutes_per_week: 3.5, baseline_minutes_per_week: 4, weeks: [1.2, 1.2, 1.2, 1.2] }).flag).toBe("on_track");
   });
 
+  test("OUTCOME: the threshold uses the unrounded median: 26.6 and 26.7 saved against 33.3 is 80.03%, on_track", () => {
+    const s = summarize({ ...SHIP, estimated_minutes_per_week: 33.3, baseline_minutes_per_week: 50, weeks: [23.4, 23.3, 23.4, 23.3] });
+    expect(s.saved_per_week).toEqual([26.6, 26.7, 26.6, 26.7]);
+    expect(s.flag).toBe("on_track");
+  });
+
+  test("FIGURE: a week's Figure shows the stored minutes it was measured from, not a value rebuilt from the scaled one", async () => {
+    const o = await measureAll(ship(), T0 + 7 * DAY_MS + 1, () => ({ minutes: 13, days_stored: 3 }));
+    expect(o.weeks[0]).toMatchObject({ raw_minutes: 13, days_stored: 3, measured_minutes: 30.3 });
+    expect(o.figures.find((f) => f.id === o.weeks[0]!.figure_id)!.arithmetic).toBe("13 min over 3 stored days × 7 / 3 = 30.3 min/wk");
+  });
+
   test("MONTH: the month record gets each fix whose 4 weeks ended in it, flag and arithmetic included", async () => {
     let o = ship();
     for (const d of [7, 14, 21, 28]) o = await measureAll(o, T0 + d * DAY_MS + 3_600_000, () => ({ minutes: 40, days_stored: 7 }));

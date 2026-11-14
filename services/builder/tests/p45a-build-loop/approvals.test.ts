@@ -29,6 +29,14 @@ describe("p45a approvals", () => {
     expect(await codeOf(a.claim({ tenant_id: TENANT, approval_id, token, bound: BOUND }, T0 + 1))).toBe("ok");
   });
 
+  test("GATE: a claim names the approval's kind and subject; another kind or subject is refused", async () => {
+    const a = new MemoryApprovals();
+    const { approval_id, token } = await mintBuild(a);
+    expect(await codeOf(a.claim({ tenant_id: TENANT, approval_id, token, bound: BOUND, kind: "deploy", subject_id: "build-1" }, T0 + 1))).toBe("forbidden");
+    expect(await codeOf(a.claim({ tenant_id: TENANT, approval_id, token, bound: BOUND, kind: "build", subject_id: "build-2" }, T0 + 1))).toBe("forbidden");
+    expect(await codeOf(a.claim({ tenant_id: TENANT, approval_id, token, bound: BOUND, kind: "build", subject_id: "build-1" }, T0 + 1))).toBe("ok");
+  });
+
   test("GATE: a claimed approval cannot be claimed again (approval_used)", async () => {
     const a = new MemoryApprovals();
     const { approval_id, token } = await mintBuild(a);
