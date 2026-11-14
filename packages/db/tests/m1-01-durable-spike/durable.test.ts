@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Pool } from "pg";
 import { MAX_RECV_MS, DurableRuntime, assertIdsOnly, type WorkflowFn } from "../../src/durable/index.ts";
+import { testRolePassword } from "@offload/testkit";
 import { TENANT_A, TENANT_B, bump, count, databaseUrl, fakeClock, newPool, waitFor, withUser } from "./helpers.ts";
 
 const CANARY = "Quarterly invoice for Hartwell Bakery, total 4,812 pounds";
@@ -57,7 +58,9 @@ beforeAll(async () => {
   try {
     await pool.query("do $$ begin if not exists (select 1 from pg_roles where rolname = 'offload_migrator') then create role offload_migrator login; end if; end $$");
     await pool.query("select format('grant create on database %I to offload_migrator', current_database()) as q").then((r) => pool.query(r.rows[0].q));
-    const password = randomUUID(); // throwaway, never printed; works with trust and with password auth
+    // The same test-only password the testkit fixture uses (never printed): a random one here would break a
+    // concurrent fixture run on a password-auth cluster, since roles are cluster-wide.
+    const password = testRolePassword("offload_migrator");
     await pool.query(`alter role offload_migrator login password '${password}'`);
     migratorUrl = withUser(databaseUrl(), "offload_migrator", password);
     migratorOwned = true;

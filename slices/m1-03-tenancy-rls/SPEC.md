@@ -107,6 +107,7 @@ Folder: `packages/db/tests/m1-03-tenancy-rls/`.
 | ROLE | ROLE: offload_app has no BYPASSRLS and owns no table | |
 | ROLE | ROLE: resolver functions return ids only and nothing for unknown keys | each of the five; result columns are exactly the listed ones |
 | ROLE | ROLE: offload_jobs can list tenants and claim outbox rows and nothing else | SELECT on any table is denied |
+| ROLE | ROLE: the fixture's role logins carry a generated test password, so they connect under scram-sha-256 auth | every role has a SCRAM verifier; each pool's `session_user` is its role |
 | ROLE | ROLE: createPersonalTenant makes one tenant, one workspace, one owner | `email_hash` is sha256 of the trimmed lowercase email |
 | ROLE | ROLE: removing the last owner throws LastOwnerError | `setMemberRole` and `setMemberState` |
 | ROLE | ROLE: a fetch inside withTenant throws | no network I/O inside the transaction |
@@ -136,3 +137,11 @@ HTTP routes, device auth, user-model tables (M5), routine tables (M2), the sched
   review findings (`review.test.ts`).
 - The chain writer is written fresh from ADR 0018: no old-repo code was copied, so OQ-12 relicensing is not needed
   for it and `NOTICE` is unchanged.
+- CI fix (password auth): CI's Postgres uses scram-sha-256, and the fixture connected as the four roles with no
+  password (it had only run against trust auth). `@offload/testkit` now gives each role a test-only password,
+  `testRolePassword(role)`: sha256 of the cluster address, the administrator's credentials and the role name, never
+  stored or printed, the same for every process and database on one cluster. `freshDatabase` sets it (only when the
+  stored SCRAM verifier differs, so concurrent runs do not race on `pg_authid`) and `roleUrl` carries it. Product code
+  is unchanged: `bootstrapRoles` still leaves passwords to the operator. A ROLE test pins it. `pgTenantFixture` ends its
+  pools when tenant setup fails. m1-01's durable test sets `offload_migrator`'s password with the same helper instead of
+  a random one, so it no longer breaks a concurrent fixture run on a password-auth cluster.

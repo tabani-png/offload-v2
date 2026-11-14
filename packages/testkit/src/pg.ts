@@ -1,5 +1,5 @@
-import { randomBytes } from "node:crypto";
-import { Pool } from "pg";
+import { createHash, createHmac, pbkdf2Sync, randomBytes } from "node:crypto";
+import { Pool, type ClientBase } from "pg";
 import {
   ROLES, bootstrapRoles, createPersonalTenant, installNetworkGuard, migrate, registerBeforeCommit, ulid, uuidv7, withTenant,
   withTransaction, type MemberScope, type TenantContext, type Tx,
@@ -17,12 +17,47 @@ export function databaseUrl(): string {
   return url;
 }
 
-/** The same database as another role (development and CI use trust or peer auth for the four roles). */
+/**
+ * The test-only login password of `role` on the cluster `url` points at: sha256 of the cluster address, the
+ * administrator's credentials and the role name. It is never stored, differs per role, cannot be derived from the repo
+ * alone, and is the same for every test process and database on one cluster (roles are cluster-wide; a random per-run
+ * value would break a concurrent run). freshDatabase sets it; trust-auth clusters ignore it, password-auth clusters
+ * (CI: scram-sha-256) need it. Never printed.
+ */
+export function testRolePassword(role: string, url: string = databaseUrl()): string {
+  const u = new URL(url);
+  const cluster = `${u.hostname}:${u.port}\0${decodeURIComponent(u.username)}\0${decodeURIComponent(u.password)}`;
+  return createHash("sha256").update(`offload-testkit-role-password\0${cluster}\0${role}`).digest("hex");
+}
+
+/** The same database as another role, with that role's test password (see testRolePassword). */
 export function roleUrl(role: string, url: string = databaseUrl()): string {
   const u = new URL(url);
   u.username = role;
-  u.password = "";
+  u.password = testRolePassword(role, url);
   return u.toString();
+}
+
+/**
+ * Gives every role in ROLES its test password. Roles are cluster-wide and concurrent ALTER ROLEs on one role can fail
+ * with "tuple concurrently updated", so the alter runs only when the stored SCRAM verifier does not already match.
+ */
+async function setTestRolePasswords(admin: ClientBase): Promise<void> {
+  for (const role of Object.values(ROLES)) {
+    const password = testRolePassword(role);
+    const stored = (await admin.query("select rolpassword from pg_authid where rolname = $1", [role])).rows[0]?.rolpassword as string | null;
+    if (stored && scramVerifies(stored, password)) continue;
+    await admin.query(`alter role ${role} password '${password}'`); // hex only: safe to inline
+  }
+}
+
+/** True when `password` matches a stored SCRAM-SHA-256 verifier (`SCRAM-SHA-256$iter:salt$StoredKey:ServerKey`). */
+function scramVerifies(stored: string, password: string): boolean {
+  const m = /^SCRAM-SHA-256\$(\d+):([^$]+)\$([^:]+):.+$/.exec(stored);
+  if (!m) return false;
+  const salted = pbkdf2Sync(password, Buffer.from(m[2]!, "base64"), Number(m[1]), 32, "sha256");
+  const clientKey = createHmac("sha256", salted).update("Client Key").digest();
+  return createHash("sha256").update(clientKey).digest("base64") === m[3];
 }
 
 /**
@@ -41,6 +76,7 @@ export async function freshDatabase(opts: { reset?: boolean } = {}): Promise<str
         await c.query("grant usage on schema public to public");
       }
       await bootstrapRoles(c);
+      await setTestRolePasswords(c);
     } finally {
       c.release();
     }
@@ -123,8 +159,15 @@ export async function pgTenantFixture(opts: { appPoolSize?: number } = {}): Prom
   const app = new Pool({ connectionString: roleUrl(ROLES.app), max: opts.appPoolSize ?? 4 });
   const retention = new Pool({ connectionString: roleUrl(ROLES.retention), max: 2 });
   const jobs = new Pool({ connectionString: roleUrl(ROLES.jobs), max: 2 });
-  const a = await makeTenant(app, "a");
-  const b = await makeTenant(app, "b");
+  const endAll = () => Promise.allSettled([admin.end(), migrator.end(), app.end(), retention.end(), jobs.end()]);
+  let a: FixtureTenant, b: FixtureTenant;
+  try {
+    a = await makeTenant(app, "a");
+    b = await makeTenant(app, "b");
+  } catch (e) {
+    await endAll(); // a failed setup must not leave pools open (the test process would hang) and still reports `e`
+    throw e;
+  }
   return {
     admin, migrator, app, retention, jobs, a, b,
     ctx: (t, memberId, memberScope) => ({
