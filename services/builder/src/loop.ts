@@ -260,10 +260,12 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
       } else row.outcome = res.outcome === "cap" ? "cap" : "fail";
       infra = res.infra;
       return { row, frozenOutput, heldOutFailed, infra };
-    } catch {
+    } catch (e) {
+      // The build ended under this worker (stale recovery): its spend is infra, never billed to a cap (ADR 0031).
+      if (e instanceof BuildEnded) infra = true;
       row.outcome = "error";
       row.note = "This worker stopped with an error.";
-      return { row, frozenOutput, heldOutFailed, infra: false };
+      return { row, frozenOutput, heldOutFailed, infra };
     } finally {
       // Spend during a provider outage is recorded as infra and never billed to the cap (ADR 0031).
       spentAny += row.spent_usd4;

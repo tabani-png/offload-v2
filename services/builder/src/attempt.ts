@@ -12,6 +12,7 @@ import { artifactSha256 } from "./hash.ts";
 import { checkFolder, parseProof } from "./harness.ts";
 import { SandboxInfraError, type Sandbox, type SandboxFile, type SandboxProvider } from "./sandbox/provider.ts";
 import { HARNESS_ARGV, HARNESS_ENV, newNonce } from "./shards.ts";
+import { BuildEnded } from "./store.ts";
 
 /** Appended to every worker's instructions. Paraphrases obra/superpowers (MIT): test-driven-development (red, green,
  * refactor; watch the test fail first) and verification-before-completion (evidence before claiming done). */
@@ -163,7 +164,8 @@ export async function runAttempt(d: AttemptDeps, i: AttemptInput): Promise<Attem
     return r;
   } catch (e) {
     r.outcome = "error";
-    r.infra = e instanceof SandboxInfraError;
+    // A provider outage, or the build ended under us (stale recovery): Offload's failure, never billed to a cap.
+    r.infra = e instanceof SandboxInfraError || e instanceof BuildEnded;
     r.note = r.infra ? "Offload's side failed: the sandbox provider did not answer." : "This worker stopped with an error.";
     return r;
   } finally {
