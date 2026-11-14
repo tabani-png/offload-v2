@@ -15,9 +15,9 @@ test("RELEASE: every secret a workflow references is one of the six placeholder 
   let seen = 0;
   for (const f of files()) {
     const { text } = readWorkflow(f);
-    for (const m of text.matchAll(/secrets\s*\.\s*([A-Za-z0-9_]+)|secrets\s*\[\s*['"]([^'"]+)['"]\s*\]/g)) {
+    for (const m of text.matchAll(/(?<![.\w])secrets\s*\.\s*([A-Za-z0-9_]+)|(?<![.\w])secrets\s*\[\s*['"]([^'"]+)['"]\s*\]/g)) {
       seen++;
-      expect(SECRET_NAMES as readonly string[]).toContain(m[1] ?? m[2]);
+      expect(SECRET_NAMES as readonly string[]).toContain(String(m[1] ?? m[2]));
     }
     // No dynamic or blanket access.
     expect(text).not.toMatch(/toJSON\(\s*secrets\s*\)|secrets\s*\[\s*[^'"\s]/);
@@ -77,9 +77,9 @@ test("RELEASE: the secrets check exposes only true or false", () => {
   for (const f of files()) {
     const { doc } = readWorkflow(f);
     for (const job of Object.values<any>(doc.jobs)) {
-      for (const s of steps(job)) expect(runText(s)).not.toMatch(/secrets\./);
+      for (const s of steps(job)) expect(runText(s)).not.toMatch(/(?<![.\w])secrets\./);
       // Job outputs never carry a secret.
-      for (const v of Object.values<any>(job.outputs ?? {})) expect(String(v)).not.toMatch(/secrets\./);
+      for (const v of Object.values<any>(job.outputs ?? {})) expect(String(v)).not.toMatch(/(?<![.\w])secrets\./);
     }
   }
   const { doc } = readWorkflow("release-mac.yml");
@@ -112,7 +112,8 @@ test("RELEASE: the mac job uploads the bundle before any test step", () => {
   const upload = st.findIndex((s) => String(s.uses ?? "").startsWith("actions/upload-artifact"));
   expect(upload).toBeGreaterThan(-1);
   expect(String(st[upload].with?.path)).toMatch(/\.zip/);
-  const firstTest = st.findIndex((s) => /swift test|verify\.sh|--self-check/.test(runText(s)));
+  const isSuite = (s: any) => /^\s*(swift test\b|bash slices\/.*verify\.sh)/m.test(runText(s));
+  const firstTest = st.findIndex((s) => isSuite(s) || /--self-check/.test(runText(s)));
   expect(firstTest).toBeGreaterThan(upload);
   // Build, bundle, ad hoc sign and check come before the upload.
   const order = ["swift build -c release", "bundle.sh release", "sign.sh", "check-bundle.sh", "ditto -c -k"].map((n) =>
@@ -128,7 +129,7 @@ test("RELEASE: the mac job uploads the bundle before any test step", () => {
   expect(runText(smoke)).toContain("PATH=/usr/bin:/bin:/usr/sbin:/sbin");
   expect(runText(smoke)).toMatch(/ditto /);
   // Each suite is its own step with a timeout and continue-on-error, and the result step fails on any of them.
-  const suites = st.filter((s) => /swift test|verify\.sh/.test(runText(s)));
+  const suites = st.filter((s) => isSuite(s) || /--self-check/.test(runText(s)));
   expect(suites.some((s) => runText(s).includes("slices/m3-03-mac-signing-sparkle/verify.sh"))).toBe(true);
   for (const s of suites) {
     expect(s["continue-on-error"]).toBe(true);

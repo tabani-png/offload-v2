@@ -45,13 +45,15 @@ test("SIGN: no packaging script prints a secret value", () => {
   const canaries: Record<string, string> = {};
   for (const n of SECRET_NAMES) canaries[n] = `CANARY-${n}-9f2c41d7e0`;
   // Base64 of a canary too, so a decoded value would be caught as well as the raw one.
-  canaries.DEVELOPER_ID_P12_BASE64 = Buffer.from("CANARY-P12-DECODED-5b1e").toString("base64");
+  canaries["DEVELOPER_ID_P12_BASE64"] = Buffer.from("CANARY-P12-DECODED-5b1e").toString("base64");
   const env = { ...canaries, CODESIGN: bin, PACKAGING_OS: "Linux", HOME: dir, TMPDIR: dir };
   const needles = [...Object.values(canaries), "CANARY-P12-DECODED-5b1e", "CANARY"];
 
   const app = fixtureApp(join(dir, "a"));
   const zip = join(dir, "Offload-1.2.3.zip");
   writeFileSync(zip, "zip");
+  const feed = join(dir, "appcast.xml");
+  writeFileSync(feed, "<rss/>");
   const runs = [
     { r: runScript("sign.sh", [app, "developer-id"], env), code: 1, line: "signing: needs macOS" },
     { r: runScript("sign.sh", [app, "adhoc"], env), code: 0 },
@@ -72,6 +74,7 @@ test("SIGN: no packaging script prints a secret value", () => {
       code: 0,
     },
     { r: runScript("check-bundle.sh", [app], env), code: 0 },
+    { r: runScript("promote.sh", [feed, "promote", "1.2.3"], env), code: 1, line: "promote: needs macOS" },
   ];
   for (const { r, code: want, line } of runs) {
     for (const n of needles) expect(r.all).not.toContain(n);

@@ -121,7 +121,7 @@ export function readPackaging(name: string): string {
 }
 
 /** plutil-free reader for the flat key/value dict of an XML Info.plist. */
-export function parsePlist(xml: string): Record<string, string | boolean | number> {
+export function parsePlist(xml: string): any {
   const out: Record<string, string | boolean | number> = {};
   const re = /<key>([^<]*)<\/key>\s*(?:<string>([^<]*)<\/string>|<(true|false)\/>|<integer>(-?\d+)<\/integer>)/g;
   for (let m = re.exec(xml); m; m = re.exec(xml)) {
@@ -139,7 +139,7 @@ export function readWorkflow(name: string): { text: string; doc: any } {
 }
 
 /** The `on:` block; YAML 1.1 parsers turn the key `on` into `true`. */
-export function triggers(doc: any): Record<string, any> {
+export function triggers(doc: any): any {
   const on = doc.on ?? doc[true as unknown as string] ?? {};
   if (typeof on === "string") return { [on]: null };
   if (Array.isArray(on)) return Object.fromEntries(on.map((k) => [k, null]));
