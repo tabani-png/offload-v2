@@ -1,8 +1,9 @@
 /**
- * @offload/routine-sdk
- * Routine artifact contract: routine.json schema, definition_hash, transform isolate interface, template rules. Checks, fixtures and the testkit fake connector target it.
- *
- * Architecture only. No feature code yet. See docs/adr/0026-routine-artifact-contract.md.
- * The first slice that touches this package replaces this marker.
+ * @offload/routine-sdk: the routine artifact contract (ADR 0026). routine.json schema, templates, commit items,
+ * definition_hash (ADR 0032), manifest checks and the transform isolate. No function here performs I/O.
  */
-export type TodoRoutineSdk = "TODO: not implemented. See docs/adr/0026-routine-artifact-contract.md";
+export * from "./commit.ts";
+export * from "./definition.ts";
+export * from "./routine.ts";
+export * from "./template.ts";
+export * from "./transform.ts";
