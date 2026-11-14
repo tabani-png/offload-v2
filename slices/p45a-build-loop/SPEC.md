@@ -90,9 +90,11 @@ present and passing; the full suite passes; every change since `BASE` matches `p
   `created_at`, `heartbeat_at`, `deployed_at` and the build-lock index; `worker_attempts` gains `artifact_sha256`,
   `artifact_bytes`, `artifact_files`, `note`. The docs had no place for the lock's staleness, for "deployed once", or
   for the hashes a held-out regeneration is checked against.
-- A held-out check counts as used once a build bound to it started a worker attempt (ADR 0029 says a new build
-  regenerates it); the attempt row is written before the worker starts. A build that never started a worker (a stale queued build, a teeth failure) revealed nothing about it,
-  so the stale-lock recovery can start the next build with the same hashes. API.md and DATA_MODEL.md say so.
+- Held-out reuse follows ADR 0029 as written: a held-out hash is used as soon as any build of the brief is bound to
+  it, so every new build (also after stale recovery, a failed mint or a teeth failure) needs a fresh held-out check.
+  `insertQueued` checks it in the lock's transaction, after the live-build check, so a running build still answers
+  `already_running`. (Green commit `724dbd3` had loosened this to "used once a worker started"; review round 2
+  restored the red assertion.) API.md and DATA_MODEL.md say so.
 - Review gate (an independent Opus security review) findings fixed: attempts beat the heartbeat before each try and
   before their shards; a build ended by stale recovery refuses every later write (`BuildEnded`) and its orchestrator
   stops; the attempt row exists before the worker starts; a failed approval mint ends the queued build; claims bind

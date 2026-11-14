@@ -24,7 +24,7 @@ import { artifactSha256, canonicalJson, HEX64, sha256Hex } from "./hash.ts";
 import type { ApprovalPort } from "./approvals.ts";
 import { runShards, type Shard, type ShardResult } from "./shards.ts";
 import type { SandboxProvider, SandboxSpec } from "./sandbox/provider.ts";
-import { BuildConflict, BuildEnded, type AttemptRow, type BuildRow, type BuildState, type BuildStore, type Stage } from "./store.ts";
+import { BuildConflict, BuildEnded, HeldOutUsed, type AttemptRow, type BuildRow, type BuildState, type BuildStore, type Stage } from "./store.ts";
 
 export interface BuildDeps {
   store: BuildStore;
@@ -78,12 +78,12 @@ export async function okBuild(d: BuildDeps, i: { tenant_id: string; member_id: s
   const want = boundOf(fix, d.config.cap_usd4);
   for (const k of HASH_KEYS) if (body[k] !== want[k]) throw new OkBuildError("hash_mismatch", `${k} is not this fix's current value: review it again`);
   if (toUsd4(body.cap_usd) !== d.config.cap_usd4) throw new OkBuildError("hash_mismatch", `cap_usd must be ${usd4Text(d.config.cap_usd4)}`);
-  if (await d.store.heldOutUsed(i.tenant_id, fix.brief_id, fix.held_out.hash)) throw new OkBuildError("state_conflict", "this held-out check was already used by a build of this brief; a new one is written before the next build");
   const build_id = d.ids();
   try {
     await d.store.insertQueued({ tenant_id: i.tenant_id, id: build_id, fix_id: fix.fix_id, brief_id: fix.brief_id, cap_usd4: d.config.cap_usd4, fanout_workers: d.config.fanout_workers, bound_hashes: want }, d.now(), d.config.stale_after_ms);
   } catch (e) {
     if (e instanceof BuildConflict) throw new OkBuildError("already_running", "a build of this fix is queued or running");
+    if (e instanceof HeldOutUsed) throw new OkBuildError("state_conflict", "this held-out check was already used by a build of this brief; a new one is written before the next build (ADR 0029)");
     throw e;
   }
   try {

@@ -103,6 +103,13 @@ export class BuildConflict extends Error {
   }
 }
 
+/** A held-out check already bound to a build of this brief (ADR 0029: every new build gets a fresh one). */
+export class HeldOutUsed extends Error {
+  constructor() {
+    super("this held-out check was already used by a build of this brief");
+  }
+}
+
 /** The build already ended (stale recovery, or another writer): its orchestrator must stop and write nothing more. */
 export class BuildEnded extends Error {
   constructor() {
@@ -111,8 +118,10 @@ export class BuildEnded extends Error {
 }
 
 export interface BuildStore {
+  /** One transaction: a live, fresh build of the brief is BuildConflict; a held-out hash any earlier build of the
+   * brief was bound to is HeldOutUsed (and nothing is recovered); stale live builds are ended infra_failed. */
   insertQueued(b: NewBuild, now: number, stale_after_ms: number): Promise<BuildRow>;
-  /** True when a build of this brief that ran at least one worker attempt was bound to this held-out hash. */
+  /** True when any build of this brief was bound to this held-out hash (ADR 0029). */
   heldOutUsed(tenant_id: string, brief_id: string, held_out_hash: string): Promise<boolean>;
   get(tenant_id: string, id: string): Promise<BuildRow | null>;
   /** Applies the patch and sets heartbeat_at = now. Throws BuildEnded when the build is no longer live. */
@@ -146,9 +155,11 @@ export class MemoryBuildStore implements BuildStore {
   private key = (t: string, id: string) => `${t}/${id}`;
 
   async insertQueued(b: NewBuild, now: number, stale_after_ms: number): Promise<BuildRow> {
-    for (const x of this.builds.values()) {
-      if (x.tenant_id !== b.tenant_id || x.brief_id !== b.brief_id || !isLive(x.state)) continue;
-      if (now - x.heartbeat_at <= stale_after_ms) throw new BuildConflict("already_running");
+    const same = [...this.builds.values()].filter((x) => x.tenant_id === b.tenant_id && x.brief_id === b.brief_id);
+    for (const x of same) if (isLive(x.state) && now - x.heartbeat_at <= stale_after_ms) throw new BuildConflict("already_running");
+    if (same.some((x) => x.bound_hashes["held_out_hash"] === b.bound_hashes["held_out_hash"])) throw new HeldOutUsed();
+    for (const x of same) {
+      if (!isLive(x.state)) continue;
       x.state = "infra_failed";
       x.ended_at = now;
       x.heartbeat_at = now;
@@ -160,11 +171,7 @@ export class MemoryBuildStore implements BuildStore {
   }
 
   async heldOutUsed(tenant_id: string, brief_id: string, held_out_hash: string): Promise<boolean> {
-    for (const x of this.builds.values()) {
-      if (x.tenant_id !== tenant_id || x.brief_id !== brief_id || x.bound_hashes["held_out_hash"] !== held_out_hash) continue;
-      if ([...this.attemptRows.values()].some((a) => a.tenant_id === tenant_id && a.build_id === x.id)) return true;
-    }
-    return false;
+    return [...this.builds.values()].some((x) => x.tenant_id === tenant_id && x.brief_id === brief_id && x.bound_hashes["held_out_hash"] === held_out_hash);
   }
 
   async get(tenant_id: string, id: string): Promise<BuildRow | null> {

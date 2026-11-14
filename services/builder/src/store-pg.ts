@@ -4,7 +4,7 @@
 // lock on the build (ADR 0030); budget_entries are append-only and idempotent by key (ADR 0031).
 import type { SQL } from "bun";
 import { join } from "node:path";
-import { staleNote, BuildConflict, BuildEnded, type AttemptRow, type BuildPatch, type BuildRow, type BuildStore, type NewBuild, type Reservation, type Settlement, type Stage } from "./store.ts";
+import { staleNote, BuildConflict, BuildEnded, HeldOutUsed, type AttemptRow, type BuildPatch, type BuildRow, type BuildStore, type NewBuild, type Reservation, type Settlement, type Stage } from "./store.ts";
 
 export const MIGRATIONS = ["0001_builder.sql"];
 
@@ -91,8 +91,10 @@ export class PgBuildStore implements BuildStore {
     try {
       return await this.tx(b.tenant_id, async (tx) => {
         const live = await tx`SELECT id, heartbeat_at, stages FROM builds WHERE tenant_id = ${b.tenant_id} AND brief_id = ${b.brief_id} AND state IN ${tx(LIVE)} FOR UPDATE`;
+        for (const x of live as Array<Record<string, unknown>>) if (now - ms(x["heartbeat_at"])! <= stale_after_ms) throw new BuildConflict("already_running");
+        const used = await tx`SELECT EXISTS (SELECT 1 FROM builds WHERE tenant_id = ${b.tenant_id} AND brief_id = ${b.brief_id} AND bound_hashes->>'held_out_hash' = ${b.bound_hashes["held_out_hash"] ?? ""}) AS used`;
+        if ((used[0] as { used: boolean }).used) throw new HeldOutUsed();
         for (const x of live as Array<Record<string, unknown>>) {
-          if (now - ms(x["heartbeat_at"])! <= stale_after_ms) throw new BuildConflict("already_running");
           const stages = [...asJson<Stage[]>(x["stages"]), { name: "recovered", state: "failed", started_at: now, ended_at: now, note: staleNote }];
           await tx`UPDATE builds SET state = 'infra_failed', ended_at = ${new Date(now)}, heartbeat_at = ${new Date(now)}, stages = ${jsonb(stages)}::text::jsonb WHERE tenant_id = ${b.tenant_id} AND id = ${x["id"] as string}`;
         }
@@ -101,7 +103,7 @@ export class PgBuildStore implements BuildStore {
         return (await this.read(tx, b.tenant_id, b.id))!;
       });
     } catch (e) {
-      if (e instanceof BuildConflict) throw e;
+      if (e instanceof BuildConflict || e instanceof HeldOutUsed) throw e;
       if ((e as { errno?: string }).errno === "23505") throw new BuildConflict("already_running");
       throw e;
     }
@@ -109,8 +111,7 @@ export class PgBuildStore implements BuildStore {
 
   async heldOutUsed(tenant_id: string, brief_id: string, held_out_hash: string): Promise<boolean> {
     return this.tx(tenant_id, async (tx) => {
-      const r = await tx`SELECT EXISTS (SELECT 1 FROM builds b WHERE b.tenant_id = ${tenant_id} AND b.brief_id = ${brief_id} AND b.bound_hashes->>'held_out_hash' = ${held_out_hash}
-                           AND EXISTS (SELECT 1 FROM worker_attempts a WHERE a.tenant_id = b.tenant_id AND a.build_id = b.id)) AS used`;
+      const r = await tx`SELECT EXISTS (SELECT 1 FROM builds WHERE tenant_id = ${tenant_id} AND brief_id = ${brief_id} AND bound_hashes->>'held_out_hash' = ${held_out_hash}) AS used`;
       return (r[0] as { used: boolean }).used === true;
     });
   }

@@ -118,11 +118,10 @@ form, RFC 8785 for our value types) until `packages/contracts` exports JCS (W1-E
 - **Winner order.** MIGRATION 5.6 (followed here): all shards pass, then cost, then smaller artifact (bytes).
   ADR 0029 and the M6 `WINNER:` test say smallest diff. Owner to reconcile; the rule is one function (`pickWinner`).
 - **Fan-out.** `fanout_workers` from config: default 1 (M2), at most 3 (M6). Old tests that fanned out to 3 set it.
-- **Held-out reuse** (owner question: amend ADR 0029). Here a held-out check counts as used once a build bound to it
-  started a worker (its attempt row exists). A teeth-failed or stale queued build lets the next build reuse it, since
-  no builder saw anything. ADR 0029 and DATA_MODEL `held_out_checks` say every build of a brief gets a fresh one.
-  This stream may not edit ADRs; the owner (or m2-05, which writes held-out checks) should amend ADR 0029 or
-  tighten this to "any build", which is one query (`heldOutUsed`).
+- **Held-out reuse** follows ADR 0029: any build of the brief bound to a held-out hash uses it, even one that never
+  ran a worker (stale, failed mint, teeth failure, a pre-turn outage). The cost is one held-out regeneration (design
+  spend, about $0.10) after Offload's own failure. If the owner prefers "used once a worker started", that is an
+  ADR 0029 amendment first, then one query (`HeldOutUsed` in `insertQueued`).
 - **Money** is integer ten-thousandths of a dollar (`numeric(10,4)`): cap 40000, checks reserve 3000, attempt cap 7000.
 - Verifier, repair turn, replay fixtures, receipt signing, egress proxy and reaper stay with m2-07/m2-08.
 
