@@ -14,6 +14,10 @@ const ROLE = `p45a_app_${suffix}`;
 let admin: SQL;
 let sql: SQL;
 let store: PgBuildStore;
+/** The same store connected as a non-owner role without BYPASSRLS, as offload_app will be (no DELETE granted). */
+let appSql: SQL;
+let app: PgBuildStore;
+const TABLES = ["builds", "worker_attempts", "budget_reservations", "budget_entries", "build_receipts"];
 
 beforeAll(async () => {
   if (URL === "") throw new Error("DATABASE_URL is required for p45a-build-loop (NEEDS_POSTGRES=1)");
@@ -22,8 +26,14 @@ beforeAll(async () => {
   sql = new SQL({ url: URL, max: 8, connection: { search_path: SCHEMA } });
   await migrate(sql);
   store = new PgBuildStore(sql);
+  await admin.unsafe(`CREATE ROLE ${ROLE} NOLOGIN NOBYPASSRLS`);
+  await admin.unsafe(`GRANT USAGE ON SCHEMA ${SCHEMA} TO ${ROLE}`);
+  await admin.unsafe(`GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA ${SCHEMA} TO ${ROLE}`);
+  appSql = new SQL({ url: URL, max: 8, connection: { search_path: SCHEMA, role: ROLE } });
+  app = new PgBuildStore(appSql);
 });
 afterAll(async () => {
+  await appSql?.close();
   await sql?.close();
   await admin?.unsafe(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`);
   await admin?.unsafe(`DROP ROLE IF EXISTS ${ROLE}`);
@@ -125,22 +135,63 @@ describe("p45a Postgres build store", () => {
     expect(await store.attempts(TENANT, b.id)).toEqual([{ ...att, turns: 8 }]);
   });
 
-  test("RLS: (Postgres) a non-owner role sees only its tenant's builds", async () => {
-    await store.insertQueued(newBuild("brief_rls_a"), T0, STALE);
-    await store.insertQueued(newBuild("brief_rls_b", OTHER_TENANT), T0, STALE);
-    await admin.unsafe(`CREATE ROLE ${ROLE} NOLOGIN`);
-    await admin.unsafe(`GRANT USAGE ON SCHEMA ${SCHEMA} TO ${ROLE}`);
-    await admin.unsafe(`GRANT SELECT ON ALL TABLES IN SCHEMA ${SCHEMA} TO ${ROLE}`);
-    const seen = await sql.begin(async (tx) => {
-      await tx.unsafe(`SET LOCAL ROLE ${ROLE}`);
-      await tx`SELECT set_config('app.tenant_id', ${OTHER_TENANT}, true)`;
-      return tx`SELECT DISTINCT tenant_id FROM builds`;
-    });
-    expect(seen.map((r: { tenant_id: string }) => r.tenant_id)).toEqual([OTHER_TENANT]);
-    const none = await sql.begin(async (tx) => {
-      await tx.unsafe(`SET LOCAL ROLE ${ROLE}`);
-      return tx`SELECT count(*)::int AS n FROM builds`;
-    });
-    expect(none[0].n).toBe(0);
+  test("RLS: (Postgres) every builder table has row level security enabled and forced", async () => {
+    const rows = await admin`SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = ${SCHEMA} AND c.relkind = 'r' ORDER BY c.relname`;
+    expect(rows.map((r: { relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }) => [r.relname, r.relrowsecurity, r.relforcerowsecurity])).toEqual([...TABLES].sort().map((t) => [t, true, true]));
+    expect((await appSql`SELECT current_user AS u`)[0].u).toBe(ROLE);
   });
+
+  test("RLS: (Postgres) as the non-owner role, another tenant's rows are invisible in all five tables", async () => {
+    // one build of TENANT with a row in every table, written through the store as the app role
+    const b = await app.insertQueued(newBuild("brief_rls_all"), T0, STALE);
+    await app.putAttempt({ tenant_id: TENANT, id: uuid(), build_id: b.id, ordinal: 1, sandbox_provider: "docker", sandbox_id: null, outcome: "pass", spent_usd4: 100, tries: 1, turns: 1, frozen_pass: true, held_out_pass: true, check_groups: [], artifact_sha256: null, artifact_bytes: 0, artifact_files: [], note: "" });
+    expect(await app.reserve({ tenant_id: TENANT, build_id: b.id, attempt_id: "rls1", call_id: "attempt:rls1", kind: "model", usd4: 100, ceiling_usd4: 37_000 }, T0)).toBe(true);
+    await app.settle({ tenant_id: TENANT, build_id: b.id, call_id: "attempt:rls1", idempotency_key: "attempt:rls1", scope: "build", usd4: 100 }, T0);
+    await app.update(TENANT, b.id, { state: "ready", receipt: { build_id: b.id }, receipt_hash: "e".repeat(64), ended_at: T0 }, T0);
+    const count = (tenant: string | null) =>
+      appSql.begin(async (tx) => {
+        if (tenant !== null) await tx`SELECT set_config('app.tenant_id', ${tenant}, true)`;
+        const out: Record<string, number> = {};
+        for (const t of TABLES) out[t] = (await tx.unsafe(`SELECT count(*)::int AS n FROM ${t} WHERE tenant_id = '${TENANT}'`))[0].n;
+        return out;
+      });
+    expect(await count(OTHER_TENANT)).toEqual(Object.fromEntries(TABLES.map((t) => [t, 0])));
+    expect(await count(null)).toEqual(Object.fromEntries(TABLES.map((t) => [t, 0])));
+    const own = await count(TENANT);
+    for (const t of TABLES) expect([t, own[t]! > 0]).toEqual([t, true]);
+    // writing another tenant's row is refused by the policy's WITH CHECK
+    await expect(
+      appSql.begin(async (tx) => {
+        await tx`SELECT set_config('app.tenant_id', ${OTHER_TENANT}, true)`;
+        await tx`UPDATE builds SET state = 'failed' WHERE id = ${b.id}`;
+        return tx`SELECT count(*)::int AS n FROM builds WHERE id = ${b.id} AND state = 'failed'`;
+      }),
+    ).resolves.toEqual([{ n: 0 }]);
+  });
+
+  test("LOCK: (Postgres, as the non-owner role) the lock race and stale recovery hold under RLS", async () => {
+    const rs = await Promise.allSettled([newBuild("brief_role_race"), newBuild("brief_role_race")].map((x) => app.insertQueued(x, T0, STALE)));
+    expect(rs.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect((rs.find((r) => r.status === "rejected") as PromiseRejectedResult).reason).toBeInstanceOf(BuildConflict);
+    const later = T0 + STALE + 1;
+    const again = await Promise.allSettled([newBuild("brief_role_race"), newBuild("brief_role_race")].map((x) => app.insertQueued(x, later, STALE)));
+    expect(again.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const won = (rs.find((r) => r.status === "fulfilled") as PromiseFulfilledResult<{ id: string }>).value;
+    expect((await app.get(TENANT, won.id))!.state).toBe("infra_failed");
+  });
+
+  test("CAP: (Postgres, as the non-owner role) three parallel reservations cannot exceed the remaining cap; the ledger stays append-only", async () => {
+    const b = await app.insertQueued(newBuild("brief_role_cap"), T0, STALE);
+    const got = await Promise.all([1, 2, 3].map((i) => app.reserve({ tenant_id: TENANT, build_id: b.id, attempt_id: `r${i}`, call_id: `attempt:r${i}`, kind: "model", usd4: 7_000, ceiling_usd4: 17_000 }, T0)));
+    expect(got.filter(Boolean)).toHaveLength(2);
+    const key = `attempt:r${got.indexOf(true) + 1}`;
+    await app.settle({ tenant_id: TENANT, build_id: b.id, call_id: key, idempotency_key: key, scope: "build", usd4: 7_000 }, T0 + 1);
+    await expect(
+      appSql.begin(async (tx) => {
+        await tx`SELECT set_config('app.tenant_id', ${TENANT}, true)`;
+        await tx`DELETE FROM budget_entries WHERE scope_id = ${b.id}`;
+      }),
+    ).rejects.toThrow();
+  });
+
 });
