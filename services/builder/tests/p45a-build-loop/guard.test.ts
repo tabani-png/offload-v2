@@ -121,6 +121,17 @@ describe("p45a container guard", () => {
     }
   });
 
+  test("SHARDS: worker code imported by a check is refused, even when it would make the check pass", async () => {
+    // The check writer's mistake (importing the built code) must not hand the verdict to the worker: without the guard
+    // the worker's module runs inside the check process and answers whatever the check asks.
+    const api = file("api.ts", "export const verdict = () => true;\n");
+    for (const spec of ["../work/api.ts", "/work/api.ts"]) {
+      const check = `import { expect, test } from "bun:test";\nimport { verdict } from ${JSON.stringify(spec)};\ntest("the tool works", () => { expect(verdict()).toBe(true); });\n`;
+      const r = await run(check, [api]);
+      expect([spec, r.passed]).toEqual([spec, false]);
+    }
+  });
+
   test("SHARDS: a builder-planted .env is not loaded into the check", async () => {
     const check = 'import { expect, test } from "bun:test";\ntest("no planted env", () => { expect(process.env["OFFLOAD_PLANTED"]).toBeUndefined(); });\n';
     const r = await run(check);
