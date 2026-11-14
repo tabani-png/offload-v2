@@ -2,7 +2,7 @@
 id: m3-03-mac-signing-sparkle
 title: App bundle, Developer ID signing, notarization and Sparkle updates in the CI mac job and the release workflows, with placeholder secret names and a clean skip when secrets are absent
 milestone: M3
-status: ready
+status: in_progress
 depends_on: [m3-02-mac-capture-upload]
 parallel_safe: true
 human_gated: true
