@@ -28,6 +28,11 @@ export interface NameMaskerOptions {
 export interface NameMasker {
   readonly tag: string;
   mask(text: string): string;
+  /**
+   * Gives a run's masker the member's own name after it was created (a later call in the run names it). The tag and
+   * name map stay the same. A different own name throws; `keep` after `mask` leaves the own name masked.
+   */
+  setOwnName(name: string, mode?: "mask" | "keep"): void;
 }
 
 const GIVEN = new Set(GIVEN_NAMES);
@@ -100,7 +105,7 @@ interface Person {
 
 export function createNameMasker(opts: NameMaskerOptions = {}): NameMasker {
   const tag = makeTag(opts.random ?? defaultRandom);
-  const ownMode = opts.ownNameToModels ?? "mask";
+  let ownMode = opts.ownNameToModels ?? "mask";
   const ownWords = (opts.ownName ?? "").trim().split(/\s+/).filter((w) => w.length > 0);
   const ownSet = new Set(ownWords);
 
@@ -371,5 +376,17 @@ export function createNameMasker(opts: NameMaskerOptions = {}): NameMasker {
     return result + maskPlain(pre.slice(pos));
   }
 
-  return Object.freeze({ tag, mask });
+  function setOwnName(name: string, mode: "mask" | "keep" = "mask"): void {
+    const words = name.trim().split(/\s+/).filter((w) => w.length > 0);
+    if (words.length === 0) return;
+    if (ownWords.length === 0) {
+      ownWords.push(...words);
+      for (const w of words) ownSet.add(w);
+    } else if (words.join(" ") !== ownWords.join(" ")) {
+      throw new Error("a run's own name cannot change");
+    }
+    if (mode === "mask") ownMode = "mask";
+  }
+
+  return Object.freeze({ tag, mask, setOwnName });
 }

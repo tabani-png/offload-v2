@@ -74,20 +74,24 @@ export class RunMaskers {
   private readonly runs = new Map<string, NameMasker>();
   constructor(private readonly maxRuns = 1000) {}
 
-  /** One masker per run and own-name setting: a call with a different own name never reuses a masker without it. */
+  /**
+   * One masker per run, so a name keeps one placeholder for the whole run. A call that gives the member's own name adds
+   * it to the run's masker; later calls keep masking it. A different own name in the same run throws.
+   */
   forRun(run_id: string, opts: { ownName?: string; ownNameToModels?: "mask" | "keep" }): NameMasker {
-    const key = JSON.stringify([run_id, opts.ownName ?? null, opts.ownNameToModels ?? "mask"]);
-    let m = this.runs.get(key);
+    let m = this.runs.get(run_id);
     if (!m) {
       if (this.runs.size >= this.maxRuns) this.runs.delete(this.runs.keys().next().value as string);
       m = createNameMasker(opts);
-      this.runs.set(key, m);
+      this.runs.set(run_id, m);
+    } else if (opts.ownName !== undefined) {
+      m.setOwnName(opts.ownName, opts.ownNameToModels ?? "mask");
     }
     return m;
   }
 
   end(run_id: string): void {
-    for (const key of [...this.runs.keys()]) if ((JSON.parse(key) as unknown[])[0] === run_id) this.runs.delete(key);
+    this.runs.delete(run_id);
   }
 }
 
@@ -105,6 +109,9 @@ export const MAX_OUTPUT_TOKENS = 128_000;
 
 function validCall(call: RouteCall): boolean {
   if (call.call_id !== undefined && !CALL_ID_RE.test(call.call_id)) return false;
+  if (typeof call.route !== "string" || typeof call.tenant_id !== "string") return false;
+  if (call.own_name !== undefined && typeof call.own_name !== "string") return false;
+  if (call.own_name_to_models !== undefined && call.own_name_to_models !== "mask" && call.own_name_to_models !== "keep") return false;
   if (!Number.isInteger(call.max_tokens) || call.max_tokens < 1 || call.max_tokens > MAX_OUTPUT_TOKENS) return false;
   if (typeof call.system !== "string" || !Array.isArray(call.messages) || call.messages.length === 0) return false;
   if (!call.messages.every((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")) return false;
@@ -185,21 +192,28 @@ export async function route(call: RouteCall, deps: RouterDeps): Promise<RouteRes
   if (call.own_name !== undefined) maskerOpts.ownName = call.own_name;
   if (call.own_name_to_models !== undefined) maskerOpts.ownNameToModels = call.own_name_to_models;
 
-  // A schema is sent as written, so it must hold no person name: masking its labels would change what code maps.
-  if (call.schema !== undefined) {
-    const probe = createNameMasker({ ...maskerOpts, ownNameToModels: "mask" });
-    if (schemaStrings(call.schema).some((str) => probe.mask(str) !== str)) return refused("schema_holds_name");
-  }
-
   // 1. Untrusted wrapping: no tag may escape.
   if (!untrustedTagsBalanced(call.system) || !call.messages.every((m) => untrustedTagsBalanced(m.content))) {
     return refused("untrusted_tag_escape");
   }
 
   // 2. Masking second pass.
-  const masker = call.run_id !== undefined && deps.maskers ? deps.maskers.forRun(call.run_id, maskerOpts) : createNameMasker(maskerOpts);
+  let masker: NameMasker;
+  try {
+    masker = call.run_id !== undefined && deps.maskers ? deps.maskers.forRun(call.run_id, maskerOpts) : createNameMasker(maskerOpts);
+  } catch {
+    return refused("invalid_call"); // a different own name within one run
+  }
   const system = `${masker.mask(call.system)}\n\n${UNTRUSTED_SYSTEM_NOTE}`;
   const messages: ModelMessage[] = call.messages.map((m) => ({ role: m.role, content: masker.mask(m.content) }));
+
+  // A schema is sent as written, so it must hold no person name: masking its labels would change what code maps.
+  // Checked with the run's masker after the messages, so a name the run already knows is caught, plus a masker that
+  // masks the own name whatever the setting.
+  if (call.schema !== undefined) {
+    const strict = createNameMasker(call.own_name !== undefined ? { ownName: call.own_name } : {});
+    if (schemaStrings(call.schema).some((str) => masker.mask(str) !== str || strict.mask(str) !== str)) return refused("schema_holds_name");
+  }
 
   // 3. Leak scan over the masked request.
   const requestText = JSON.stringify({ system, messages, schema: call.schema ?? null });

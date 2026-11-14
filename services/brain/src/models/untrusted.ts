@@ -14,11 +14,24 @@ const FORMAT_CHARS_RE = /\p{Cf}/gu;
 const TAG_LIKE_RE = /<\s*(\/?)\s*untrusted\b[^>]*>?/gi;
 const CANONICAL_OPEN_RE = /^<untrusted source="[a-z][a-z0-9_]{0,31}">$/;
 const CANONICAL_CLOSE = "</untrusted>";
+/** Angle-bracket and slash look-alikes NFKC does not fold. */
+const LOOKALIKES: Array<[RegExp, string]> = [
+  [/[\u2039\u3008\u27E8\u2329\u02C2\u1438\u276C\u276E]/g, "<"],
+  [/[\u203A\u3009\u27E9\u232A\u02C3\u1433\u276D\u276F]/g, ">"],
+  [/[\u2044\u2215\u29F8]/g, "/"],
+];
+
+/** NFKC plus look-alike folding: the form tags are counted in. */
+function fold(t: string): string {
+  let out = t.normalize("NFKC");
+  for (const [re, ch] of LOOKALIKES) out = out.replace(re, ch);
+  return out;
+}
 
 /** Wraps untrusted text: Unicode format characters stripped, any untrusted tag inside escaped. */
 export function untrusted(source: string, text: string): string {
   if (!SOURCE_RE.test(source)) throw new Error("untrusted source must match ^[a-z][a-z0-9_]{0,31}$");
-  const body = text.normalize("NFKC").replace(FORMAT_CHARS_RE, "").replace(/<(\s*\/?\s*untrusted)/gi, "&lt;$1");
+  const body = fold(text).replace(FORMAT_CHARS_RE, "").replace(/<(\s*\/?\s*untrusted)/gi, "&lt;$1");
   return `<untrusted source="${source}">${body}${CANONICAL_CLOSE}`;
 }
 
@@ -31,7 +44,7 @@ export function untrustedTagsBalanced(text: string): boolean {
   // Compatibility look-alikes (full-width < / >) must not hide a tag: untrusted() writes NFKC text, so any extra tag
   // that appears only after NFKC normalisation was never wrapped.
   const count = (t: string) => [...t.replace(FORMAT_CHARS_RE, "").matchAll(TAG_LIKE_RE)].length;
-  if (count(text.normalize("NFKC")) !== count(text)) return false;
+  if (count(fold(text)) !== count(text)) return false;
   let open = false;
   let blockStart = 0;
   // Positions are taken on the original text so the format-character check sees the block as sent.
