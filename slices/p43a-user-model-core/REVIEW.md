@@ -195,3 +195,102 @@ unchanged.
 10. **Done (coverage).** New test `RLS: in every table, a copy of member A1's row cannot be inserted by member A2 or by
     tenant B` loops over `MEMBER_ISOLATED_TABLES` with `jsonb_populate_record`. It passed on first run, as expected:
     it adds coverage, not a behaviour change.
+
+## Round 2
+
+Independent reviewer (Claude Code, Opus 5.5). It did not write this code. Reviewed at `39af2e3`. Read: AGENTS.md (review
+gate), CLAUDE.md, both SPECs, DESIGN.md, ADR 0003, 0013, 0019, DATA_MODEL 1 and 4, API.md (profile, records, review),
+ARCHITECTURE 5 and 6, SECURITY_PRIVACY 13, MIGRATION 5.4, `git diff 8f6ff2d..HEAD` (54 files), every test file, the
+round-1 commits (`fd2454f`, `b1dbd47`, `3a2edd6`, `81f67c2`, `4b18a06`), and the old code at `/workspace/offload-wsB`
+(`f9e2793`, read only: `memory/seal.ts` `assertDerivedOnly`, `api/s14-routes.ts`, `api/workflow-routes.ts`).
+
+### Runs (DATABASE_URL set, local Postgres 17)
+
+| Command | Result |
+|---|---|
+| `bash scripts/verify-all.sh` | `verify-all: green`. Full suite **143 pass, 0 fail**, 34 files, 2621 `expect()` calls. Both done slices PASS; slices lint ok (10 specs), doc links ok (70 files), copy ok, secrets ok, license boundary ok, workflows ok. |
+| `bash slices/p43a-user-model-core/verify.sh` | `p43a-user-model-core: PASS`. Slice suite **63 pass, 0 fail**, 7 files (`min_tests` 55). LEDGER 7, OBSERVE 2, DAY 6, LEAKS 2, WEEK 4, THEIL-SEN 2, MONTH 2, QUARTER 1, NARRATIVE 5, SCORE 8, PROPOSE 5, LONG-TERM 2, INVALIDATE 2, SUPERSEDE 2, REVISE 1, MERGE 1, PROFILE 5, PROMPTS 2, PRIVACY 1, REVIEW 3. Full suite 143/143. Scope checked (54 files). |
+| `bash slices/p43b-user-model-store-api/verify.sh` | `p43b-user-model-store-api: PASS`. Slice suite **30 pass, 0 fail**, 4 files (`min_tests` 20). PROFILE 5, API 11, PRIVACY 1, RLS 5, MERGE 1, INVALIDATE 2, STORE 5. Full suite 143/143. Scope checked (31 files). |
+
+No `skip`, `todo` or `.only`. After every run, mutation runs included: 0 leftover `p43b%` schemas, 0 `p43b%` roles.
+
+### 1. Tests fail without the code (mutation check)
+
+Each change was made alone, the covering test file was run, and the file was restored with `git checkout -- <file>`.
+`git status` was clean after the last one.
+
+| # | Change (file:line) | Result |
+|---|---|---|
+| R1 | `writeWeekSentence` without the `hasLeak` fallback (`src/records/narrative.ts:80`) | NARRATIVE link/email test fails |
+| R2 | Profile `line()` uses `hasLeak` instead of `hasLink` (`src/profile/profile.ts:72`) | PROFILE validation test fails |
+| R3 | `readJson` without the content-type check (`src/http/handlers.ts:45`) | API content-type test fails |
+| R4 | `runMemberUpdate` without the timezone check (`src/store/job.ts:41`) | STORE timezone test fails |
+| R5 | `readJson` without the stream cap (`handlers.ts:56`) | API 413 test fails |
+| R6 | Focus-block gap `<=` instead of `<` (`src/records/day-record.ts:105`) | DAY gap test fails |
+| M-A | `opportunities` left out of the RLS loop (`sql/0001_user_model.sql:227-228`) | p43b privacy file fails in setup |
+| M-B | `member_isolation` skipped for `episodes` only (`sql:234-236`) | 3 RLS tests fail, including the new per-table INSERT test |
+| M-C | DELETE granted on `episodes` and `day_records` (`sql:240`) | INVALIDATE no-DELETE test fails (plus 3 STORE) |
+| M-D | Declared `Content-Length` check removed (`handlers.ts:47`) | **no test fails** (finding 4) |
+
+### 2. Test changes after the red commits
+
+Test files changed only in `8c22dc8`, `adff86b`, `935f14e`, `c69e88e`, `fd2454f` and `3a2edd6`; none after the last
+red commit. Every removed test line since the first red commit (`git show <c> -- services/brain/tests | grep '^-'`):
+an unused import (`935f14e`, `c69e88e`); `"It took 1,200 minutes over 3 days."` from `ok: true` to `ok: false`
+(tightened, recorded under Scope changes); the accepted PROFILE case gained `Learn Node.js` (`fd2454f`, tightened:
+it pins the false-positive edge); the privacy file's setup now sends `content-type: application/json` (`3a2edd6`,
+needed by the new rule; the setup still asserts the same data). **No assertion was weakened.** The round-1 tests went
+red first in their own commits (R1 to R6 above show each catches its regression). The mandatory list of MIGRATION 5.4
+is present by name, as round 1 found; nothing was removed since.
+
+### 3. Correctness
+
+The round-1 changes match the docs: content type and 413 (API.md user model shapes), `TimezoneMismatchError` before
+any write (DATA_MODEL 1 and 4), episodes read through `day_records.episode_ids` (DATA_MODEL 4), gaps under 2 minutes
+(ARCHITECTURE 5). RLS policies are exactly ADR 0013's text. Nothing in round 1 changed tables, shapes or status codes
+beyond API.md's closed list.
+
+### 4. Security and privacy
+
+Re-checked at `39af2e3`: RLS as a `NOBYPASSRLS` non-owner role, member and tenant walls on all 12 tables (now with a
+per-table INSERT test), bind parameters everywhere (`ident()` for interpolated names), no `console.*` or
+`process.env` in `src/`, goals only inside `<user_context>`, numbers only from Figures. The new leak guard is a
+superset of the old `assertDerivedOnly` (email, scheme URL, plus host-with-path). Round-1 fixes 1, 2, 3, 4, 7 and 9 are
+real and tested (R1 to R6); 5 is docs only, 6 is process, 8 is deferred with a reason, 10 adds coverage (M-B shows it
+bites). Findings 1 to 3 below are gaps left by round-1 fixes or missed in round 1.
+
+### Findings
+
+1. **MINOR. A model sentence with a bare link is still stored.** Round-1 fix 1 uses `hasLeak`
+   (`narrative.ts:80`), which allows bare hosts (`names.ts:52-55`). Probe at `39af2e3`: `"A steady week of 12 h. Visit
+   www.evil.example for tips."` and `"A steady week of 12 h; see evil.example."` come back `source: "model"`, and
+   `setWeekNarrative`'s guard lets them through, so the link reaches the member's weekly review. Task names are model
+   input, so prompt injection could plant it. The new NARRATIVE test covers only `www.` with a path. *Fix:* use
+   `hasLink` in `writeWeekSentence` and in `writeWeekNarrative`'s second-transaction recheck (`job.ts:104`). Add the
+   two probe sentences to the NARRATIVE test, red first.
+2. **MINOR. `hasLink` is narrower than API.md says.** API.md: "may not hold a link, including a bare `www.` or host
+   name (`acme.com`)". `HOST_TOKEN_RE` only knows 23 suffixes (`names.ts:42-43`). Probe: goals `"Grow signups on
+   bit.ly"`, `"Founder at acme.ca"`, `"Hit 10k on example.in"` and `"Sell on shop.example"` are accepted (200), and go
+   to the model inside `<user_context>`. *Fix:* refuse any dotted token whose last label is 2 or more letters, except
+   a short list of code suffixes (`js`, `ts`, `py`, `md`, …). Or say "a host name with a common web suffix" in API.md.
+   Add the probe cases to PROFILE either way.
+3. **MINOR. The request body is read inside the tenant transaction.** `handleUserModelRequest` opens `runInTenant`
+   (`handlers.ts:169`), and `readJson` runs inside it (`handlers.ts:115`, `152`). Probe with a recording `RunInTenant`:
+   `tx begin | body chunk read, tx open=true | tx end`. With `bunRunInTenant`, a slow client holds a pooled
+   connection and an open transaction (after `SET LOCAL`) for as long as it trickles up to 64 KiB. ADR 0013 (line 45)
+   and DATA_MODEL 1 forbid network I/O inside `withTenant`; this is client I/O, not a model call, but it has the same
+   pool cost. *Fix:* route, then read and parse the body, then call `runInTenant`. Test with a fake `RunInTenant`
+   that asserts the body stream is fully consumed (or refused) before it is called.
+4. **NIT. The declared `Content-Length` cap is untested.** M-D passes. The stream cap still returns 413, so behaviour
+   holds, but the early refusal is unpinned. Add a request with `content-length: 70000` and a short body to the API
+   413 test.
+5. **NIT. A timezone mismatch can make a durable step retry forever.** `TimezoneMismatchError` (`job.ts:16-18`) is
+   thrown for a window built before a timezone change. The same window will fail on every retry. Note under DESIGN
+   section 4 (W1-C / m5-05) that `timezone_mismatch` is not retryable and the window must be rebuilt.
+6. **NIT (carried).** Round-1 finding 8 (glossary: `never` vs `left_alone`, missing "Focus block", "Time share",
+   "Revision group", "Track record") is still open. It is out of `paths_in_scope`; it needs a docs slice that owns
+   `docs/GLOSSARY.md`.
+
+No BLOCKER or MAJOR finding. Findings 1 to 3 should be fixed in a follow-up round on this branch, red test first.
+
+VERDICT: PASS
