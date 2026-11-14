@@ -154,6 +154,8 @@ describe("p43a rollups", () => {
       `A steady week: ${r.hours.total.value} h. Read more at https://evil.example/now for tips.`,
       `Ask dana@fund.example about your ${r.hours.total.value} h.`,
       `A steady week: ${r.hours.total.value} h, see www.evil.example/now.`,
+      `A steady week of ${r.hours.total.value} h. Visit www.evil.example for tips.`,
+      `A steady week of ${r.hours.total.value} h; see evil.example.`,
     ]) {
       expect(checkNarrative(leaky, r).ok).toBe(true);
       expect({ leaky, out: await writeWeekSentence(r, undefined, async () => leaky) }).toEqual({ leaky, out: { sentence: code, source: "code" } });

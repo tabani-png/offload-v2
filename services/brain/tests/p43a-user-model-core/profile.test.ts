@@ -66,6 +66,10 @@ describe("p43a profile", () => {
       { role: "see https://x.example/a" },
       { goals: ["Grow signups on www.example.com"] },
       { role: "Founder at acme.com" },
+      { goals: ["Grow signups on bit.ly"] },
+      { role: "Founder at acme.ca" },
+      { goals: ["Hit 10k on example.in"] },
+      { goals: ["Sell on shop.example"] },
       { goals: ["Same", "same"] },
       { goals: "nope" },
       { goals: [""] },
@@ -88,7 +92,7 @@ describe("p43a profile", () => {
       ["goals"],
     ];
     for (const body of bad) expect({ body, ok: applyProfilePatch(defaultProfile(), body, T(0)).ok }).toEqual({ body, ok: false });
-    const fine = applyProfilePatch(defaultProfile(), { goals: ["x".repeat(80), "b", "Learn Node.js"], keyframes_to_cloud: true, own_name_to_models: "keep", review_slot: { day: "mon", time: "08:30" } }, T(0));
+    const fine = applyProfilePatch(defaultProfile(), { goals: ["x".repeat(80), "Update README.md for v2.0", "Learn Node.js"], keyframes_to_cloud: true, own_name_to_models: "keep", review_slot: { day: "mon", time: "08:30" } }, T(0));
     expect(fine.ok).toBe(true);
   });
 
