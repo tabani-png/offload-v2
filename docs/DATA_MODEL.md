@@ -211,7 +211,10 @@ by `packages/db` later): vectors are `real[]` until pgvector is installed; `goal
 a trigger refuses a fourth active goal; `episodes.day`; `week_records.from_day`, `to_day`, `days_recorded[]`;
 `month_records` and `quarter_records` also hold `weeks[]`, `hours`, `by_task`, `notes[]` and `generated_at`;
 `propositions` has one current version per `key` and `invalid_at ≥ valid_at`; `opportunities.goal_id`. `offload_app`
-has no DELETE on these tables except `figure_index` and `opportunities`.
+has no DELETE on these tables except `figure_index` and `opportunities`. A day's episodes are read through
+`day_records.episode_ids`, never by `episodes.day` alone: a re-analysed day can leave older episode rows that only
+forget removes. Day records, episodes and the ledger use the profile's timezone; the member update job refuses a
+window built in another one.
 
 ## 5. Capture
 

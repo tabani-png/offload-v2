@@ -20,7 +20,9 @@ export interface WindowSpan {
   observationIds: string[];
 }
 
-/** One occurrence of an induced task. */
+/** One occurrence of an induced task. `id` must be globally unique for the member (a uuid, like `task_instances.id`):
+ * the episode id is `ep_` + this id, and episodes are upserted by id, so a reused id would overwrite another day's
+ * episode. Span ids follow the same rule. */
 export interface WindowInstance {
   id: string;
   start: number;
@@ -50,7 +52,7 @@ export interface WindowTask {
 }
 
 export interface UnderstandingWindow {
-  /** IANA timezone of the member, from the profile. */
+  /** IANA timezone of the member, from the profile. The job refuses a window whose timezone differs from it. */
   timezone: string;
   /** The analysed days, oldest first. */
   days: DayLabel[];

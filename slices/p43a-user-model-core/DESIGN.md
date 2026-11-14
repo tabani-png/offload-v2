@@ -136,5 +136,8 @@ Numbers written as words are not caught by `checkNarrative`. Goal embeddings and
 embedder (m5-01); until then `bestGoal` gets vectors from the caller. `competes` has no producer yet. Sheets vs docs on
 `docs.google.com` cannot be told apart. The figure-evidence route (`GET /v1/figures/{id}/evidence`) is not built here.
 Any alignment above 0 counts as advancing a goal (the formula sets no floor; real embeddings will need one, an owner
-call). Re-analysing a day with different instance ids leaves the old episode rows (no delete grant); the forget and
-retention paths (M7, m3-01) clean them.
+call). Re-analysing a day with different instance ids leaves the old episode rows: `offload_app` has no DELETE and
+R-model rows are kept until forget, so retention does not clean them. Readers therefore take a day's episodes only
+through `day_records.episode_ids` (DATA_MODEL section 4); orphans stay until forget (M7). Episode ids are `ep_` + the
+instance id, which understanding must keep globally unique (`ports.ts`). The job refuses a window whose timezone is not
+the profile's (`TimezoneMismatchError`), so days are always profile days.
