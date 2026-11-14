@@ -147,6 +147,19 @@ describe("p43a rollups", () => {
     }
   });
 
+  test("NARRATIVE: a model sentence with a link or an email address falls back to the code sentence", async () => {
+    const r = week(WEEKS[3]);
+    const code = weekSentence(r);
+    for (const leaky of [
+      `A steady week: ${r.hours.total.value} h. Read more at https://evil.example/now for tips.`,
+      `Ask dana@fund.example about your ${r.hours.total.value} h.`,
+      `A steady week: ${r.hours.total.value} h, see www.evil.example/now.`,
+    ]) {
+      expect(checkNarrative(leaky, r).ok).toBe(true);
+      expect({ leaky, out: await writeWeekSentence(r, undefined, async () => leaky) }).toEqual({ leaky, out: { sentence: code, source: "code" } });
+    }
+  });
+
   test("NARRATIVE: a refused model sentence is replaced by the code sentence", async () => {
     const r = week(WEEKS[3]);
     const code = weekSentence(r);

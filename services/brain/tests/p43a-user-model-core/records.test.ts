@@ -98,6 +98,27 @@ describe("p43a day records", () => {
     expect(buildDayRecords(karachi, resolveTaskKeys([], karachi).keys, Date.UTC(2026, 9, 14, 12)).records).toEqual([]);
   });
 
+  test("DAY: a focus block joins spans of one task only across gaps under 2 minutes", () => {
+    const at = Date.UTC(2026, 9, 13, 9);
+    const mk = (gapSeconds: number): UnderstandingWindow => {
+      const second = at + 900_000 + gapSeconds * 1000;
+      return {
+        timezone: "UTC", days: ["2026-10-13"],
+        spans: [
+          { id: "sp_a", start: at, end: at + 900_000, activeSeconds: 900, appBundleId: "com.microsoft.Excel", appName: "Microsoft Excel", host: "", title: "Book1", observationIds: ["obs_a"] },
+          { id: "sp_b", start: second, end: second + 900_000, activeSeconds: 900, appBundleId: "com.microsoft.Excel", appName: "Microsoft Excel", host: "", title: "Book1", observationIds: ["obs_b"] },
+        ],
+        tasks: [{ id: "t_1", signature: "s", kind: "sheet.edit", name: "Edit the sheet", appBundleId: "com.microsoft.Excel", appName: "Microsoft Excel", host: "", centroid: null, sameness: 1, instances: [{ id: "i_1", start: at, end: second + 900_000, activeSeconds: 1800, spanIds: ["sp_a", "sp_b"], observationIds: ["obs_a", "obs_b"] }] }],
+      };
+    };
+    const blocks = (gap: number) => {
+      const win = mk(gap);
+      return buildDayRecords(win, resolveTaskKeys([], win).keys, Date.UTC(2026, 9, 20)).records[0]!.totals.focus_blocks.value;
+    };
+    expect(blocks(119)).toBe(1);
+    expect(blocks(120)).toBe(0);
+  });
+
   test("DAY: every total is a Figure whose id is fig_ + 16 hex of sha256(JCS(figure without id))", () => {
     expect(jcs({ b: 2, a: [1, "x", null, true], c: { z: 0.5, y: 1e21 } })).toBe('{"a":[1,"x",null,true],"b":2,"c":{"y":1e+21,"z":0.5}}');
     const r = buildDayRecords(w, keys, NOW).records[1]!;
