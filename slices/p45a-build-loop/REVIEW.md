@@ -557,3 +557,253 @@ Mutations were run on copies in `/tmp`, never in the repo.
    - (`5149710`, red `c0c3dd7`)
 
 Still open owner actions (unchanged): the `LIVE:` Docker run, the `LOCAL:` tests for m5-03, and the winner order.
+
+## Round 3
+
+Independent review (Opus 5.5; wrote none of the code, round 1 or round 2), 2026-11-14, branch `port/build-loop` at
+`3321961`, diff `8f6ff2d..3321961`.
+
+**Read:**
+- AGENTS.md and CLAUDE.md;
+- both SPECs, DESIGN.md, and rounds 1 and 2 with their author responses;
+- ADR 0011, 0012, 0029, 0030 and 0031;
+- DATA_MODEL sections 1, 6 and 8, and the API.md builds rows;
+- SECURITY_PRIVACY section 13 and MIGRATION 5.6 (with its carry list);
+- every source file in the diff, and the tests;
+- `git log -p` on both test folders for every commit after round 2 (`4733412..3321961`), and the removed lines of every
+  earlier test commit;
+- the `473cafb` commit message in `/workspace/offload-wsC` (read only).
+
+### Runs (this reviewer, DATABASE_URL set)
+
+| Command | Result |
+|---|---|
+| `bash scripts/verify-all.sh` | `verify-all: green`. Full suite **183 tests across 34 files: 182 pass, 1 skip (`LIVE:` Docker), 0 fail**. p45a and p45b both PASS. Slices (10 specs), doc links (70 files), copy, secrets and workflows are ok, and the license boundary holds |
+| `bash slices/p45a-build-loop/verify.sh` | `p45a-build-loop: PASS`. Slice suite **116 tests across 10 files: 115 pass, 1 skip, 0 fail** (min 75). All 24 tags pass: GATE 11, CHECKS 4, HELDOUT 11, TEETH 4, DEFAULT1 1, SHARDS 18, FANOUT 9, STALL 2, LOCK 13, SHIP 4, BUDGET 5, CAP 3, TAMPER 1, PROOF 2, VERDICT 1, SANDBOX 10, INFRA 3, DEPLOY 1, READY 3, TDD 2, STEPS 1, ERROR 1, API 3, RLS 2. The full suite (183) passes. Scope checked (47 files) |
+| `bash slices/p45b-measured-saving/verify.sh` | `p45b-measured-saving: PASS`. Slice suite **17 tests across 1 file: 17 pass** (min 12). SHIP 3, MEASURE 6, FLAG 2, MONTH 1, OUTCOME 2, FIGURE 3. The full suite (183) passes. Scope checked (32 files) |
+| Both slice folders together | 133 tests: 132 pass, 1 skip |
+| Scope | Every changed file matches `paths_in_scope`. Nothing changed under `packages/{db,contracts,policy,testkit,routine-sdk,connectors-sdk}`, `services/{api,runtime,broker,brain}`, `apps`, `ee`, `.github` or `docs/adr`. `bun.lock` and `package.json` are unchanged. Each `verify.sh` differs from the template only in its header and the four allowed variables. `packages/hours-saved/src/index.ts` gains type exports only. NOTICE carries superpowers (with the full MIT text), craft-anything, apple/container, container-use, exo and CompanyOS (ideas only) |
+| Postgres hygiene | Each file makes its own `p45a_<suffix>` schema and `NOBYPASSRLS` role and drops them. After the runs, no `p45a_%` schema or role was left |
+
+### Mutation checks (tests really fail without the code)
+
+How I ran them:
+- A script in `/tmp/r3-mut` (outside the repo) applied each mutation with `perl -0pi` and checked that the file changed.
+- It ran both slice folders (133 tests), then restored the file with `git checkout --`.
+- No stash was used. `git status` was clean afterwards.
+
+**New in this round: mutations that fail tests**
+
+| Mutation | Failing tests |
+|---|---|
+| held-out reuse check removed from `insertQueued` (memory `store.ts:162` / Postgres `store-pg.ts:96`) | 2 / 1 (`HELDOUT:`) |
+| `startBuild` compare-and-set always wins (`store.ts:232`) / the loop ignores its result (`loop.ts:144`) | 1 / 1 (`LOCK: two starts…`) |
+| `--pull never` removed (`docker.ts:243`) | 1 (`SANDBOX:` exact argv) |
+| snapshot ignores folders and symlinks (`docker.ts:216-218`) | 1 (`SANDBOX:` snapshot) |
+| loop's `BuildEnded` → infra removed (`loop.ts:265`) | 1 (`LOCK:` stale orchestrator) |
+| derived approval minted from an unclaimed parent (`approvals.ts:256`) / released twice (`approvals.ts:301`) | 1 / 1 (`GATE:`) |
+| `putFiles` path check removed (`docker.ts:176`) / shard artifact path check removed (`shards.ts:157`) | 1 / 1 |
+| `getFiles` follows symlinks (`docker.ts:192-193`) | 2 |
+| computed import allowed (`checks.ts:67`) / the held-out writer's prompt gets the visible body (`heldout.ts:258`) | 1 / 1 |
+| `FORCE` RLS dropped on `budget_entries` / RLS dropped on `budget_reservations` (SQL) | 1 / 2 (`RLS:`) |
+
+**Repeated from earlier rounds (still fail)**
+
+| Mutation | Failing tests |
+|---|---|
+| **473cafb reverted**: child `cwd: WS`, no `--config`, no `--no-env-file` (`harness.ts:72-74`) | 4 (`SHARDS:`) |
+| guard preload removed from the shard bunfig (`harness.ts:20`) | 7 |
+| `--network none` dropped / `/check` mounted read-write | 1 / 2 |
+| shard pass = exit 0 only / an exec error counted as a pass (`shards.ts`) | 2 / 3 |
+| reservation ceiling off (memory) / `FOR UPDATE` dropped (Postgres) | 1 / 2 (`CAP:`) |
+| `parseProof` without `tests >= 1` | 1 (`PROOF:`) |
+
+**Mutations that fail nothing (finding 2)**
+
+| Mutation | Failing tests |
+|---|---|
+| teeth gate's "could not run" stop removed (`loop.ts:191`) | **0** |
+| tamper check before the first try removed (`attempt.ts:113-117`) | **0** |
+| `runAttempt`'s `BuildEnded` → infra removed (`attempt.ts:168`) | **0** |
+| approval claim key-count check removed (`approvals.ts:244`) | **0** |
+| harness `--no-install` removed | **0** |
+| harness `completed` without `tests >= 1` (`harness.ts:98`) | **0** |
+| artifact size limits removed (`docker.ts:196`) | **0** |
+| docker CLI gets the whole host environment (`docker.ts:103`) | **0** |
+| `feedbackText` keeps `OFFLOAD_PROOF` lines (`attempt.ts:87`) | **0** |
+
+### Test history (tests changed after their red commit)
+
+**Since round 2:**
+- `4733412` (red):
+  - The Postgres `HELDOUT:` assertion is restored to the red commit's `toBe(true)` straight after `insertQueued`.
+  - The `putAttempt` step and the `false` assertion it guarded are gone. Both belonged to the loosened rule that round 2
+    rejected, so this is the BLOCKER fix, not a weakening.
+  - Three tests now bring a fresh held-out check for a second build of a brief. This is a fixture change that ADR 0029
+    requires; no assertion was removed.
+- `3cd80ce` (green): adds a "no approval, no start" assertion. Stronger.
+- `0db4c7b`: the vacuous cross-tenant read-back is replaced by `RETURNING` (no row) plus a read as the owning tenant
+  (`ready`). Stronger.
+- `ee46496`, `c8917f0`, `2be55dd`, `01915f8`, `c0c3dd7`: additions only.
+
+**Earlier commits:** I re-read every removed `expect`/`test(` line, from `e243018` to `3505309`. They were renamed,
+moved or replaced by stricter ones (`process.env["X"]`, the guard payload, the five-table RLS test, the argv pin,
+`LOCK:` rename). The one flip (`724dbd3`) was restored in `4733412`. **No assertion is weakened in the current tree.**
+
+**Other checks:**
+- No `.skip`, `.todo`, `.only` or `it(`. The one skip is `describe.skipIf(!dockerUp)` for `LIVE:` (`docker.test.ts:176`).
+- The Postgres tests throw without `DATABASE_URL`.
+- MIGRATION 5.6 carry list: every name is present with its tag, except two:
+  - `LOCAL:` is handed to m5-03 (owner action, see finding 5).
+  - `GATE: a wrong brief hash…` is covered under another name (finding 7).
+- SECURITY section 13 builder rows: each has a test. "Outbound connection fails; no registry reachable" exists only as
+  the never-run `LIVE:` test.
+
+### Old fixes from 473cafb
+
+I re-checked every fix against the commit message:
+- guarded bun shards;
+- stale lock recovery (two recoverers);
+- no orphaned builders;
+- no fan-out after an early gate;
+- held-out teeth in containers;
+- budget before spending;
+- no internal paths in records;
+- two concurrent OKs;
+- ship twice;
+- per-week measurement.
+
+All are kept, and the mutations above pin the security ones. "Check writers paid before the budget check" moves to
+m2-05 (design budget).
+
+### Round 2 findings, status
+
+| Finding | Status |
+|---|---|
+| 1 BLOCKER (held-out reuse) | Fixed: ADR 0029's rule is back in both stores, inside the lock's transaction. My mutations fail 2 + 1 tests |
+| 2 (two starts) | Fixed: a compare-and-set start. My mutations fail 1 test each (see NIT 10 on its order) |
+| 3 (ADR 0031 retry path) | Recorded: SPEC "Out of scope" and DESIGN section 7, owner m2-08 |
+| 4 (image pull) | `--pull never` is pinned. The digest pin is recorded (spike S4, m2-08) |
+| 5 (`BuildEnded` spend) | Half pinned: the loop's path is tested, `runAttempt`'s is not (finding 2) |
+| 6, 7, 8 | Fixed |
+
+### Findings
+
+1. **MAJOR: the built tool can read the held-out check during verification and pass it without doing the work. This
+   fakes the held-out verdict that ADR 0012 and ADR 0029 rest on.**
+   - Evidence:
+     - Check files are written `0444` in a `0755` folder (`docker.ts:148, 179-181`) and mounted at `/check`
+       (`docker.ts:256`).
+     - The harness, `bun test` and the tool it spawns all run as uid 65534 (`docker.ts:250`).
+     - `bun test`'s argv names the check file (`harness.ts:72`).
+     - So the artifact can open `/check/accept.test.ts` directly, or find it through `/proc/<ppid>/cmdline`, and print
+       the values the check expects.
+     - The worker can build and test that trick in its own sandbox: the frozen check sits at the same path there
+       (`attempt.ts:104-108`), and BUILD.md tells it that other checks it does not see also decide the result
+       (`checks.ts:99`).
+   - Scratch test (outside the repo, `/tmp/r3-scratch`, using the same emulated `docker run` as `guard.test.ts` and the
+     real `runShards`):
+     - The held-out check expects `zq-7781-unguessable` from `tool.ts edge`.
+     - An honest tool that does not know the answer fails: `{"passed":false,"proof":{"ok":false,"status":"fail",…}}`.
+     - A tool that reads the check through its parent's argv and prints the `toBe("…")` literal passes:
+       `{"passed":true,"proof":{"ok":true,"nonce_ok":true,"status":"pass","exit":0,"completed":true,"tests":1}}`.
+     - In real Docker it is simpler still: `readFileSync("/check/accept.test.ts")`.
+   - This needs no ptrace and no nonce. DESIGN.md section 7's "same uid" item covers only the nonce through ptrace.
+     Its planned fix (run `bun test` as 65534) would not close this hole, because `bun test` must read the check as
+     the same uid the tool runs as.
+   - It is not one of the 473cafb fixes, but the task asks that the held-out check never reach the builder. ADR 0012
+     says fan-out workers "never [see] the held-out check or its output". ADR 0029 says "A worker cannot fake a pass".
+   - Required fix, one of:
+     - **(a) Close it.**
+       - The tool runs under a uid that cannot read `/check` or the check runner's `/proc` entries. For example: the
+         harness starts as root with only `SETUID`/`SETGID`; the check runner runs as uid A with `/check` at `0400`
+         and `0500`, owned by A; the tool runs as uid B through a trusted spawn helper.
+       - Add a red test: emulated where possible, and a `LIVE:` case. A tool that reads `/check/*` or its parent's
+         argv must not pass a held-out check.
+     - **(b) Defer it with the owner's explicit acceptance.**
+       - Record it in DESIGN.md section 7 and SPEC "Out of scope" with owner m2-08, plus the red test to write.
+       - Until it lands, Build progress must not present a held-out pass as independent.
+
+   This is the only finding that blocks.
+
+2. **MINOR: guards that no test pins.** Nine mutations above fail nothing. The code is right today, but nothing stops
+   a regression in these four:
+   - **Teeth gate:** removing the stop for a check that did not run on the empty workspace (`loop.ts:191`) lets a check
+     that hangs or cannot run go on to paid workers.
+   - **Tamper check before every attempt:** ADR 0011 requires it; removing it (`attempt.ts:113-117`) fails nothing.
+   - **`runAttempt`'s `BuildEnded` → infra** (`attempt.ts:168`): the round 2 response says it is tested, but only the
+     loop's path at `loop.ts:265` is. A stale recovery between two tries would bill as `build`.
+   - **Exact key set in a claim** (`approvals.ts:244`): without the length check, a claim that adds an extra bound key
+     that sorts last is accepted.
+
+   Required fix: one test for each of these four. The others are optional:
+   - `--no-install`;
+   - the harness's own `tests >= 1` (`parseProof`'s copy of that rule is pinned);
+   - artifact size limits;
+   - the docker CLI's environment;
+   - the `OFFLOAD_PROOF` filter in feedback.
+
+3. **MINOR: sandbox time is never reserved or billed, and no document records that gap.**
+   - ADR 0030 says sandbox time counts toward the cap: seconds are reserved at creation (wall × vCPU), and the $4.00 hard
+     stop covers model and sandbox time together.
+   - Here, `Reservation.kind = "sandbox"` and `Settlement.sandbox_seconds` exist (`store.ts:82, 97`), but nothing
+     reserves or writes them.
+   - The $0.30 checks reserve is held back (`loop.ts:164`), but nothing is ever charged against it.
+   - SPEC "Out of scope" names the egress proxy, not sandbox billing, and DESIGN.md section 7 does not mention it.
+   - Required fix: record it with an owner (m2-08, sandbox pricing config), or reserve wall × vCPU in
+     `provider.create`'s callers.
+
+4. **MINOR: the `worker_attempts` SQL does not match the DATA_MODEL row this diff edited.**
+   - DATA_MODEL.md:203 lists `model`, `wall_seconds`, `replay_pass`, `verifier_verdict`, `repaired`, `diff_lines` and
+     `proof jsonb`. `0001_builder.sql:34-54` has none of them.
+   - The shard proof is computed (`ShardResult.proof`) and then dropped.
+   - Required fix: add the columns as nullable (at least `proof`, `wall_seconds` and `model`), or say in DATA_MODEL or
+     DESIGN.md section 4 which columns arrive with m2-07/m2-08.
+
+5. **MINOR (owner actions carried, unchanged since round 1):**
+   - the `LOCAL:` red tests and the `redirect: "error"` rule for m5-03 (the ROADMAP row still lacks them);
+   - one `LIVE:` Docker run, for network, registry and `swept`;
+   - the winner order (artifact bytes, against ADR 0029's smallest diff).
+
+   They are recorded in DESIGN.md sections 6 and 7. They do not block.
+
+6. **NIT: stale wording after round 2's held-out fix.**
+   - These still describe the old "used once a worker ran" rule:
+     - `loop.ts:3-4` ("used by a build that ran a worker");
+     - `loop.ts:215` ("from now on this held-out check counts as used");
+     - `store.ts:63`;
+     - the test name `HELDOUT: an attempt row exists from the moment a worker starts, so its held-out check counts as used`.
+   - DESIGN.md section 1 maps `loop.ts` to a `src/budget.ts` that does not exist.
+
+7. **NIT: the carried test name is not findable.** MIGRATION's `GATE: a wrong brief hash is refused…` is covered by
+   `http.test.ts:40`, which loops over all four hashes and the cap. But that test is named for `check_set_hash`. Rename
+   it so a grep finds it.
+
+8. **NIT: the `Build` shape is stated three ways.**
+   - API.md lists `deployed` but not `started_at`/`ended_at`.
+   - The SPEC lists `started_at`/`ended_at` but not `deployed`.
+   - `buildView` returns all three (`http.ts:73-75`).
+   - Align the docs.
+
+9. **NIT: a build stopped by the cap ends `failed`, not `capped`.** When the cap leaves no room for a fan-out worker, or
+   reservations refuse them (`loop.ts:295-298`), and the first worker failed, the build ends `failed`. ADR 0012 step 6
+   says reaching the cap ends it `capped`. With the default config this happens only after a worker over-reports its
+   spend.
+
+10. **NIT: the start writes before the claim.** `runBuild` changes `queued` to `building` (`loop.ts:144`) before it
+    claims the approval. A start with a wrong token therefore ends the user's build `failed`. Only the in-process runner
+    can call it today. The durable adapter should claim before, or together with, the compare-and-set.
+
+11. **NIT (p45b): the threshold constants do not decide.** `ON_TRACK` and `PARTIAL` are exported, but the comparison
+    hard-codes `8` and `5` (`outcome.ts:116-117`). Derive the integer thresholds from the constants.
+
+p45b: otherwise sound, as in rounds 1 and 2.
+- Integer-tenths thresholds.
+- Weeks measured once, at their end, from their own days, × 7 / days stored.
+- Purged weeks are never guessed.
+- Figures carry `source_purged_at` and stable `fig_` ids.
+
+**Required before PASS:** resolve finding 1 by (a) or (b). Add the four tests named in finding 2. Fix or record
+findings 3 and 4 with an owner. Findings 6 to 11 are optional. The owner actions in finding 5 stay open.
+
+VERDICT: CHANGES
