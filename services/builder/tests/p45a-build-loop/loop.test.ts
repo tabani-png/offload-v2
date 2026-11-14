@@ -291,6 +291,48 @@ describe("p45a OK, build", () => {
   });
 });
 
+describe("p45a infra failures after spend (ADR 0031)", () => {
+  /** Verification sandboxes fail with a provider outage from the `from`-th one on (teeth uses the first two). */
+  async function outageFrom(h: ReturnType<typeof harness>, from: number) {
+    const { SandboxInfraError } = await import("../../src/sandbox/provider.ts");
+    const real = h.provider.create.bind(h.provider);
+    let n = 0;
+    h.provider.create = async (spec) => {
+      if (spec.role === "verification" && ++n >= from) throw new SandboxInfraError("provider down");
+      return real(spec);
+    };
+  }
+
+  test("INFRA: an outage at verification after a worker spent ends infra_failed, bills that spend as infra and starts no other worker", async () => {
+    const h = harness([{ spent_usd: 0.5 }], { config: { fanout_workers: 3 } });
+    await outageFrom(h, 3);
+    const { build_id } = await h.okAndRun();
+    const b = (await h.store.get(TENANT, build_id))!;
+    expect(b.state).toBe("infra_failed");
+    expect(b.spent_usd4).toBe(0);
+    expect(h.store.entries.filter((e) => e.scope === "build" && e.usd4 > 0)).toHaveLength(0);
+    expect(h.store.entries.filter((e) => e.scope === "infra").map((e) => e.usd4)).toEqual([5_000]);
+    expect(new Set(h.worker.turns.map((t) => t.ordinal))).toEqual(new Set([1]));
+    expect(b.stages.at(-1)!.note).toContain("Offload's side failed");
+    expect(b.stages.at(-1)!.note).not.toContain("No build passed");
+    // model money was spent: the approval is not released (a retry needs a new OK, ADR 0031)
+    expect((await h.approvals.get(TENANT, b.approval_id!))!.released_at).toBeNull();
+    const att = await h.store.attempts(TENANT, build_id);
+    expect(att.map((a) => a.outcome)).toEqual(["error"]);
+  });
+
+  test("INFRA: an outage while a fan-out worker is verified ends infra_failed and bills that worker's spend as infra", async () => {
+    const h = harness([{ files: { "slug.ts": "// good first\n" }, spent_usd: 0.3 }, { spent_usd: 0.4 }], { verdict: heldOutFailsFirst, config: { fanout_workers: 1 } });
+    await outageFrom(h, 5); // teeth 2, worker 1's shards 2, then worker 2's shards
+    const { build_id } = await h.okAndRun();
+    const b = (await h.store.get(TENANT, build_id))!;
+    expect(b.state).toBe("infra_failed");
+    expect(h.store.entries.map((e) => [e.scope, e.usd4])).toEqual([["build", 3_000], ["infra", 4_000]]);
+    expect(b.spent_usd4).toBe(3_000);
+    expect(new Set(h.worker.turns.map((t) => t.ordinal))).toEqual(new Set([1, 2]));
+  });
+});
+
 describe("p45a OK, build time", () => {
   test("GATE: an approval older than 24 h is approval_expired and the build never starts a worker", async () => {
     const h = harness();

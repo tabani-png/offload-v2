@@ -81,6 +81,20 @@ describe("p45a docker provider", () => {
     expect(r[0]).toMatchObject({ passed: false, exit: null });
   });
 
+  test("SANDBOX: a docker failure that is not a check result (exit 125 to 127, CLI not runnable) is an infra error, never a check failure", async () => {
+    for (const reply of [{ exit: 125 }, { exit: 126 }, { exit: 127 }, "throw" as const]) {
+      const { p } = fake((argv) => (argv[1] === "run" ? reply : { exit: 0 }));
+      const sb = await p.create(SPEC);
+      await expect(p.exec(sb, { argv: ["bun", "/check/harness.ts"], cwd: "/check", timeout_ms: 50 })).rejects.toBeInstanceOf(SandboxInfraError);
+      const r = await runShards({ provider: p, spec: SPEC, artifact: [file("slug.ts", "x")], shards: [{ name: "frozen", check: checkSet("frozen", "// FROZEN\n") }], timeout_ms: 50 });
+      expect(r[0]).toMatchObject({ passed: false, error: "infra" });
+    }
+    // a check that ran and failed is a check result, not infra
+    const { p } = fake((argv) => (argv[1] === "run" ? { exit: 1 } : { exit: 0 }));
+    const r = await runShards({ provider: p, spec: SPEC, artifact: [file("slug.ts", "x")], shards: [{ name: "frozen", check: checkSet("frozen", "// FROZEN\n") }], timeout_ms: 50 });
+    expect(r[0]).toMatchObject({ passed: false, error: null });
+  });
+
   test("SANDBOX: env names that look like credentials are refused; a network allowlist is refused until the egress proxy", async () => {
     const { p } = fake();
     for (const env of [{ ANTHROPIC_API_KEY: "x" }, { GITHUB_TOKEN: "x" }, { DATABASE_URL: "x" }, { AWS_SECRET_ACCESS_KEY: "x" }, { PATH: "/evil" }]) {
