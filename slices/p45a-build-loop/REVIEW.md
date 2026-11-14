@@ -265,3 +265,228 @@ in the repo.
 10. **NIT, fixed.** The carried test is now `LOCK: two OKs of the same brief at once: exactly one 202, the other 409
     already_running`. DESIGN.md section 4 says `budget_entries` must end up as one definition when `packages/db` lands
     it. (`3505309`)
+
+## Round 2
+
+Independent review (Opus 5.5, wrote neither the code nor round 1), 2026-11-14, branch `port/build-loop` at `88cbc89`,
+diff `8f6ff2d..88cbc89`.
+
+**Read:**
+- AGENTS.md and CLAUDE.md;
+- both SPECs, DESIGN.md, and round 1 with its author response;
+- ADR 0011, 0012, 0029, 0030 and 0031;
+- DATA_MODEL sections 1, 6 and 8, and the API.md builds rows;
+- SECURITY_PRIVACY section 13 and MIGRATION 5.6;
+- every source file in the diff;
+- `git log -p` on both test folders from each red commit on;
+- the old `473cafb` commit message, and the test names in its hardening tests (`/workspace/offload-wsC`, read only).
+
+### Runs (this reviewer, DATABASE_URL set)
+
+| Command | Result |
+|---|---|
+| `bash scripts/verify-all.sh` | `verify-all: green`. Full suite **177 tests across 34 files: 176 pass, 1 skip (`LIVE:` Docker), 0 fail**. Both done slices PASS. slices, doc links, copy, secrets and workflows all ok |
+| `bash slices/p45a-build-loop/verify.sh` | `p45a-build-loop: PASS`. Slice suite **110 tests across 10 files: 109 pass, 1 skip, 0 fail** (min 75). All 24 tags are present and passing. Scope checked (47 files) |
+| `bash slices/p45b-measured-saving/verify.sh` | `p45b-measured-saving: PASS`. Slice suite **17 tests across 1 file: 17 pass** (min 12). All 6 tags passing. Scope checked (32 files) |
+| Scope | Nothing changed under `packages/{db,contracts,policy,testkit,routine-sdk,connectors-sdk}`, `services/{api,runtime,broker,brain}`, `apps`, `ee`, `.github` or `docs/adr`. `bun.lock` and `package.json` are unchanged. Each `verify.sh` differs from the template only in the header comment and the allowed variables. NOTICE carries superpowers (full MIT text), craft-anything, apple/container, container-use, CompanyOS (ideas only) and exo |
+
+### Mutation checks (tests really fail without the code)
+
+How I ran them:
+- A script in `/tmp` (outside the repo) applied each mutation with `perl -0pi`.
+- It ran both slice suites (126 runnable tests), then restored the file with `git checkout --`.
+- Afterwards `git status` was clean. No stash was used.
+
+| Mutation | Failing tests |
+|---|---|
+| verification-shard infra branch off (`loop.ts:235`) | 2 (`INFRA:` after spend, fan-out) |
+| Docker exit 125 to 127 not mapped to infra (`docker.ts:177`) | 1 (`SANDBOX:`) |
+| worker spend clamped to the cap again (`attempt.ts:134`) | 1 (`BUDGET:`) |
+| approval released even after model spend (`loop.ts:174`) | 1 (`INFRA:`) |
+| attempt spend always settled as `build` (`loop.ts:267`) | 2 (`INFRA:`) |
+| "no winner + an infra attempt" branch off (`loop.ts:303`) | 1 (`INFRA:` fan-out) |
+| shard `SandboxInfraError` reported as `exec` (`shards.ts:245`) | 4 (`SANDBOX:`, 3 `INFRA:`) |
+| infra entries counted toward `spent_usd`: memory store / Postgres store | 2 / 1 (`BUDGET: (Postgres)`) |
+| **473cafb fix reverted** (`cwd: WS`, no `--config`, no `--no-env-file`; `harness.ts:72-74`) | **4** (`SHARDS:` bunfig, path vectors, worker import, layout) |
+| guard `onLoad` registration removed (`harness.ts:302`) | 2 |
+| guard `onResolve` refusal made a no-op (`harness.ts:296`) | **0** (finding 6) |
+| `--entrypoint` unpinned (`docker.ts:157`) | 1 (`SANDBOX:` argv) |
+| `heldOutUsed` always false: memory store / Postgres store | 2 / 1 (`HELDOUT:`) |
+| deploy idempotency key differs per call (`http.ts:132`) | 1 (`SHIP:`) |
+| approval TTL check off (`approvals.ts:114`) | 2 (`GATE:`) |
+| teeth gate's workspace-write check off (`loop.ts:187`) | 1 (`TEETH:`) |
+
+Every round 1 fix is now pinned by a test that fails without it.
+
+### Test history (tests changed after their red commit)
+
+**Red commits:**
+- `e243018` (p45a);
+- `1f84021` (round-0 findings);
+- `c73776e` (p45b);
+- `b2b03a2`, `6c91b60`, `e20687d`, `33a88f0` (round 1).
+
+**Later test edits:**
+- `724dbd3` (green):
+  - `process.env["X"]`;
+  - an emulator path-mapping fix;
+  - the Postgres CAP test settles the reservation the race really granted;
+  - **the `HELDOUT: (Postgres)` assertion was flipped from `true` to `false` for a queued build** (finding 1).
+- `d2d2387`: `BuildEnded` assertions added (stronger).
+- `683be0b`: a parameter rename.
+- `18499c8` (guard tests):
+  - The control and bunfig tests are stronger: an honest JUnit report, and `nonce_ok`, `status` and `tests` asserted.
+  - The old mixed loop was split into path vectors (which now assert the refusal message) and bare specifiers.
+  - `/work/evil.ts` moved to the direct `onLoad` test (absolute path), which has a no-guard control.
+  - Nothing weaker.
+- `164b8b9`: the one-table RLS test was replaced by five-table and non-owner-role tests. They are stronger, but see
+  finding 7.
+- `29f25af`: additions only.
+- `e20687d`: the argv pin was updated for `--entrypoint` (stricter).
+- `3505309`: a rename only.
+
+**Other checks:**
+- No `.skip`, `.todo`, `.only` or `it(`. The one skip is `describe.skipIf(!dockerUp)` for `LIVE:`.
+- The Postgres tests throw without `DATABASE_URL`, and create and drop their own schema and role.
+- The MIGRATION 5.6 carry list is all present with its tags, except `LOCAL:`, which is handed to m5-03 (round 1
+  finding 7, still an owner action).
+- SECURITY section 13 builder rows: approval (wrong hash 403, used, expired as `approval_expired` at the port; an
+  HTTP 409 for expiry belongs to m2-06's approvals), deploy `definition_hash` 403, tamper, fake pass, teeth,
+  credentials and env, and three parallel reservations all have tests. **"outbound connection fails; no registry
+  reachable" still exists only as the never-run `LIVE:` test** (round 1 finding 8, recorded in DESIGN.md section 7).
+
+### Old fixes from 473cafb (re-checked against its commit message)
+
+| 473cafb fix | v2 |
+|---|---|
+| guarded bun shards (bunfig, node_modules, tsconfig paths, package imports, .env) | Kept. The reverted-fix mutation now fails 4 tests |
+| recoverable stale lock (two recoverers) | Kept: a partial unique index plus stale recovery in one transaction. `LOCK: (Postgres)` tests run as owner and as a non-owner role |
+| no orphaned builders | Kept (`FANOUT:` mint failure and throw tests) |
+| no fan-out after an early gate | Kept |
+| held-out teeth in containers | Kept |
+| budget before spending | Kept |
+| no internal paths in records | Kept |
+| two concurrent OKs | Kept |
+| ship twice wiped weeks | Kept |
+| per-week measurement | Kept |
+
+The unreadable-lock-file case does not apply: the lock is a row.
+
+Also re-checked and correct:
+- **Approvals:** exact hashes plus `cap_usd`, single use, 24 h TTL, `sha256(token)` with a constant-time compare, bound
+  to `kind` and subject. All compared before any write (`loop.ts:79-81`, `http.ts:126`).
+- **Held-out isolation:** the held-out check never reaches BUILD.md, the worker files, the prompt or fan-out feedback
+  (only "the held-out check also failed").
+- **Docker argv:** `--network none`, `--read-only`, `--cap-drop ALL`, `no-new-privileges`, `--user 65534:65534`, `/check`
+  read-only, `--entrypoint` pinned.
+- **Failures never pass:** an exec error, a timeout or a missing proof is a FAIL. A provider outage is `infra`, never a
+  pass and never billed.
+- **Budget:** reservations under a row lock cannot pass the ceiling, including fan-out.
+- **Artifact paths:** they go through `safeRelPath`, and symlinks are skipped.
+- **No leaks:** no `console.*`, and no token in responses or rows.
+- **RLS:** `ENABLE` + `FORCE` on all five tables. The builder tables are not MI tables in DATA_MODEL section 6, so no
+  `member_isolation` is due.
+- **p45b:** sound. Integer-tenths thresholds on the unrounded median; weeks measured once, at their end, from their own
+  days; purged weeks never guessed; Figures with stable `fig_` ids; the package root has type exports only.
+
+### Round 1 findings, status
+
+| Finding | Status |
+|---|---|
+| 1, 2, 3, 4, 5, 9, 10 | Fixed with tests; my mutations confirm each |
+| 6 (held-out reuse) | Not resolved: escalated as finding 1 below |
+| 7 (`LOCAL:` hand-off) | Recorded as owner actions in DESIGN.md section 7; unchanged |
+| 8 (`LIVE:` network and registry run) | Recorded as an owner action in DESIGN.md section 7; unchanged |
+| winner-order question | Recorded as an owner question in DESIGN.md section 6; unchanged |
+
+### Findings
+
+1. **BLOCKER: a red-test assertion was weakened in the green commit, and the code now allows held-out reuse that ADR
+   0029 forbids.**
+   - Evidence:
+     - In red `e243018`, `store-pg.test.ts` asserted
+       `expect(await store.heldOutUsed(TENANT, "brief_held", …)).toBe(true)` straight after `insertQueued`. That is ADR
+       0029's rule ("A new build of the same brief regenerates the held-out check") and DATA_MODEL `held_out_checks`
+       ("each build of a brief gets a fresh one").
+     - Green `724dbd3` changed the same assertion to `.toBe(false)` (`store-pg.test.ts:123`).
+     - It also implemented "used only once a worker attempt row exists" (`store.ts:297-303`, `store-pg.ts:110-115`).
+     - The hardening test `LOCK: a build with no progress … ended infra_failed by the next OK, which then starts`
+       (`hardening.test.ts:19`) now relies on reusing the same held-out hash.
+   - The change is written up in SPEC "Scope changes" and in DESIGN.md section 6 as an owner question. I found no
+     practical leak: no builder sees held-out bytes or results before an attempt row exists, and attempts beat the
+     heartbeat before every turn.
+   - But it relaxes a security rule of an accepted ADR that this stream may not edit, without the owner's decision.
+     Round 1 rated it MINOR and said no assertion was weakened; I disagree on that point. This review's rule is that a
+     weakened assertion is a BLOCKER.
+   - Required fix, one of:
+     - (a) Restore the red assertion: any build of the brief bound to the hash makes it used. That is one query in each
+       store. Update the stale-recovery tests to bring a fresh held-out, as `hardening.test.ts:32` already does.
+     - (b) The owner amends ADR 0029 to allow reuse when no worker started. Cite that decision in the SPEC, and keep
+       the current test.
+
+2. **MINOR: two starts of one build end it `failed` and burn the user's single-use OK before any work.**
+   - Evidence:
+     - `runBuildInner` reads `state = queued` (`loop.ts:122-123`) and only then claims the approval (`loop.ts:144`).
+     - A second start that read `queued` in the same window gets `approval_used`. It then writes `failed` over the live
+       build (`loop.ts:145-149`), and the first orchestrator stops at its next save with `BuildEnded`.
+   - Scratch test outside the repo: two `runBuild` calls for one build gave
+     `{"state":"failed","last":"The OK, build approval was already used.","worker_turns":0,"sandboxes":0}`.
+   - The inline runner starts each build once today. A durable adapter that re-runs the workflow after a crash
+     (W1-C) would hit this and end the build `failed` instead of `infra_failed` (ADR 0031: orchestrator crash).
+   - Required fix:
+     - make "start" a compare-and-set in the store (`queued` → `building`, with the claim); the loser returns without
+       writing;
+     - add a `LOCK:` test with two concurrent `runBuild` calls;
+     - note in DESIGN.md section 4 that the durable adapter must not re-enter `runBuild` after the claim.
+
+3. **MINOR: ADR 0031's retry path is not built and not recorded, and a zero-spend outage still burns the held-out
+   check.**
+   - Evidence:
+     - `POST /v1/builds/{id}/retry` (API.md:187), the automatic retries (3 within an hour) and `infra_retries` (never
+       written: `store.ts:157` and `store-pg.ts:130` only round-trip it) are missing.
+     - None of them is in SPEC "Out of scope" or DESIGN.md section 7.
+     - So `release()` (`loop.ts:173-175`) has no effect: the released approval is bound to this build's id, and
+       `runBuild` only runs `queued` builds.
+     - The attempt row is written before the worker sandbox exists (`loop.ts:214`). A worker-sandbox outage with no
+       spend therefore marks the held-out check used.
+   - Scratch test: `{"state":"infra_failed","spent":0,"released":true,"worker_turns":0,"heldOutUsed":true,"nextOk":"state_conflict"}`.
+     The user must re-review and pay a new held-out check for Offload's outage. ADR 0031 says a no-spend retry needs no
+     new OK.
+   - Required fix:
+     - list the retry endpoint, the automatic retries and `infra_retries` in SPEC "Out of scope" or DESIGN.md section 7,
+       with an owner;
+     - and either count the held-out check as used only once a worker turn starts, or say in DESIGN.md that a pre-turn
+       outage burns it.
+
+4. **MINOR: the verification image is a mutable tag and `docker run` may pull it.**
+   - Evidence:
+     - `config.ts:353` is `image: "oven/bun:1.4.4"`, not a digest.
+     - `runArgv` (`docker.ts:136-160`) has no `--pull=never`, so `docker run` uses its default `--pull=missing` and
+       fetches from a registry at verification time.
+   - The harness that gives the verdict runs `bun` from that image, so whoever controls the tag controls the verdicts.
+     ADR 0011 says workers run on prebuilt images with a pinned dependency set.
+   - Required fix: add `--pull=never` to the argv, pinned by the argv test. Then either refuse a verification image
+     without `@sha256:` outside tests, or record the pin as a spike S4 / m2-08 gap in DESIGN.md section 7. Neither is
+     recorded today.
+
+5. **NIT: a stale-recovered build's in-flight worker spend is billed as `build`.** `reserve`, `putAttempt` and `settle`
+   do not check that the build is live. A worker whose turn outlives the stale limit ends with `BuildEnded`, caught as
+   outcome `error` (`attempt.ts:164-167`). Its spend is then settled with scope `build` on an `infra_failed` build
+   (`loop.ts:267`). ADR 0031 calls that infra spend. This only happens when a turn runs past 34 minutes. Map
+   `BuildEnded` to `infra` in `runAttempt`.
+
+6. **NIT: the guard's `onResolve` refusal is not pinned.** Making it a no-op (`harness.ts:296`) fails 0 tests, because
+   `onLoad` stops the same loads. Either pin it with a test, or drop it and say so in DESIGN.md section 7.
+
+7. **NIT: the cross-tenant UPDATE assertion is vacuous.** `store-pg.test.ts:162-169` reads the row back under
+   `OTHER_TENANT`, so the count is 0 whatever the UPDATE did. Read it as `TENANT` and assert the state is still `ready`.
+
+8. **NIT: the teeth gate's write check sees regular files only.** `snapshot` uses `getFiles`, which skips symlinks and
+   lists no directories (`docker.ts:104-127`). A check that only creates a symlink or an empty folder in `/work` passes
+   "leaves the workspace unchanged". Include directories and symlink entries in the snapshot.
+
+**Required before PASS:** resolve finding 1, by (a) or (b). Fix or record findings 2 to 4 (record with an owner in
+DESIGN.md section 7). Findings 5 to 8 are optional. The round 1 owner actions stay open: the `LIVE:` Docker run, the
+`LOCAL:` tests for m5-03, and the winner order.
+
+VERDICT: CHANGES
