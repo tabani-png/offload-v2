@@ -13,6 +13,7 @@ import {
   NoticeAckSchema,
   ObservationSchema,
   RECEIPT_REJECTION_CODES,
+  RETRYABLE_REJECTION_CODES,
   ReviewEventSchema,
   StepResultSchema,
   figureId,
@@ -257,5 +258,28 @@ test("CONTRACT: receipt rejection codes are the closed list including not_enable
   expect(IngestReceiptSchema.safeParse({ accepted: [], rejected: [{ id: "bad id", code: "schema_invalid" }] }).success).toBe(true);
   expect(bothAccept("ingest-receipt", IngestReceiptSchema, { accepted: [], rejected: [{ id: ULID_A, code: "policy_denied" }] })).toEqual({ zod: false, json: false });
   expect(bothAccept("ingest-receipt", IngestReceiptSchema, { accepted: [] })).toEqual({ zod: false, json: false });
+  void TS;
+});
+
+test("CONTRACT: ids, codes and import rule hold in zod and in the generated JSON Schema", () => {
+  // ULID first character must keep it within 128 bits
+  expect(NoticeAckSchema.safeParse({ ...noticeAck, id: "81JCZ3X5Q8M2N4P6R8T0V1W2Y3" }).success).toBe(false);
+  // detail_code and notice_version are codes, not free text
+  expect(StepResultSchema.safeParse({ ...stepResult, detail_code: "<secret:x>" }).success).toBe(false);
+  expect(NoticeAckSchema.safeParse({ ...noticeAck, notice_version: "a b@c.d" }).success).toBe(false);
+  // one invalid case per field that only the freshness test used to guard
+  expect(StepResultSchema.safeParse({ ...stepResult, command_id: "x" }).success).toBe(false);
+  expect(StepResultSchema.safeParse({ ...stepResult, finished_at: "later" }).success).toBe(false);
+  expect(StepResultSchema.safeParse({ ...stepResult, item_hash: "ab" }).success).toBe(false);
+  expect(KeyframeMetaSchema.safeParse({ ...keyframeMeta, sha256: "ab" }).success).toBe(false);
+  expect(KeyframeMetaSchema.safeParse({ ...keyframeMeta, height: 0 }).success).toBe(false);
+  expect(ReviewEventSchema.safeParse({ ...reviewEvent, run_id: "x" }).success).toBe(false);
+  expect(NoticeAckSchema.safeParse({ ...noticeAck, notice_id: "what-leaves-your-mac" }).success).toBe(false);
+  // the import rule is also in the JSON Schema
+  const bad = { ...focus, source: "import" };
+  expect(bothAccept("observation", ObservationSchema, bad)).toEqual({ zod: false, json: false });
+  const good = { ...focus, source: "import", import_id: "0193a6f2-6c1e-7b51-9d2a-5f0e8c1b2a44" };
+  expect(bothAccept("observation", ObservationSchema, good)).toEqual({ zod: true, json: true });
+  expect(RETRYABLE_REJECTION_CODES as readonly string[]).toEqual(["rate_limited", "server_error"]);
   void TS;
 });

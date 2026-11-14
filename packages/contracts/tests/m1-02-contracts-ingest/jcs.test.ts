@@ -23,6 +23,8 @@ test("JCS: canonical bytes match RFC 8785 test vectors", () => {
   expect(() => jcs(Infinity)).toThrow();
   expect(() => jcs({ a: undefined })).toThrow();
   expect(() => jcs("\ud800")).toThrow();
+  // eslint-disable-next-line no-sparse-arrays
+  expect(() => jcs([, 1])).toThrow();
   expect(jcs("€$\u000f\nA'B\"\\\\\"/")).toBe('"€$\\u000f\\nA\'B\\"\\\\\\\\\\"/"');
 });
 

@@ -51,3 +51,17 @@ test("PSEUDO: router placeholders are accepted and other angle tokens are reject
   // only title and text are scanned: other kinds have no free text
   expect(accepts(obs("pause", { reason: "user" }))).toBe(true);
 });
+
+test("PSEUDO: wide angle-token shapes, nested tokens and free-text fields are rejected", () => {
+  const bad = [
+    "<card:4111 1111 1111 1111>", "<secret: abc>", "<secret:\tx>", "<email:h_0123456789abcdef >", "<api-key:sk_live_abc>",
+    "<x.y:abc>", "<:abc>", "<secret :x>", "<sécret:x>", "<secret:<person:h_0123456789abcdef>>", "\uff1csecret:x\uff1e",
+  ];
+  for (const t of bad) {
+    expect(title(t)).toBe(false);
+    expect(text(t)).toBe(false);
+    expect(accepts({ ...focus, app_name: t })).toBe(false);
+    expect(accepts({ ...focus, app_bundle_id: t })).toBe(false);
+  }
+  expect(accepts({ ...focus, app_name: "Mail <person:h_0123456789abcdef>" })).toBe(true);
+});
