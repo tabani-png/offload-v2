@@ -108,7 +108,9 @@ PRs #43 to #45 (their CI files are dropped in MIGRATION 5.6). **This slice never
     only on the publish step's job. A first step `secrets` exports `has_signing`, `has_notary`, `has_sparkle` as
     `${{ secrets.X != '' }}` booleans; each later step has `if:` on the matching output and a sibling step that prints
     the skip line when false. Steps: bundle, `sign.sh developer-id`, `check-bundle.sh`, `notarize.sh`, `appcast.sh
-    beta`, checksums, upload. Temporary keychain deleted in an `if: always()` step.
+    beta`, checksums, upload. Temporary keychain deleted in an `if: always()` step. The upload step authenticates
+    with `${{ github.token }}` (scoped by the job's `permissions`), never `secrets.GITHUB_TOKEN`, so the six
+    placeholder names stay the only `secrets.` references.
   - `promote-mac.yml`: `workflow_dispatch` only, `environment: release`, inputs `action` (`promote`, `halt`,
     `rerelease`) and `version`; promote sets `sparkle:phasedRolloutInterval`, halt removes the item, re-release
     publishes older code under a higher version.
@@ -131,7 +133,7 @@ folder `apps/mac/Tests/OffloadMacTests/M303/` (tag SPARKLE; runs only on macOS, 
 | SIGN | SIGN: appcast skips cleanly without the Sparkle private key | |
 | SIGN | SIGN: signing is inside-out and never uses --deep | static check of `sign.sh` |
 | SIGN | SIGN: every codesign call uses --options runtime --timestamp | static check |
-| RELEASE | RELEASE: every secret a workflow references is one of the six placeholder names | |
+| RELEASE | RELEASE: every secret a workflow references is one of the six placeholder names | `secrets.GITHUB_TOKEN` counts as a violation; uploads use `github.token` |
 | RELEASE | RELEASE: no job that runs on pull_request references a secret | |
 | RELEASE | RELEASE: release-mac runs only in the release environment, on a tag or manual dispatch, on macos-26 | |
 | RELEASE | RELEASE: the temporary keychain is deleted in a step that always runs | |
