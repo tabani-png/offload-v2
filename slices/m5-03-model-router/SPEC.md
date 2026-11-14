@@ -2,7 +2,7 @@
 id: m5-03-model-router
 title: Model router - the one egress for product model calls, with the person-name masking second pass, leak scan, budgets, escalation, label-only structured output and the optional local tier
 milestone: M5
-status: ready
+status: in_progress
 depends_on: [m1-02-contracts-ingest, m1-03-tenancy-rls, m3-01-ingest-batches]
 parallel_safe: true
 human_gated: false
