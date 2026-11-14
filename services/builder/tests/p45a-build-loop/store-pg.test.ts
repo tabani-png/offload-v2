@@ -4,7 +4,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { SQL } from "bun";
 import { migrate, PgBuildStore } from "../../src/store-pg.ts";
-import { BuildConflict, BuildEnded, type NewBuild } from "../../src/store.ts";
+import { BuildConflict, BuildEnded, HeldOutUsed, type NewBuild } from "../../src/store.ts";
 import { OTHER_TENANT, T0, TENANT } from "./setup.ts";
 
 const URL = process.env["DATABASE_URL"] ?? "";
@@ -42,14 +42,17 @@ afterAll(async () => {
 
 let n = 0;
 const uuid = () => `0193a6f2-${(++n).toString(16).padStart(4, "0")}-7000-8000-${suffix.padEnd(12, "0").slice(0, 12).replace(/[^0-9a-f]/g, "0")}`;
-const newBuild = (brief_id: string, tenant_id = TENANT): NewBuild => ({
+/** Each build gets its own held-out hash (ADR 0029: a new build of a brief writes a new held-out check). */
+const newBuild = (brief_id: string, tenant_id = TENANT): NewBuild => withHeldOut(newBuildRaw(brief_id, tenant_id));
+const withHeldOut = (b: NewBuild): NewBuild => ({ ...b, bound_hashes: { ...b.bound_hashes, held_out_hash: b.id.replace(/-/g, "").padEnd(64, "c") } });
+const newBuildRaw = (brief_id: string, tenant_id = TENANT): NewBuild => ({
   tenant_id,
   id: uuid(),
   fix_id: "fix_x",
   brief_id,
   cap_usd4: 40_000,
   fanout_workers: 1,
-  bound_hashes: { brief_hash: "a".repeat(64), check_set_hash: "b".repeat(64), held_out_hash: `${brief_id}`.padEnd(64, "c").slice(0, 64), fixture_set_hash: "d".repeat(64), cap_usd: "4.0000" },
+  bound_hashes: { brief_hash: "a".repeat(64), check_set_hash: "b".repeat(64), held_out_hash: "", fixture_set_hash: "d".repeat(64), cap_usd: "4.0000" },
 });
 const STALE = 34 * 60_000;
 
@@ -116,15 +119,26 @@ describe("p45a Postgres build store", () => {
     expect((await store.get(TENANT, b.id))!.deployed_at).toBe(T0 + 2);
   });
 
-  test("HELDOUT: (Postgres) a held-out hash is used once a build of the brief ran a worker with it", async () => {
+  test("HELDOUT: (Postgres) a held-out hash used by a build of the brief is remembered", async () => {
     const nb = newBuild("brief_held");
     await store.insertQueued(nb, T0, STALE);
-    // queued, no worker ran: the held-out check revealed nothing yet (a stale build does not burn it)
-    expect(await store.heldOutUsed(TENANT, "brief_held", nb.bound_hashes["held_out_hash"]!)).toBe(false);
-    await store.putAttempt({ tenant_id: TENANT, id: uuid(), build_id: nb.id, ordinal: 1, sandbox_provider: "docker", sandbox_id: null, outcome: "fail", spent_usd4: 0, tries: 1, turns: 1, frozen_pass: false, held_out_pass: false, check_groups: [], artifact_sha256: null, artifact_bytes: 0, artifact_files: [], note: "" });
     expect(await store.heldOutUsed(TENANT, "brief_held", nb.bound_hashes["held_out_hash"]!)).toBe(true);
     expect(await store.heldOutUsed(TENANT, "brief_held", "e".repeat(64))).toBe(false);
     expect(await store.heldOutUsed(OTHER_TENANT, "brief_held", nb.bound_hashes["held_out_hash"]!)).toBe(false);
+  });
+
+  test("HELDOUT: (Postgres) a new build bound to a held-out hash an earlier build used is refused, also after stale recovery, and recovers nothing", async () => {
+    const first = newBuild("brief_held_again");
+    await store.insertQueued(first, T0, STALE);
+    const same = { ...newBuildRaw("brief_held_again"), bound_hashes: { ...first.bound_hashes } };
+    // live: the lock answers first
+    await expect(store.insertQueued(same, T0 + 1, STALE)).rejects.toBeInstanceOf(BuildConflict);
+    // stale: the reuse is refused and the stale build is left as it was (one transaction)
+    await expect(store.insertQueued({ ...same, id: uuid() }, T0 + STALE + 1, STALE)).rejects.toBeInstanceOf(HeldOutUsed);
+    expect((await store.get(TENANT, first.id))!.state).toBe("queued");
+    // with a fresh held-out check the stale build is recovered and the new one starts
+    await store.insertQueued(newBuild("brief_held_again"), T0 + STALE + 1, STALE);
+    expect((await store.get(TENANT, first.id))!.state).toBe("infra_failed");
   });
 
   test("READY: (Postgres) attempts round-trip with check groups and artifact facts", async () => {

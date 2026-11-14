@@ -9,6 +9,13 @@ import { BuildEnded } from "../../src/store.ts";
 import { checkSet, FIX, harness, hashesOf, HELDOUT_CONTENT, MEMBER, T0, TENANT, text, type Verdict } from "./setup.ts";
 
 const ok = (h: ReturnType<typeof harness>) => okBuild(h.deps, { tenant_id: TENANT, member_id: MEMBER, fix_id: FIX, body: hashesOf(h.fix) });
+/** A new build of the brief needs a new held-out check (ADR 0029): the fix designer writes one, the user OKs it. */
+let freshN = 0;
+const freshHeldOut = (h: ReturnType<typeof harness>) => {
+  const fresh = checkSet("held_out", HELDOUT_CONTENT.replace("edges", `edges, version ${++freshN}`));
+  h.fixes.fixes.get(`${TENANT}/${FIX}`)!.held_out = fresh;
+  return fresh;
+};
 const heldOutFailsFirst: Verdict = ({ work, shard }) => {
   const slug = text(work.has("slug.ts") ? { path: "", bytes: work.get("slug.ts")! } : undefined);
   if (slug === "") return { pass: false };
@@ -20,6 +27,7 @@ describe("p45a hardening", () => {
     const h = harness();
     const dead = await ok(h); // queued, its orchestrator never runs
     h.clock.now = T0 + h.deps.config.stale_after_ms + 1;
+    freshHeldOut(h);
     const fresh = await ok(h);
     expect(fresh.build_id).not.toBe(dead.build_id);
     const old = (await h.store.get(TENANT, dead.build_id))!;
@@ -81,7 +89,21 @@ describe("p45a hardening", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.state).toBe("failed");
     h.approvals.mint = MemoryApprovals.prototype.mint.bind(h.approvals);
+    freshHeldOut(h);
     expect((await ok(h)).build_id).not.toBe(rows[0]!.id);
+  });
+
+  test("HELDOUT: a held-out check is used as soon as a build of the brief is bound to it: after stale recovery the same hash is refused (ADR 0029)", async () => {
+    const h = harness();
+    const dead = await ok(h); // no worker ever ran
+    h.clock.now = T0 + h.deps.config.stale_after_ms + 1;
+    const err = await ok(h).catch((e) => e);
+    expect(err).toBeInstanceOf(OkBuildError);
+    expect((err as OkBuildError).code).toBe("state_conflict");
+    expect((await h.store.get(TENANT, dead.build_id))!.state).toBe("queued");
+    freshHeldOut(h);
+    expect((await ok(h)).build_id).not.toBe(dead.build_id);
+    expect((await h.store.get(TENANT, dead.build_id))!.state).toBe("infra_failed");
   });
 
   test("LOCK: a build younger than the stale limit still refuses (409) and is left alone", async () => {
