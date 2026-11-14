@@ -39,6 +39,15 @@ export function nameWords(name: string): string[] {
   return [...new Set(safeName(name).toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 3))].sort();
 }
 
+const LINKISH_TLDS = "com|net|org|io|ai|app|dev|co|so|me|us|uk|de|fr|eu|edu|gov|info|biz|xyz|tech|cloud";
+const HOST_TOKEN_RE = new RegExp(`\\b[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.(?:${LINKISH_TLDS})\\b`, "i");
+
+/** Stricter than hasLeak, for text the user types (goals, role, industry): also refuses `www.` and host names such
+ * as `acme.com`. A dotted word with no web suffix (`Node.js`) is fine. */
+export function hasLink(text: string): boolean {
+  return hasLeak(text) || /\bwww\./i.test(text) || HOST_TOKEN_RE.test(text);
+}
+
 /** True when the text holds an email address or a URL. */
 export function hasLeak(text: string): boolean {
   // A bare host (`www.notion.so`) is allowed C1 metadata; a URL with a scheme or a path is not.

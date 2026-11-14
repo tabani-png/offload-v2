@@ -96,12 +96,13 @@ export function buildDayRecords(
       }
     }
 
-    // Focus blocks: runs of spans of one task with gaps up to FOCUS_GAP_SECONDS, at least FOCUS_BLOCK_MINUTES active.
+    // Focus blocks: runs of spans of one task with gaps under FOCUS_GAP_SECONDS, at least FOCUS_BLOCK_MINUTES active
+    // (ARCHITECTURE section 5: gaps under 2 min).
     let run: { key: string; spans: WindowSpan[]; end: number; seconds: number } | undefined;
     const runs: Array<NonNullable<typeof run>> = [];
     for (const s of spans) {
       const key = taskOfSpan.get(s.id);
-      if (run !== undefined && key !== undefined && run.key === key && s.start - run.end <= FOCUS_GAP_SECONDS * 1000) {
+      if (run !== undefined && key !== undefined && run.key === key && s.start - run.end < FOCUS_GAP_SECONDS * 1000) {
         run.spans.push(s);
         run.end = Math.max(run.end, s.end);
         run.seconds += s.activeSeconds;
@@ -154,7 +155,7 @@ export function buildDayRecords(
         active_minutes: figure(activeMinutes, "minutes", `sum of ${spans.length} spans' active time, idle removed = ${activeMinutes} min`, obsRefs(spans)),
         switches: figure(switches, "count", `${switches} times the app changed between consecutive spans`, switchRefs),
         switches_per_active_hour: figure(perHour, "per_hour", `${switches} switches / (${activeMinutes} min / 60) = ${perHour} per active hour`, []),
-        focus_blocks: figure(blocks.length, "count", `runs of one task with gaps up to ${FOCUS_GAP_SECONDS / 60} min lasting at least ${FOCUS_BLOCK_MINUTES} min: ${blocks.length}`, epRefs(blockIds)),
+        focus_blocks: figure(blocks.length, "count", `runs of one task with gaps under ${FOCUS_GAP_SECONDS / 60} min lasting at least ${FOCUS_BLOCK_MINUTES} min: ${blocks.length}`, epRefs(blockIds)),
         focus_minutes: figure(focusMinutes, "minutes", `active time in ${blocks.length} focus blocks = ${focusMinutes} min`, epRefs(blockIds)),
         meeting_minutes: figure(minutesOf(meeting), "minutes", `active time of ${meeting.length} meeting spans = ${minutesOf(meeting)} min`, obsRefs(meeting)),
       },

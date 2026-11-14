@@ -4,6 +4,7 @@
 // do not make a number known.
 import type { CompleteText } from "../user-model/ports.ts";
 import { userContextBlock, type UserContext } from "../understanding/context.ts";
+import { hasLeak } from "../user-model/names.ts";
 import { isFigure, r1, r2 } from "./figure.ts";
 import type { WeekRecord } from "./week-record.ts";
 
@@ -75,6 +76,7 @@ export async function writeWeekSentence(
     return fallback;
   }
   const sentence = reply.trim().split("\n")[0]?.trim() ?? "";
-  if (sentence === "" || sentence.length > MAX_SENTENCE || !checkNarrative(sentence, record).ok) return fallback;
+  // A link or an email address is never stored (the repository would refuse it); the code sentence stands.
+  if (sentence === "" || sentence.length > MAX_SENTENCE || hasLeak(sentence) || !checkNarrative(sentence, record).ok) return fallback;
   return { sentence, source: "model" };
 }

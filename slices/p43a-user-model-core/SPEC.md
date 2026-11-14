@@ -37,7 +37,7 @@ map, the bugs fixed and the stubs: [DESIGN.md](DESIGN.md).
   same kind, app and host with masked-name Jaccard ≥ 0.5 (empty word sets never match); else centroid cosine ≥ 0.85;
   else a new `k_` + 12 hex key. Bigger tasks claim keys first; a key is used at most once per window.
 - Records (`src/records/`): `buildDayRecords(window, keys, now)` gives one `DayRecord` per closed day in the member's
-  timezone and `Episode`s (`task_instance` per instance, `focus_block` per run of one task with gaps ≤ 2 min lasting
+  timezone and `Episode`s (`task_instance` per instance, `focus_block` per run of one task with gaps under 2 min lasting
   ≥ 25 min). `buildWeekRecord` (baseline = median of the task's minutes in the 8 calendar weeks before, over the weeks
   it was present; status `new`, `recurring`, `gone`), `buildRollup` for months (weeks whose Monday is in the month,
   persistent in ≥ 75% of recorded weeks) and quarters (≥ 8/13), Theil-Sen slope over (week index, minutes) with 3 or
