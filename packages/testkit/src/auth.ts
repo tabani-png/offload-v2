@@ -82,7 +82,7 @@ export async function fakeOidcIssuer(opts: {
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
   const handler = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-    const req = input instanceof Request ? input : new Request(input, init);
+    const req = input instanceof Request ? input : new Request(input.toString(), init);
     const url = new URL(req.url);
     if (url.origin !== new URL(issuer).origin) throw new Error("fake OIDC issuer: request to a host it does not serve");
     if (req.method === "GET" && url.pathname === "/.well-known/openid-configuration") {
@@ -154,20 +154,20 @@ export class FakeMailer {
 
 export interface DeviceKey {
   /** Public part only: { kty: "EC", crv: "P-256", x, y }. */
-  publicJwk: JsonWebKey;
+  publicJwk: JWK;
   /** ECDSA P-256 / SHA-256 over the bytes; 64-byte raw r‖s (Swift rawRepresentation), base64url, no padding. */
   sign(data: Uint8Array | string): Promise<string>;
   /** The same signature DER-encoded (Swift derRepresentation): the server must refuse it. */
   signDer(data: Uint8Array | string): Promise<string>;
 }
 
-const bytesOf = (d: Uint8Array | string) => (typeof d === "string" ? new TextEncoder().encode(d) : d);
+const bytesOf = (d: Uint8Array | string): Uint8Array<ArrayBuffer> => (typeof d === "string" ? new TextEncoder().encode(d) : new Uint8Array(d));
 
 /** A device key the way the Mac makes one (P-256). */
 export async function deviceKey(): Promise<DeviceKey> {
   const pair = await webcrypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
   const full = await webcrypto.subtle.exportKey("jwk", pair.publicKey);
-  const publicJwk: JsonWebKey = { kty: "EC", crv: "P-256", x: full.x!, y: full.y! };
+  const publicJwk: JWK = { kty: "EC", crv: "P-256", x: full.x!, y: full.y! };
   const raw = async (d: Uint8Array | string) =>
     new Uint8Array(await webcrypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, pair.privateKey, bytesOf(d)));
   return {
@@ -193,10 +193,10 @@ export function rawToDer(raw: Uint8Array): Uint8Array {
 }
 
 /** An ES256 (P-256) device-token signing key: PKCS#8 PEM for the API, public JWK for tests that verify tokens. */
-export function deviceTokenSigningKey(): { pkcs8Pem: string; publicJwk: JsonWebKey } {
+export function deviceTokenSigningKey(): { pkcs8Pem: string; publicJwk: JWK } {
   const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   return {
     pkcs8Pem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
-    publicJwk: publicKey.export({ format: "jwk" }) as JsonWebKey,
+    publicJwk: publicKey.export({ format: "jwk" }) as JWK,
   };
 }

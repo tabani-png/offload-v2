@@ -4,6 +4,7 @@ import {
   FakeClock, FakeMailer, deviceKey, deviceTokenSigningKey, fakeOidcIssuer, pgTenantFixture, pkcePair,
   type DeviceKey, type FakeOidcIssuer, type PgTenantFixture,
 } from "@offload/testkit";
+import type { JWK } from "jose";
 import { createApp, createOidcClient } from "../../src/index.ts";
 
 /** Shared setup for the m1-04 suite: real Postgres (offload_app pool), a fake OIDC issuer, a fake clock and mailer. */
@@ -18,7 +19,7 @@ export interface Harness {
   clock: FakeClock;
   issuer: FakeOidcIssuer;
   mailer: FakeMailer;
-  signingKey: { pkcs8Pem: string; publicJwk: JsonWebKey };
+  signingKey: { pkcs8Pem: string; publicJwk: JWK };
   req(path: string, init?: RequestInit & { cookie?: string; csrf?: string; bearer?: string; json?: unknown }): Promise<Response>;
   close(): Promise<void>;
 }
@@ -42,7 +43,7 @@ export async function makeHarness(): Promise<Harness> {
   });
   return {
     fx, clock, issuer, mailer, signingKey,
-    req: (path, init = {}) => {
+    req: async (path, init = {}) => {
       const { cookie, csrf, bearer, json, ...rest } = init;
       const headers = new Headers(rest.headers);
       if (cookie) headers.set("cookie", cookie);
