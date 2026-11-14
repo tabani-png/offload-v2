@@ -15,6 +15,10 @@ describe("m5-03 labels", () => {
       { type: "object", properties: { items: { type: "array", items: { type: "number" } } } },
       { type: "object", properties: { nested: { type: "object", properties: { n: { type: ["string", "number"] } } } } },
       { type: "object", properties: { any: {} } },
+      { type: "array", items: { type: "boolean" }, prefixItems: [{ type: "number" }] },
+      { type: "object", properties: { a: { type: "boolean" } }, if: { properties: { a: { const: true } } }, then: { properties: { n: { type: "integer" } } } },
+      { type: "object", properties: { a: { type: "boolean" } }, dependentSchemas: { a: { properties: { n: { type: "number" } } } } },
+      { type: "string", const: "x", "x-offload-text": false },
     ];
     for (const s of bad) expect(() => assertLabelSchema(s)).toThrow(LabelSchemaError);
 

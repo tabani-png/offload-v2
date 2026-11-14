@@ -82,18 +82,21 @@ describe("m5-03 budgets", () => {
     const first = await route(call({ call_id: "c_once", scope: "design", scope_id: "opp_1" }), h.deps);
     expect(first.status).toBe("ok");
     expect(h.ledger.entries).toHaveLength(1);
+    expect(h.ledger.reservations).toHaveLength(1);
     const e = h.ledger.entries[0]!;
+    const resv = h.ledger.reservations[0]!;
     expect(e.idempotency_key).toBe("c_once");
+    expect(resv.idempotency_key).toBe("c_once");
     expect(e.scope).toBe("design");
     expect(e.scope_id).toBe("opp_1");
     expect(e.model).toBe("claude-haiku-5-5");
-    expect(e.state).toBe("settled");
+    expect(resv.settled_at).not.toBeNull();
     const req = h.provider.requests[0]!;
     const inTok = h.provider.estimateInputTokens(req);
     // Settled with actual usage: input tokens × input price + 10 output tokens × output price.
     expect(e.usd).toBeCloseTo((inTok * TEST_PRICES.haiku.in + 10 * TEST_PRICES.haiku.out) / 1e6, 12);
     // Reserved at worst case: input tokens × input price + max_tokens × output price.
-    expect(e.reserved_usd).toBeCloseTo((inTok * TEST_PRICES.haiku.in + 200 * TEST_PRICES.haiku.out) / 1e6, 12);
+    expect(resv.reserved_usd).toBeCloseTo((inTok * TEST_PRICES.haiku.in + 200 * TEST_PRICES.haiku.out) / 1e6, 12);
     expect(first.status === "ok" && first.usd).toBeCloseTo(e.usd, 12);
     expect(h.ledger.usage).toEqual([
       { tenant_id: TENANT, day: "2026-11-14", model: "claude-haiku-5-5", route: "classify", calls: 1, input_tokens: inTok, output_tokens: 10, usd: e.usd },
@@ -115,11 +118,12 @@ describe("m5-03 budgets", () => {
     const h = harness({ provider: { script: { haiku: ["refusal"], sonnet: ["refusal"] } } });
     const res = await route(call({ call_id: "c_esc", run_id: "r_esc" }), h.deps);
     expect(res.status).toBe("ok");
-    expect(h.ledger.entries.map((e) => [e.idempotency_key, e.model, e.state])).toEqual([
-      ["c_esc", "claude-haiku-5-5", "settled"],
-      ["c_esc:2", "claude-sonnet-5-5", "settled"],
-      ["c_esc:3", "claude-opus-5-5", "settled"],
+    expect(h.ledger.entries.map((e) => [e.idempotency_key, e.model])).toEqual([
+      ["c_esc", "claude-haiku-5-5"],
+      ["c_esc:2", "claude-sonnet-5-5"],
+      ["c_esc:3", "claude-opus-5-5"],
     ]);
+    expect(h.ledger.reservations.every((r) => r.settled_at !== null)).toBe(true);
     if (res.status === "ok") {
       expect(res.attempts.map((a) => a.tier)).toEqual(["haiku", "sonnet", "opus"]);
       expect(res.usd).toBeCloseTo(h.ledger.entries.reduce((s, e) => s + e.usd, 0), 12);
@@ -132,5 +136,42 @@ describe("m5-03 budgets", () => {
     if (tight.status === "needs_you") expect(tight.reason).toBe("run_budget_reached");
     expect(h2.provider.tiers()).toEqual(["haiku"]);
     expect(h2.ledger.entries).toHaveLength(1);
+  });
+
+  test("BUDGET: concurrent calls cannot overrun the monthly budget", async () => {
+    const ledger = new InMemoryBudgetLedger({ monthlyBudgetUsd: 50 });
+    ledger.seedMonthSpend(TENANT, 49.975);
+    const h = harness({ ledger });
+    // Each draft reserves about 0.0201 USD worst case; only one fits in the 0.025 left.
+    const results = await Promise.all([1, 2, 3, 4, 5].map((i) => route(call({ call_id: `c_par_${i}`, route: "draft", max_tokens: 1000 }), h.deps)));
+    expect(results.filter((r) => r.status === "ok")).toHaveLength(1);
+    for (const r of results.filter((r) => r.status !== "ok")) {
+      expect(r.status === "needs_you" && r.reason).toBe("monthly_budget_reached");
+    }
+    expect(h.provider.requests).toHaveLength(1);
+    expect(ledger.reservations).toHaveLength(1);
+    // Same for a run budget.
+    const h2 = harness();
+    const runResults = await Promise.all([1, 2, 3].map((i) => route(call({ call_id: `c_run_par_${i}`, run_id: "r_par", run_budget_usd: 0.025, route: "draft", max_tokens: 1000 }), h2.deps)));
+    expect(runResults.filter((r) => r.status === "ok")).toHaveLength(1);
+    expect(h2.provider.requests).toHaveLength(1);
+  });
+
+  test("BUDGET: a call id already in flight is not sent twice and a provider error settles at the reserved amount", async () => {
+    const h = harness();
+    const [a, b] = await Promise.all([route(call({ call_id: "c_dup" }), h.deps), route(call({ call_id: "c_dup" }), h.deps)]);
+    expect([a.status, b.status].sort()).toEqual(["needs_you", "ok"]);
+    const dup = a.status === "needs_you" ? a : b;
+    expect(dup.status === "needs_you" && dup.reason).toBe("call_in_flight");
+    expect(h.provider.requests).toHaveLength(1);
+    expect(h.ledger.reservations).toHaveLength(1);
+
+    // A provider error may come after the provider billed: settle at the worst case, never at zero.
+    const e = harness({ provider: { script: { haiku: ["error"] } } });
+    const res = await route(call({ call_id: "c_err" }), e.deps);
+    expect(res.status === "needs_you" && res.reason).toBe("provider_error");
+    expect(e.ledger.entries).toHaveLength(1);
+    expect(e.ledger.entries[0]!.usd).toBeCloseTo(e.ledger.reservations[0]!.reserved_usd, 12);
+    expect(e.ledger.entries[0]!.usd).toBeGreaterThan(0);
   });
 });

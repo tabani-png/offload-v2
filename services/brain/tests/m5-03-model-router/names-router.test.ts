@@ -26,7 +26,7 @@ describe("m5-03 router masking", () => {
     const surfaces = {
       result: JSON.stringify(res),
       log: JSON.stringify(h.log.lines),
-      ledger: JSON.stringify(h.ledger.entries) + JSON.stringify(h.ledger.usage),
+      ledger: JSON.stringify(h.ledger.entries) + JSON.stringify(h.ledger.reservations) + JSON.stringify(h.ledger.usage),
       audit: JSON.stringify(h.audit.events),
     };
     for (const [where, text] of Object.entries(surfaces)) {
@@ -40,5 +40,27 @@ describe("m5-03 router masking", () => {
     const h2 = harness({ provider: { okContent: '{"label":"low"}' } });
     const r2 = await route(call({ route: "label", schema: { ...LABEL_SCHEMA }, messages: [{ role: "user", content: "Priya Holmvik asked." }] }), h2.deps);
     expect(JSON.stringify(r2)).not.toContain("Priya");
+  });
+
+  test("NAMES: a name in the schema is refused and a run's later own name is still masked", async () => {
+    const h = harness();
+    const schema = {
+      type: "object",
+      properties: { who: { type: "string", enum: ["Margaret Holloway", "Theodore Vance"], description: "Pick Margaret Holloway or Theodore Vance" } },
+      required: ["who"],
+      additionalProperties: false,
+    };
+    const r = await route(call({ route: "label", schema }), h.deps);
+    expect(r.status === "refused" && r.reason).toBe("schema_holds_name");
+    expect(h.provider.requests).toHaveLength(0);
+
+    // Within one run, a later call that names the member's own name masks it (masker settings follow the call).
+    const { RunMaskers } = await import("../../src/models/router.ts");
+    const h2 = harness();
+    h2.deps.maskers = new RunMaskers();
+    await route(call({ call_id: "c_r1", run_id: "run1", messages: [{ role: "user", content: "Sort these." }] }), h2.deps);
+    await route(call({ call_id: "c_r2", run_id: "run1", own_name: "Zorvak Quellin", messages: [{ role: "user", content: "From Zorvak Quellin: sort these." }] }), h2.deps);
+    expect(JSON.stringify(h2.provider.requests)).not.toContain("Zorvak");
+    expect(h2.provider.requests[1]!.messages[0]!.content).toContain(".me>");
   });
 });

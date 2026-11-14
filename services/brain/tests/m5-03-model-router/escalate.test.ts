@@ -57,7 +57,8 @@ describe("m5-03 escalation", () => {
       expect(r2.attempts.map((a) => a.tier)).toEqual(["sonnet", "opus"]);
     }
     expect(all.provider.tiers()).toEqual(["sonnet", "opus"]);
-    expect(all.ledger.entries.every((e) => e.state === "settled")).toBe(true);
+    expect(all.ledger.reservations.every((r) => r.settled_at !== null)).toBe(true);
+    expect(all.ledger.entries).toHaveLength(2);
   });
 
   test("ESCALATE: a model step drops to haiku after 5 clean runs and returns to sonnet on an edit", () => {
