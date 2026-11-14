@@ -92,7 +92,15 @@ async function durableDump(): Promise<string> {
 }
 
 // ---- kill scenario (child Bun process), run once and shared by the first two tests ----
-let scenario: Promise<{ workflowId: string; checkpointBeforeKill: boolean; killedExit: number }> | undefined;
+let scenario: Promise<{ workflowId: string; checkpointBeforeKill: boolean; killedExit: number; killedAlive: boolean }> | undefined;
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 function killScenario() {
   scenario ??= (async () => {
     const wd = mkdtempSync(join(tmpdir(), "durable-kill-"));
@@ -105,11 +113,12 @@ function killScenario() {
     await waitFor("step one checkpoint row", async () => (await checkpointed()) || null);
       first.kill("SIGKILL");
     const killedExit = await first.exited;
+    const killedAlive = alive(Number(await Bun.file(join(wd, "start.pid")).text()));
     await Bun.write(join(wd, "release"), "go");
     const second = Bun.spawn(["bun", script, "resume", wd, workflowId], { env, stdout: "ignore", stderr: "ignore" });
     expect(await second.exited).toBe(0);
     scenarioDir = wd;
-    return { workflowId, checkpointBeforeKill: true, killedExit };
+    return { workflowId, checkpointBeforeKill: true, killedExit, killedAlive };
   })();
   return scenario;
 }
@@ -119,6 +128,7 @@ test("DURABLE: a two-step workflow killed between steps resumes once on Bun", as
   const s = await killScenario();
   expect(s.checkpointBeforeKill).toBe(true);
   expect(s.killedExit).not.toBe(0); // it really was killed
+  expect(s.killedAlive).toBe(false); // the workflow process itself, not only a launcher in front of it
   expect(count(join(scenarioDir, "step1.count"))).toBe(1);
   expect(count(join(scenarioDir, "step2.count"))).toBe(1);
   expect(await stateOf(s.workflowId)).toBe("success");
