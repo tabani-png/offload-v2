@@ -242,11 +242,57 @@ and the runtime never re-resolves ([ADR 0033](adr/0033-pinned-connector-resoluti
 | Method and path | Request | Response |
 |---|---|---|
 | `GET /v1/connections` | | `Connection[]` (no secrets; with `account_label`, `state`) |
-| `POST /v1/connections` | `{ adapter, provider, workspace_id, personal: bool }` | `{ connection_id, authorize_url? }` |
+| `POST /v1/connections` | `{ adapter, provider, workspace_id, personal: bool, api_key? }` (`api_key` only for method `openapi`) | 201 `{ connection_id, authorize_url? }` |
+| `GET /v1/connections/callback?state=&code=` | the OAuth redirect from the provider, through the broker | 302 to `/connections?connection_id=`; the connection becomes `active` and its tools are pinned |
 | `GET /v1/connections/{id}/tools` | | `{ tools: [{ name, pin_hash }] }` |
 | `DELETE /v1/connections/{id}` | | 204 (credential crypto-shredded by the broker) |
 | `GET /v1/capabilities` | | `Capability[]` with argument schemas and step class |
 | `GET /v1/catalog` | | launch catalog: per app the method (`google_internal`, `composio`, `mcp`, `openapi`) |
+
+**Implementation (m2-02).** Shapes are in `packages/contracts/src/connections` (`CatalogEntrySchema`,
+`ConnectionSchema`, `ConnectionCreateSchema`, `ConnectionCreatedSchema`, `ToolPinListSchema`, `CapabilitySchema`;
+JSON Schemas `catalog-entry`, `connection`, `connection-create`, `connection-created`, `tool-pin-list`, `capability`).
+The connector port, catalog, capabilities and pins are in `packages/connectors-sdk`.
+- `CatalogEntry { app, provider, method, adapter, scopes[], capabilities[], s5_verified_at }`: `app` is the display
+  name and `provider` the stable slug (`gmail`, `google_calendar`, `google_sheets`, `google_drive`, `slack`, `notion`,
+  `linear`, `stripe`, `quickbooks`, `xero`). The launch catalog is data (`packages/connectors-sdk/src/catalog/launch.json`)
+  and every entry ships with `s5_verified_at: null`; only entries spike S5 dated are offered. Spike S5's result is
+  recorded by setting the date in that file, in a separate commit the owner reviews.
+- `Connection { connection_id, workspace_id, member_id | null, adapter, provider, account_label | null,
+  capabilities[], state, created_at }`. `external_ref` and `account_hash` are never on the wire. Members see workspace
+  connections (`member_id` null) and their own; owner and admin see every connection of the tenant.
+- `Capability { name, step_class: "read" | "draft" | "commit", argument_schema, commit_arguments_allowlist? }`; a
+  commit capability without an allowlist fails to load.
+- `POST /v1/connections`: the entry is found by `provider`; an app not in the catalog, not verified in S5, or with a
+  different `adapter` is 400 `invalid_request`. `api_key` is required for method `openapi` (the Stripe restricted key)
+  and refused for the others; it goes straight to the broker and is never stored, logged, audited or echoed. For
+  `google_internal`, `mcp` and `composio` the row starts `needs_reauth` and the broker's `authorize_url` is returned;
+  for `openapi` the row is `active` at once and its tools are pinned. `personal: false` (a workspace connection) needs
+  owner or admin (else 403 `forbidden`); a Composio connection is always personal (else 400), so Composio's `user_id`
+  stays the member uuid. The workspace must be one the caller belongs to (owner and admin: any of the tenant), else
+  400. `Idempotency-Key` (ULID) is honoured as in [Conventions](#1-conventions); a replay while the first request is
+  still running is 409 `idempotency_conflict`.
+- Callback: `state` and `code` go to the broker (PKCE, `state` and the code exchange happen there); an authorization
+  the broker cannot finish is 400 `invalid_request`; a connection that is not `needs_reauth` is 409 `state_conflict`.
+- Pins: each listed tool's `pin_hash` = sha256 of JCS `{ name, description, input_schema }`, written to
+  `connection_tool_pins` when the connection is activated. Annotations (`readOnlyHint` and the rest) are not hashed. A
+  pin is never overwritten; pins change only through repair or re-approval. Composio meta tools (search,
+  multi-execute, remote workbench, remote bash, proxy execute) are filtered from every tool list and refused as pins.
+  `comparePins` (`packages/connectors-sdk/src/pins.ts`) reports changed, removed and adapter changes for the runtime.
+- Composio sessions name the member uuid as `user_id` (never an email), one toolkit and an explicit tool allowlist
+  derived from the entry's capabilities (`packages/connectors-sdk/src/composio.ts`).
+- Every secret operation goes through `BrokerPort` (`oauthBegin`, `oauthFinish`, `putApiKey`, `listTools`, `shred`);
+  no broker call happens inside a transaction. Without a broker configured, `POST`, the callback and `DELETE` are 404.
+- Audit (same transaction, ids and hashes only): `connection.created` (`{ provider, adapter, method, personal }`),
+  `connection.activated` (`{ account_hash }`), `connection.pins_recorded` (`{ count, pins_hash }`),
+  `connection.revoked` (`{ via }`, `session`, `member_token` or `connect_failed`).
+- Roles: an `auditor` gets 403 `forbidden` on `POST`, the callback and `DELETE`. Deleting a workspace connection needs
+  owner or admin. A member who cannot see a connection gets 404.
+- Activation and pins are one transaction: the tools are listed first (outside any transaction), then the connection
+  becomes `active` and its pins are written together. If listing fails at the callback the connection stays
+  `needs_reauth`; if it fails after a Stripe key was stored, the broker shreds the key and the connection is `revoked`.
+  A connection revoked while its `POST` runs is never reactivated (409 `state_conflict`). The `Idempotency-Key` record
+  is bound to the member who sent it.
 
 ### Metrics, audit and policy
 
