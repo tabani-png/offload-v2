@@ -12,6 +12,10 @@ Run the app from a checkout: `swift run Offload`. Launch flags: `--onboarding` (
 `--onboarding-screen <n>` (open setup at screen n, 0 to 13; [ONBOARDING.md](../../docs/ONBOARDING.md)). A `swift run`
 binary is not a signed bundle, so macOS permission grants do not stick to it; daily use needs the bundled app (m3-03).
 
+Test build (slice m3-09): `TestBuild/build-app.sh all <out-dir>` builds an ad hoc signed `Offload.app` (bundle id
+`ai.offload.mac.dev`) and its zip; CI's `mac-artifact` workflow uploads it. `Offload --version` prints the version,
+build, commit and bundle id. Install steps: [TestBuild/INSTALL_AND_TEST.md](TestBuild/INSTALL_AND_TEST.md).
+
 Layout of `Sources/OffloadMac` (slice m3-04): `Shell/` launch route, app model, root and menu bar views; `Onboarding/`
 the screen-by-screen flow (pure state machine, copy, injected services, views); `Permissions/` the Accessibility and
 Screen Recording checks; `LocalNow/` the local now summary; `NeverWatch/` the exclusions the observer reads; `Today/`;

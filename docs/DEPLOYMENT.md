@@ -245,6 +245,7 @@ Ported from `ci/mac-release-workflow` (`3833218`), which was never pushed:
 | Workflow | Trigger | Jobs |
 |---|---|---|
 | `ci.yml` | pull request, push to `main` | `core`, `mac` (path-filtered), Postgres-backed tests |
+| `mac-artifact.yml` (m3-09) | push to the W1-H branch, pull request, manual | Release `swift build`, `Offload.app` with the dev bundle id `ai.offload.mac.dev`, ad hoc signature, installed-copy smoke check (`Offload --version` under `env -i`), upload of `Offload-mac-<shortsha>.zip` and the [test build guide](../apps/mac/TestBuild/INSTALL_AND_TEST.md) for 14 days. Folds into `release-mac.yml` and the `mac` job when m3-03 lands |
 | `release-mac.yml` | version tag or manual, `release` environment with a required reviewer | Bundle, sign, notarize, staple, DMG, checksums, notices file, debug symbols; from M3 the Sparkle archive, EdDSA signature, appcast entry and deltas, published to the beta channel |
 | `promote-mac.yml` (M3) | manual | Promote beta to stable with phased rollout, halt, or re-release a previous build as a higher version |
 | `deploy-cloud.yml` | push to `main` (when the cloud exists), manual approval for production | Build and scan the image, migrate, roll out, smoke and canary checks, roll back on failure ([section 7.3](#73-deploy-pipeline)) |
