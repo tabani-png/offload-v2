@@ -20,7 +20,8 @@ Claude-specific notes are in [CLAUDE.md](CLAUDE.md).
 - **Tests first, red first.** Write the slice's red tests, run them, see them fail for the right reason, then write
   code until they pass. Never edit a test to make it pass unless the SPEC was wrong; then fix the SPEC too and note it
   under "Scope changes".
-- **Stay in scope.** Change only `paths_in_scope`. Touching `paths_out_of_scope` fails `verify.sh`. If you must widen
+- **Stay in scope.** Change only `paths_in_scope`. A changed file outside `paths_in_scope`, or inside
+  `paths_out_of_scope`, fails `verify.sh`. If you must widen
   scope, stop and write a "Scope changes" note in the SPEC explaining why, in the same commit.
 - **Numbers come from code** ([ADR 0003](docs/adr/0003-numbers-come-from-code.md)). A model never produces a number
   a user sees or a decision uses.
@@ -48,25 +49,45 @@ Front-matter keys (all required; `scripts/check-slices.sh` lints them):
 
 | Key | Meaning |
 |---|---|
-| `id` | Folder name, for example `m1-04-ingest-batches` (milestone, two-digit number, short name) |
+| `id` | Folder name, for example `m3-01-ingest-batches` (milestone, two-digit number, short name) |
 | `title` | One line in glossary words |
 | `milestone` | `M1` … `M9` from [ROADMAP.md](docs/ROADMAP.md) |
 | `status` | `ready`, `in_progress` or `done` (`template` only for `_template`) |
-| `depends_on` | Slice ids that must be `done` first |
-| `parallel_safe` | `true` if it can run beside other slices without touching the same files |
+| `depends_on` | Slice ids that must be `done` first (each must be a folder under `slices/`) |
+| `parallel_safe` | `true` if it can run at the same time as the other slices in its `parallel_group` (rules below) |
 | `human_gated` | `true` if the owner must act (grant permissions, approve a spend, see a demo) |
+| `model_tier` | `opus`, `sonnet` or `haiku`: the tier that implements it. Opus always plans and reviews |
+| `size` | `S` (under a day), `M` (1 to 2 days) or `L` (3 to 5 days) |
+| `parallel_group` | Wave label, for example `M1-A`. Groups run in order (`M1-A` before `M1-B`); slices in one group do not depend on each other |
+| `owns` | Shared paths this slice is the only writer of while it runs; `[]` if none |
 | `verify` | The command, always `bash slices/<id>/verify.sh` |
 | `min_tests` | Minimum number of tests in the slice suite |
 | `paths_in_scope` | Globs the slice may change |
 | `paths_out_of_scope` | Globs it must not change |
 | `red_tests` | Tags; every test name starts with one, for example `test("INGEST: ...")` |
 
+These are the TASKS fields from the old repo's PR #42 (model tier, size, parallel group, shared-file ownership); the
+ROADMAP task tables for M2 and later use the same fields.
+
+**Parallel work and shared files.** Two slices run at the same time only if they are in the same `parallel_group` and
+both are `parallel_safe: true`. Otherwise they run one after the other. A path that more than one running slice could
+touch must be in exactly one of their `owns` lists; the others stay out of it. Root `package.json` and `bun.lock` are
+never owned: the second slice to land rebases, runs `bun install`, and commits the regenerated `bun.lock`.
+
+**Test names.** Write `test("TAG: sentence", ...)` with double quotes. `verify.sh` greps for `("TAG: `, so backticks,
+single quotes or `it(` are not found and the tag counts as missing. Swift slices use a suite named after the slice
+(for example `M302`).
+
 `verify.sh` (Bash 3.2 compatible, `set -uo pipefail`, one `FAIL ...` line per failing check): typecheck; the slice
 suite has at least `min_tests` tests and each tag has passing tests (`bun test <dir> -t "TAG: "`); the full suite
-passes; no file changed since `BASE` matches `paths_out_of_scope` (via `scripts/lib/slice-changes.sh`). Set `BASE` to
-the commit the slice starts from when you set `status: in_progress`.
+passes; every file changed since `BASE` matches `paths_in_scope` and none matches `paths_out_of_scope` (via
+`scripts/lib/slice-changes.sh`). `min_tests`, `red_tests` and both path lists are read from the SPEC front-matter;
+only `SLICE_ID`, `BASE`, `TEST_DIRS` and `NEEDS_POSTGRES` are edited in `verify.sh`. Set `BASE` to the commit the slice
+starts from when you set `status: in_progress`; `scripts/check-slices.sh` fails an `in_progress` or `done` slice with
+an empty `BASE`.
 
-`scripts/verify-all.sh` runs `verify.sh` for every slice marked `done`.
+`scripts/verify-all.sh` lints every SPEC and `verify.sh`, then runs `verify.sh` for every slice marked `done` with
+`SKIP_FULL_SUITE=1` (it already ran the full suite once).
 
 ## Definition of done
 
@@ -91,7 +112,8 @@ A slice is done when all of these hold:
 
 ## Commit identity
 
-Commit as the repo's configured identity (set in local git config):
+Every agent, whichever model it runs on, commits as the repo's one bot identity (set in local git config). The model
+is not the author; the review gate and the slice id in the message are the record of who did what:
 
 ```
 git -c user.name="Grok Bot" -c user.email="grok-bot@users.noreply.github.com" commit -m "..."
@@ -121,9 +143,19 @@ Never add a git remote or push unless the owner asks.
 
 ## Model and tool usage
 
-- Default models are configuration: Opus 5.5 (`claude-opus-5-5`) for design, check writing and verification;
-  Sonnet 5.5 (`claude-sonnet-5-5`) for building; Haiku 5.5 (`claude-haiku-5-5`) for classify and caption
-  ([ADR 0021](docs/adr/0021-model-router-and-builders.md)). Do not hard-code model ids outside config.
+**Standing rule from the owner: all building in this repo is done with Claude Code.**
+- Opus 5.5 (`claude-opus-5-5`) for architecture, design, slice planning and review. Claude Fable 5.2
+  (`claude-fable-5-2`) is also allowed for architecture and review work.
+- Sonnet 5.5 (`claude-sonnet-5-5`) for implementation.
+- By default Claude Code is signed into the owner's subscription with `ANTHROPIC_API_KEY` unset. Use an API key only
+  where the operator allows it (for example headless parallel workers), and only from the environment the operator set
+  up. Never print, log, echo or commit a key, and never check whether one is set by printing it.
+
+These are dev-time choices for agents working on the repo. The product's own model routes are configuration: Opus for
+design, check writing and verification, Sonnet for building, Haiku 5.5 (`claude-haiku-5-5`) for classify and caption
+([ADR 0021](docs/adr/0021-model-router-and-builders.md)). Fable is never a product route. Do not hard-code model ids
+outside config.
+
 - Tests never call a real model or a real third-party service. Use the fakes in `packages/testkit`. Live tests are
   tagged `LIVE:`, skip without credentials, and are never faked.
 - Use subagents for independent work. One writer per file at a time.

@@ -6,8 +6,9 @@ is missing, add it here first, in the same commit that uses it.
 Conventions:
 - Terms are in **bold**. Identifiers are in `code` and match [DATA_MODEL.md](DATA_MODEL.md) and [API.md](API.md).
 - "Core" means code outside `ee/`. "EE" means Enterprise code under `ee/`. See [OPEN_CORE.md](OPEN_CORE.md).
-- Banned words in product copy and APIs: "dry run" (see [ADR 0016](adr/0016-no-dry-run.md)), and the marketing words in
-  [PRODUCT.md](PRODUCT.md#copy-rules).
+- Milestones are M0 to M9 as in [ROADMAP.md](ROADMAP.md).
+- Banned words in product copy and APIs: "dry run" and "preview run" (see [ADR 0016](adr/0016-no-dry-run.md)), and the
+  marketing words in [PRODUCT.md](PRODUCT.md#copy-rules).
 
 ## Product and people
 
@@ -17,22 +18,35 @@ Conventions:
 | **Owner** (product) | Muhammad Ali Tabani. Makes the decisions listed in [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). Not to be confused with the `owner` role. |
 | **User** | A person who uses Offload. Muhammad is the first user. |
 | **Tenant of one** | A personal tenant with exactly one member. The first milestones run Offload for Muhammad as a tenant of one. |
-| **Plan** | A commercial tier: **Free** (open core, self-host or personal), **Pro** (hosted, small teams), **Enterprise** (governance, SSO/SCIM, deployment options). See [OPEN_CORE.md](OPEN_CORE.md). |
+| **Plan** | A commercial tier: **Free** (open core), **Pro** (hosted, teams), **Enterprise** (governance, SSO/SCIM, deployment options). Contents are a default pending [OQ-13](OPEN_QUESTIONS.md#oq-13-plan-contents-and-prices); see [OPEN_CORE.md](OPEN_CORE.md). |
+| **Single-player core** | The recommended default split: everything one person needs is core; team tenants are paid (EE, enabled for Pro). Pending OQ-13. |
+| **Operator item** | A task only the owner can do outside the code (an account, a certificate, a vendor agreement), with a lead time. Listed in [ROADMAP M0](ROADMAP.md#operator-items). |
+| **Spike** | A time-boxed experiment whose result is written into an ADR. Listed in [ROADMAP M0](ROADMAP.md#spikes). |
+| **Hand-fed loop** | M2: the build and run half proven on a task the user typed in, before capture feeds opportunities. |
 
 ## Clients and services
 
 | Term | Meaning |
 |---|---|
-| **Mac client** | The thin macOS app (`apps/mac`). Captures, masks on device, uploads, shows the UI. Holds no brain. |
-| **Observer** | The capture part of the Mac client: focus, window titles, idle, input counts, text on change, keyframes. No network code. |
+| **Mac client** | The thin macOS app (`apps/mac`). Captures, masks and pseudonymises on device, uploads, shows the UI, and runs attended device steps. Holds no brain. |
+| **Observer** | The capture part of the Mac client: focus, window titles, idle, Accessibility text, OCR fallback, keyframes. No network code. |
 | **Masker** | The on-device masking code. Runs before anything is stored or uploaded. |
-| **Web app** | The React app (`apps/web`) for Pro and Enterprise. Mirrors the Mac screens and adds admin screens. |
-| **API service** | `services/api`. The HTTP edge: public REST, device ingest, the Offload MCP server, inbound webhooks, auth. |
-| **Ingest** | The device upload module inside the API service. Accepts signed observation batches. |
-| **Brain** | `services/brain`. Understanding, user model, opportunity finder, fix designer. Runs in the cloud. |
-| **Builder** | `services/builder`. The build orchestrator: checks, approval, workers, verifier, receipts. |
-| **Runtime** | `services/runtime`. The routine runtime: triggers, durable runs, item journal, commits, measurement. |
-| **Durable runtime** | The Postgres-backed durable execution library used by the builder and runtime ([ADR 0009](adr/0009-durable-execution-on-postgres.md)). |
+| **Egress guard** | The Mac uploader: one destination, closed schemas, detectors again, fail closed ([ADR 0035](adr/0035-mac-egress-guard-and-ledger.md)). |
+| **Upload consent** | The member's **Start sending** on onboarding screen 5 ("What leaves your Mac"), recorded in `consents` with the notice version. Nothing is uploaded without a current one; a new notice version asks again. |
+| **Local mode** | Signed out, or signed in without upload consent: capture stays in the local 7-day buffer and nothing is uploaded. |
+| **Product mode** | What works given sign-in, upload consent, permissions and connections: `Full`, `Watching`, `Text only`, `Screen only`, `Connected apps only`, `Dormant`, `Local` ([ONBOARDING section 10.1](ONBOARDING.md#101-product-modes)). |
+| **Egress ledger** | The local 7-day record of every uploaded batch, shown in the app as "What was sent". |
+| **Actuator** | The Mac part that runs approved device steps from typed commands only (`OffloadActuator`, [ADR 0025](adr/0025-execution-placement-and-mac-actuator.md)). |
+| **Web app** | The React app (`apps/web`). All plans; hosted on Pro and Enterprise. Mirrors the Mac screens and adds admin screens. |
+| **Offload serve** | The one process that runs the four modules (`offload serve`) until there is a second tenant ([ADR 0023](adr/0023-service-layout.md)). |
+| **API module** | `services/api`. The HTTP edge: public REST, device ingest, device commands, inbound webhooks, auth; the Offload MCP server from M8. |
+| **Ingest** | The device upload part of the API module. Accepts signed batches of the closed upload kinds. |
+| **Brain** | `services/brain`. Understanding, user model, opportunities, fix designer, model router. Runs in the cloud. |
+| **Builder** | `services/builder`. The build orchestrator: checks, approval, workers, verification, verifier, receipts, model egress proxy. |
+| **Runtime** | `services/runtime`. The routine runtime: triggers, durable runs, gate, item journal, measurement. |
+| **Broker** | `services/broker`. The separate process that alone decrypts and uses connector credentials ([ADR 0034](adr/0034-credential-broker-and-key-providers.md)). |
+| **Key provider** | Where the broker's master key lives: `aws-kms`, `gcp-kms`, or `local` (a key file, for self-host). |
+| **Durable runtime** | The Postgres-backed durable execution library behind the `DurableRuntime` port ([ADR 0009](adr/0009-durable-execution-on-postgres.md)). Workflows end at every human wait. |
 
 ## Tenancy and identity
 
@@ -40,29 +54,40 @@ Conventions:
 |---|---|
 | **Tenant** | The top isolation boundary. Every tenant-owned row has `tenant_id`. Enforced by Postgres RLS. |
 | **Personal tenant** | A tenant created for one person at sign-up (`tenants.kind = 'personal'`). |
+| **Team tenant** | `tenants.kind = 'team'`: invites, several members, shared fixes. Paid under the OQ-13 default (`ee/packages/teams`). |
 | **Workspace** | A group inside a tenant (a team or department). Fixes and routines belong to a workspace. A personal tenant has one workspace. |
 | **Member** | A person in a tenant (`members` row). Has one **tenant role** and zero or more workspace memberships. |
+| **Member isolation** | The restrictive RLS policy on C1, C2 and C6 tables: a row is visible only to its member, or to an audited aggregate job. |
 | **Tenant role** | One of `owner`, `admin`, `member`, `auditor`. Plus the non-human `service` principal. |
 | **Workspace role** | One of `lead`, `member` within a workspace. |
 | **Principal** | Whoever makes a request: a member session, a device, a service, or a routine acting under a policy. |
-| **Device** | One enrolled Mac. Holds a P-256 key in the Keychain. |
-| **Device token** | A 15-minute ES256 JWT minted for a device after a signed challenge. Audience `device`. |
-| **Session** | A web or Mac UI login session (cookie `__Host-offload_session`). |
+| **Device** | One enrolled Mac. Holds a P-256 key in the Secure Enclave where available (else the Keychain, this device only). |
+| **Device token** | A 15-minute ES256 JWT minted after a signed challenge. Audience `device` (ingest, device commands) or `member` (the Mac UI calling REST as its member). |
+| **Session** | A web login session (cookie `__Host-offload_session`). The Mac UI uses device tokens instead. |
+| **Resolver function** | A `SECURITY DEFINER` database function that finds ids before the tenant is known (login, session, device, enrollment code, token). Returns ids only. |
 
 ## Capture and privacy
 
 | Term | Meaning |
 |---|---|
-| **Observation** | One masked event uploaded from the Mac: `focus`, `idle_start`, `idle_end`, `input_counts`, `text_snapshot`, `pause`, `resume`. |
+| **Observation** | One masked event uploaded from the Mac: `focus`, `idle_start`, `idle_end`, `input_counts` (only when turned on in Settings), `text_snapshot`, `pause`, `resume`, `permission_change`. |
+| **Accessibility text** | Text read from the focused window by a bounded Accessibility walk. The primary text source; OCR is the fallback under 200 characters. |
 | **Observation batch** | A signed, idempotent upload of observations. Upload kind `observation_batch`. |
-| **Upload kind** | One of the closed set `observation_batch`, `review_event`, `notice_ack`, `keyframe`. Anything else is rejected. |
+| **Upload kind** | One of the closed set `observation_batch`, `review_event`, `notice_ack`, `keyframe`, `step_result`. Anything else is rejected `unknown_kind`. |
 | **Keyframe** | A masked, downscaled screenshot. Stays on the Mac unless the user turns on `keyframes_to_cloud`. |
 | **Exclusion** | An app, host or title marker that is never observed. Built-in plus user-added ("Never watch"). |
-| **Data class** | `C0` raw on device, `C1` masked observations, `C2` derived user model, `C3` secrets, `C4` governance records, `C5` build artifacts. See [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md#2-data-classes). |
-| **Masking** | Replacing sensitive values (secrets, card numbers, emails, person names and so on) with placeholders before data leaves its boundary. |
-| **Person placeholder** | `<person:TAG.N>`, `<person:TAG.N.first>`, `<person:TAG.me>`. `TAG` is a random 4-letter tag per run. |
-| **Raw TTL** | How long `C1` observations live in the cloud. Default 30 days ([OQ-02](OPEN_QUESTIONS.md#oq-02-raw-ttl-for-masked-observations-in-the-cloud)). |
-| **Recordings import** | Optional seed: read an existing folder of screen recordings into an **import space**, kept apart from live data. |
+| **Data class** | `C0` raw on device, `C1` masked observations, `C2` derived user model, `C3` secrets, `C4` governance and account, `C5` build material, `C6` connector content. See [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md#2-data-classes). |
+| **Connector content** | Data read from a connected app (C6): fixture reads, instant reads, token maps. 30 days from capture. |
+| **Masking** | Destroying sensitive values (secrets, card numbers, IDs, bank numbers, codes) or replacing them with pseudonyms or placeholders before data leaves its boundary. |
+| **Pseudonym** | A stable keyed stand-in made on the Mac: `<person:h_…>`, `<email:h_…>`, `<phone:h_…>`, `<doc:h_…>` = first 16 hex of HMAC-SHA256 under the tenant pseudonym key. Equal values give equal pseudonyms ([ADR 0028](adr/0028-stable-keyed-pseudonyms.md)). |
+| **Pseudonym key** | 32 random bytes per tenant, held in the Keychain of each enrolled Mac; never stored on the server in the clear. |
+| **Reveal** | Showing the real value behind a pseudonym on the Mac only, from the local reveal map (7 days). |
+| **Pseudonym match** | The Mac hashes candidate values from a connector and reports which pseudonym each matches ("is this the sheet?"). |
+| **Person placeholder** | A per-run placeholder from the model router's second pass for names the device missed: `<person:TAG.N>`, `<person:TAG.N.first>`, `<person:TAG.me>`. `TAG` is a random 4-letter tag per run. |
+| **Raw TTL** | How long C1 metadata lives in the cloud. Default 30 days; C1 text snapshots 7 days ([OQ-02](OPEN_QUESTIONS.md#oq-02-raw-ttl-for-masked-observations-in-the-cloud)). |
+| **Recordings import** | Optional backfill: read an existing folder of screen recordings into an **import space**, kept apart from live data and wiped as a unit. |
+| **Source purged** | A figure whose raw evidence passed its TTL. It keeps its value and arithmetic and shows the purge date. |
+| **Forget** / **Wipe** | Forget deletes a member's data by entity, date range, import or all. Wipe deletes a tenant and destroys its keys. |
 
 ## Understanding and the user model
 
@@ -70,14 +95,15 @@ Conventions:
 |---|---|
 | **Span** | A continuous focus interval on one app, title and host, idle removed. |
 | **Task** | A group of spans with one goal, found by task induction. |
-| **Task instance** | One occurrence of a task. Recorded instances become replay fixtures. |
+| **Task instance** | One occurrence of a task. |
 | **Task key** | A stable id for a task across weeks (`k_` + 12 hex). Kept in the **task ledger**. |
 | **Task ledger** | The table that maps each newly induced task to a long-lived task key. |
 | **Episode** | One masked record of a focus block or task instance: when, how long, apps, task key, a verb-object name. |
 | **Day record** / **Week record** / **Month record** / **Quarter record** | Code-only rollups. Every figure carries its arithmetic and evidence ids. |
-| **Entity** | A resolved thing in the user's work: `person`, `organization`, `app`, `project`, `tool`, `goal`. People are stored as salted-hash ids until the user confirms a display name. |
+| **Figure** | A number with `value`, `unit`, `arithmetic`, `evidence` and `source_purged_at`. Its id is `fig_` + 16 hex. |
+| **Entity** | A resolved thing in the user's work: `person`, `organization`, `app`, `project`, `tool`, `goal`, `document`. People and documents are pseudonyms until the user confirms a display name. |
 | **Fact** | A bi-temporal edge between entities: `valid_at` / `invalid_at` (when it was true) and `recorded_at` / `expired_at` (when Offload believed it). |
-| **Proposition** | A gum-style statement about the user, with confidence (1 to 10), decay and a revision group. Words only, never a number used in arithmetic. |
+| **Proposition** | A gum-style statement about the user, with confidence (1 to 10), decay and a revision group. Its confidence is computed by rule and never used in ranking arithmetic. |
 | **User model** | Profile + entities + facts + propositions + records + task ledger. The long-term, third-person picture of the user. No raw screen data. |
 | **Profile** | What the user told Offload: role, industry, goals (up to 3), drains, schedule, review slot, autonomy, exclusions. |
 | **Goal** | A 90-day aim from the profile ("ship a product"). Weights ranking. |
@@ -89,14 +115,21 @@ Conventions:
 
 | Term | Meaning |
 |---|---|
-| **Opportunity** | A repeated piece of work worth fixing, ranked by the deterministic score in [ARCHITECTURE section 6](ARCHITECTURE.md#6-opportunity-finder). |
-| **Opportunity score** | `weeklyHoursSaved × persistence × goalWeight × confidence ÷ max(1, paybackWeeks) × declinePenalty`. |
+| **Opportunity** | A repeated piece of work worth fixing. Has a `source`: `finder`, `manual`, `instant_read` or `agent`. |
+| **Manual opportunity** | A task the user types in (`POST /v1/opportunities`). Lets the loop start without capture. |
+| **Instant read** | A read-only scan of connected apps' last 30 days of metadata that proposes opportunities on day one, with estimated savings. |
+| **Opportunity score** | `weeklyHoursSaved × persistence × goalWeight × confidence ÷ max(1, paybackWeeks) × declinePenalty` ([ARCHITECTURE section 6](ARCHITECTURE.md#6-opportunity-finder)). |
 | **Fix** | What Offload proposes for an opportunity. Has one **fix kind**. |
-| **Fix kind** | Build kinds: `agent_workflow`, `api_integration`, `scheduled_routine`, `script`, `browser_automation`, `small_app`. Non-build outcomes: `setup_change`, `remove_step`, `leave_alone`. |
-| **Fix brief** | The spec of a build fix: inputs, outputs, capabilities, step classes, acceptance lines, budget. Has a `brief_hash`. |
-| **Fix designer** | The brain module that picks fix kinds (code) and writes the brief (Opus words, code numbers). |
+| **Fix kind** | Build kinds: `agent_workflow`, `api_integration`, `scheduled_routine`, `script` (a script or macOS Shortcut), `browser_automation`, `small_app`. Non-build outcomes: `setup_change`, `remove_step`, `leave_alone`. |
+| **Fix brief** | The spec of a build fix: inputs, outputs, steps with class and `runs_on`, pinned connections, capabilities, acceptance lines, limits, budget. Has a `brief_hash`. |
+| **Fix designer** | The brain module that picks fix kinds (code), pins connections, runs fixture capture and writes the brief (Opus words, code numbers). |
+| **Needs connection** | Opportunity state while an app the fix needs is not connected. |
+| **Fixture capture** | Read-only connector reads of real past instances and their results, done before checks are written ([ADR 0027](adr/0027-fixture-capture-and-connector-content.md)). |
+| **Fixture token** | `tok_` + 12 hex: a reversible stand-in for a connector value inside a sandbox. The token map never enters a sandbox. |
+| **Design budget** | Spend allowed before OK, build for fixtures, brief and checks. Default $0.60 per opportunity ([OQ-07](OPEN_QUESTIONS.md#oq-07-design-budget-before-ok-build)). |
+| **Needs you** | A state or line that asks the user to act: design budget reached, teeth gate failed twice, monthly budget reached. |
 | **Suggested fix** | The one opportunity plus its options shown on Today. |
-| **Left alone** | A user's "leave it alone" or "never". The task resurfaces only if its hours rise 50% over baseline. |
+| **Left alone** | Opportunity state `left_alone`, set by the answer `leave_alone` (also a fix kind) or `never`. The task resurfaces only if its hours rise 50% over baseline. "Not now" lasts 4 weeks. |
 
 ## Building
 
@@ -105,50 +138,66 @@ Conventions:
 | **OK, build** | The first approval. An exact-hash, single-use **build approval** that starts a build. |
 | **Build** | One run of the build orchestrator for one approved brief (`builds` row). |
 | **Check set** | The frozen acceptance checks, visible to workers. Hashed (`check_set_hash`). |
-| **Held-out check** | An independent check written separately and never shown to workers. Hashed. |
-| **Replay fixtures** | Masked recordings of the user's real task instances, replayed against the built fix inside the sandbox. |
+| **Held-out check** | An independent check written separately and never shown to workers. Regenerated for every new build of the same brief. |
+| **Replay fixtures** | Tokenised recorded reads and expected commit items from fixture capture, replayed against the built routine with a fake connector. |
 | **Teeth gate** | Refuses any check (frozen or held-out) that passes on an empty workspace or writes into the workspace. |
-| **Worker** | One sandboxed coding agent attempt (`worker_attempts` row). Default one; more only on failure. |
-| **Fan-out** | Starting 3 more workers after the first worker fails. |
-| **Winner** | The attempt picked by: held-out pass, then mutation score, then smallest diff. |
-| **Verifier** | A separate agent that did not write the code and checks the result against the brief's intent. |
+| **Worker** | One sandboxed coding agent attempt (`worker_attempts` row). Default one; more only on check failure. |
+| **Verification sandbox** | A fresh sandbox built from an attempt's artifact that runs frozen, replay and held-out checks. Its verdict is the only pass that counts. |
+| **Fan-out** | Starting more workers after a check failure: 1 in M2, 3 from M6 (`fanout_workers`). |
+| **Repair turn** | One extra turn for the same worker after a verifier fail, with the verifier's reasons. |
+| **Winner** | The attempt picked by: replay and held-out pass, then smallest diff ([OQ-21](OPEN_QUESTIONS.md#oq-21-drop-mutation-score-from-the-build-winner-rule)). |
+| **Verifier** | A separate model call that did not write the code and checks the artifact against the brief's intent. |
 | **Tamper hash** | The hash of the check files, re-checked before and after each attempt. A change ends the build as `tampered`. |
 | **Nonce proof** | The harness's final line that proves a check really ran and passed. Exit code alone never counts. |
-| **Artifact** | The built fix: files plus manifest, stored in object storage, with `artifact_sha256`. |
+| **Artifact** | The built fix: `routine.json`, pure transform modules and their tests, with `artifact_sha256` ([ADR 0026](adr/0026-routine-artifact-contract.md)). |
+| **Routine definition** | The resolved `routine.json` with pinned connections; hashed as `definition_hash` and shown in words before deploy. |
+| **Transform** | A pure TypeScript module in an artifact. No I/O; runs in a no-network isolate. |
 | **Build receipt** | An Ed25519-signed record of hashes, costs and verdicts for a build. |
-| **Build cap** | $4.00 per OK, build. Covers all model spend from the OK to ready. |
-| **Budget ledger** | Append-only spend records per build, per routine and per tenant. |
-| **Sandbox** | The isolated environment a worker runs in. Cloud: E2B microVM. Self-host/dev: container-use on Dagger, or Docker. |
-| **Ready to ship** | A build whose winner passed frozen, held-out and replay checks and the verifier. Waits for the deploy approval. |
+| **Build cap** | $4.00 per OK, build. Covers model spend and sandbox time from the OK to ready. |
+| **Model egress proxy** | The builder's proxy for worker model calls. Adds the API key, reserves worst-case spend per call and settles actual spend ([ADR 0030](adr/0030-build-budget-at-egress-proxy.md)). |
+| **Budget ledger** | Append-only spend records (`budget_entries`) per build, design, run, brain and infra scope. |
+| **Infra failed** | Build end state for provider outages, rate limits after retries and proxy failures. Retried, not billed to the cap ([ADR 0031](adr/0031-build-infrastructure-failures.md)). |
+| **Reaper** | The job that destroys sandboxes that outlive their build. |
+| **Sandbox** | The isolated environment a worker or verification runs in. Providers `e2b`, `docker`, `container-use`, `apple-container` (dev only). |
+| **Ready to ship** | A build whose winner passed verification and the verifier. Waits for the deploy approval. |
 
 ## Deploying and running
 
 | Term | Meaning |
 |---|---|
-| **Deploy approval** | The second OK. Exact-hash over the artifact and the receipt. Nothing installs without it. |
-| **Routine** | A deployed fix that runs on triggers. Has immutable versions. |
-| **Trigger** | `schedule` (cron), `webhook`, or `event` (an Offload event). |
+| **Deploy approval** | The second OK. Exact-hash over `artifact_sha256`, `receipt_hash` and `definition_hash`. Nothing installs without it. |
+| **Routine** | A deployed fix that runs on triggers. Has immutable versions. States `active`, `paused`, `needs_review`, `retired`. |
+| **Trigger** | `schedule` (cron), `manual`, `webhook` (M6) or `event` (an Offload event). |
 | **Run** | One execution of a routine. |
-| **Step class** | `read`, `draft` or `commit`. Only `commit` changes something outside Offload. |
+| **Step class** | `read`, `draft`, `commit`, `transform` or `model`. Only `commit` changes something outside Offload. |
+| **Runs on** | Where a step executes: `cloud` or `device` ([ADR 0025](adr/0025-execution-placement-and-mac-actuator.md)). |
+| **Device command** | An approved device step queued for the Mac (`device_commands`). The result comes back as upload kind `step_result`. |
+| **Awaiting device** | Run state while device commands wait for the Mac. |
 | **Capability** | A verb a connector offers, from a fixed vocabulary such as `mail.send`, `sheet.append`, `calendar.events`. |
+| **Connection pin** | The `connection_id`, adapter, tool name and tool pin hash fixed in the brief. The runtime never re-resolves ([ADR 0033](adr/0033-pinned-connector-resolution-and-launch-catalog.md)). |
 | **Item** | One unit of work in a run (one email, one row). |
-| **Item journal** | Per-item states `pending → sending → sent | failed_before_send | unknown`, written before the call. `unknown` is never retried automatically. |
+| **Item journal** | Per-item states `pending → sending → sent | failed_before_send | unknown`, written before the call. `unknown` is never retried automatically; a person may release it. |
 | **Batch** | The set of commit items in a run, identified by `batch_hash` (sha256 of JCS). |
+| **Gate mode** | `read` (reads only, used by fixture capture and instant read) or `live` (reads and gated commits). |
 | **Commit mode** | `ask_before_commit` (default after deploy) or `auto_commit` (after graduation). |
 | **Graduation** | A policy decision that moves a routine from `ask_before_commit` to `auto_commit`. |
+| **Repair** | Rebuilding a routine from the same brief plus failure evidence; the new version asks before commit again. |
+| **Quiet hours** | A per-routine limit, default 01:00 to 03:59 member-local, during which commits wait. |
 | **Circuit breaker** | A rule that pauses a routine's commits (for example 2 failed runs in a row). |
 | **Kill switch** | Stops all commits at tenant, workspace, member or routine scope. |
-| **Connector** | How Offload reaches a tool: an MCP server, a Composio toolkit, a direct API (OpenAPI), or browser automation, in that order. |
-| **Credential vault** | Per-tenant envelope-encrypted store for connector credentials. |
+| **Connector** | How Offload reaches a tool: an MCP server, a Composio toolkit, a direct API (OpenAPI), or browser automation. Chosen and pinned at design time. |
+| **Launch catalog** | The method per app at launch (for example Google apps through the owner's internal OAuth client) ([ADR 0033](adr/0033-pinned-connector-resolution-and-launch-catalog.md)). |
+| **Credential vault** | Per-tenant envelope-encrypted store for connector credentials, read only by the broker. |
 
 ## Measuring
 
 | Term | Meaning |
 |---|---|
 | **hs-1** | The measured-hours-saved method ([ADR 0022](adr/0022-hours-saved-hs-1.md)). Integer seconds, code only. |
-| **Baseline** | Median active seconds per item of the task before the fix, from recorded instances. |
+| **Baseline** | Median active seconds per item of the task before the fix: grade A/B from recorded instances, grade C from the user's estimate. |
 | **Residual** | Review + edit + fix seconds the user still spends on a run. |
 | **Measured** / **Estimated** | Grade A/B baselines are "measured"; grade C (user estimate) is "estimated". Estimates from the fix designer are always labelled "estimated". |
+| **Fix outcome** | Measured vs estimated over the 4 weeks after a fix ships: `pending`, `on_track` (≥ 80%), `partial` (≥ 50%), `under`, `unmeasured`. |
 | **Realized** | Sum of measured hours saved by shipped fixes, shown next to the sum of their estimates. |
 
 ## Governance
@@ -156,11 +205,11 @@ Conventions:
 | Term | Meaning |
 |---|---|
 | **Gate** | The code path every external action passes. Nothing commits without an approval or a policy allow. |
-| **Approval** | A single-use, exact-hash, hashed-at-rest token with a TTL. Kinds: `build`, `deploy`, `batch`, `graduation`. |
-| **Policy** | A Cedar policy evaluated by the policy engine. Core ships fixed built-in policies; EE adds custom ones. |
+| **Approval** | A single-use, exact-hash approval with an internal token hashed at rest and a TTL of 24 h. Kinds: `build`, `deploy`, `batch`, `graduation`. |
+| **Policy engine** | `packages/policy`: hand-written TypeScript rules behind the `PolicyEngine` port in core; Cedar custom policies in EE (M9). |
 | **Policy decision** | `allow`, `ask` or `deny`, with the id of the rule that decided. |
-| **Audit event** | An append-only, per-tenant hash-chained record: `hash = sha256(prev_hash || JCS(event))`. |
-| **Audit anchor** | A signed checkpoint of a tenant's chain head. |
+| **Audit event** | An append-only, per-tenant hash-chained record: `hash = sha256(prev_hash || JCS(event_without_hash))`, with `prev_hash` as 64-char hex text. |
+| **Audit anchor** | A signed checkpoint of a tenant's chain head. Stored in the same database unless an EE external anchor sink is set. |
 | **License key** | An Ed25519-signed key that entitles EE features (`OFFLOAD_EE_LICENSE_KEY`). |
 
 ## Copy words
@@ -171,3 +220,4 @@ Conventions:
 | **Weekly review** | One sentence, a few tiles, goals, quick questions. Charts one tap deeper. |
 | **Build progress** | The screen that shows checks running, failures being fixed, spend against the cap, and the install step. |
 | **"How it was counted"** | The drill-down behind every number: arithmetic and evidence. |
+| **"What was sent"** | The screen that shows the local egress ledger. |

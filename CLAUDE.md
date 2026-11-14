@@ -8,8 +8,15 @@ Start with [AGENTS.md](AGENTS.md). Everything there applies. These are Claude-sp
 - Load the superpowers skills when available: `test-driven-development` (red, green, refactor),
   `verification-before-completion` (run `verify.sh` and paste the result before saying done),
   `subagent-driven-development` for multi-part slices.
-- Opus plans and reviews; Sonnet implements. A subagent gets the SPEC path, the doc sections and the exact test tags,
-  not a summary of your conclusions.
+- All building in this repo is done with Claude Code (the owner's standing rule,
+  [AGENTS.md](AGENTS.md#model-and-tool-usage)). Opus 5.5 (`claude-opus-5-5`) plans, designs and reviews; Claude Fable
+  5.2 (`claude-fable-5-2`) may also do architecture and review work; Sonnet 5.5 (`claude-sonnet-5-5`) implements. Set a
+  subagent's model to match the slice's `model_tier`. A subagent gets the SPEC path, the doc sections and the exact
+  test tags, not a summary of your conclusions.
+- Claude Code runs signed into the owner's subscription by default, with `ANTHROPIC_API_KEY` unset. Use the API key
+  only where the operator allows it (headless parallel workers). Never print, echo or log a key or any environment
+  variable value, including to check that it is set.
+- Commits use the repo's bot identity from [AGENTS.md](AGENTS.md#commit-identity), whichever model wrote the code.
 
 ## While you work
 
