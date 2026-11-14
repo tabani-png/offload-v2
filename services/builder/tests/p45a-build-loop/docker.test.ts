@@ -43,6 +43,8 @@ describe("p45a docker provider", () => {
       "--label", `offload.sandbox=${sb.id}`,
       "--label", "offload.tag=offload-build-b1",
       "--network", "none",
+      // the image must already be on the host (prebuilt, pinned): never fetched at check time
+      "--pull", "never",
       "--read-only",
       "--cap-drop", "ALL",
       "--security-opt", "no-new-privileges",
