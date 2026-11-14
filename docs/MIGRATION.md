@@ -62,7 +62,7 @@ code ported by a Claude Code worker, and a Claude Code (Opus) review before merg
 | `packet/PACKET.md` | context | [PRODUCT.md](PRODUCT.md) | The original ask; v2's brief supersedes it |
 | `orchestration-runs/` | drop | | Run logs only |
 | `LAUNCH.md` (launch readiness 2026-10-26) | context | [DEPLOYMENT.md](DEPLOYMENT.md#10-operator-items) | Its open items (CI minutes, a key to rotate, secret-scan debt) are re-stated as operator items |
-| `.github/workflows/ci.yml` (`main`) | rewrite | `.github/workflows/ci.yml` | v2 workspace jobs; the `macos-26` pin and CLT `xcode-select` step carry over ([DEPLOYMENT.md section 6](DEPLOYMENT.md#6-ci)) |
+| `.github/workflows/ci.yml` (`main`) | rewrite | `.github/workflows/ci.yml` | v2 workspace jobs; the `macos-26` pin carries over; the `xcode-select` step now selects Xcode instead of CLT so Swift Testing is available ([DEPLOYMENT.md section 6](DEPLOYMENT.md#6-ci)) |
 
 ### 2.2 Plan docs
 
@@ -445,7 +445,8 @@ One own commit, `3833218`: `.github/workflows/mac-release.yml`, never pushed bec
 `workflow` scope.
 
 **Port** its job shape into the v2 CI `mac` job and the release workflow ([DEPLOYMENT.md section 6](DEPLOYMENT.md#6-ci)):
-`macos-26` runner; `xcode-select -s /Library/Developer/CommandLineTools`; print `swiftc`, SDK and OS versions; pinned
+`macos-26` runner; `xcode-select` (v2 selects the image's newest Xcode, not the old job's
+`/Library/Developer/CommandLineTools`, because Swift Testing ships with Xcode); print `swiftc`, SDK and OS versions; pinned
 bun with a lockfile cache; build the app and DMG; `codesign --verify --deep --strict`; zip with `ditto -c -k
 --sequesterRsrc --keepParent`; **upload the artifact before the tests** so a red test never hides an installable
 build; smoke-test the installed app from a copy outside the repo with an empty environment (`env -i`, temp `HOME`);

@@ -222,8 +222,11 @@ Hosted macOS minutes cost about ten times Linux minutes; path filters keep the `
 ### 6.2 Job shape for the `mac` job and `release-mac.yml`
 
 Ported from `ci/mac-release-workflow` (`3833218`), which was never pushed:
-- `runs-on: macos-26`; `sudo xcode-select -s /Library/Developer/CommandLineTools`; print `swiftc --version`,
-  `xcrun --show-sdk-version`, `sw_vers`, `uname -m`.
+- `runs-on: macos-26`; select the image's newest Xcode
+  (`sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer"`), not Command Line
+  Tools: Swift Testing ships with Xcode and is not reliably present in CLT, so `swift test` fails with "no such module
+  'Testing'" under CLT. Print `xcodebuild -version`, `swiftc --version`, `xcrun --show-sdk-version`, `sw_vers`,
+  `uname -m`.
 - Pinned bun with a lockfile cache (for contract generation); `bun install --frozen-lockfile`.
 - Build, bundle, sign (ad hoc in PR CI, Developer ID only in `release-mac.yml`), `codesign --verify --strict`, zip with
   `ditto -c -k --sequesterRsrc --keepParent`.

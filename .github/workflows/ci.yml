@@ -66,8 +66,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: select toolchain and print it
+        # Select the image's newest Xcode, not Command Line Tools: Swift Testing (`import Testing`) ships with Xcode
+        # and is not reliably present in CLT, so `swift test` failed with "no such module 'Testing'" under CLT.
         run: |
-          sudo xcode-select -s /Library/Developer/CommandLineTools
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer"
+          xcode-select -p
+          xcodebuild -version
           swiftc --version
           xcrun --show-sdk-version
           sw_vers
