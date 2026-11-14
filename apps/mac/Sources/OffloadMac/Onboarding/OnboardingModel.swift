@@ -15,7 +15,7 @@ public final class OnboardingModel: ObservableObject {
   public let services: OnboardingServices
   private let store: OnboardingStore
   /// Called by "Open today" on screen 13.
-  public var onOpenToday: (() -> Void)?
+  public var onOpenToday: (@MainActor () -> Void)?
 
   public init(store: OnboardingStore, services: OnboardingServices) {
     self.store = store
@@ -139,5 +139,21 @@ public final class OnboardingModel: ObservableObject {
     case .offline: connectMessage = OnboardingCopy.connectOffline
     case .unavailable: connectMessage = OnboardingCopy.connectUnavailable
     }
+  }
+}
+
+extension OnboardingModel {
+  /// Today's dismissed banners (10.3), saved with the onboarding state.
+  public func saveReask(_ reask: ReaskState) {
+    flow.setReask(reask)
+    store.save(flow.state)
+  }
+
+  /// "Start fresh": onboarding begins again; the person's Never watch entries stay applied.
+  public func reset() {
+    var fresh = OnboardingState()
+    fresh.neverWatch = flow.state.neverWatch
+    flow = OnboardingFlow(state: fresh)
+    store.save(flow.state)
   }
 }
