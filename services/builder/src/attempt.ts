@@ -129,8 +129,9 @@ export async function runAttempt(d: AttemptDeps, i: AttemptInput): Promise<Attem
       const t = await d.worker.turn({ sandbox: sb, provider: d.provider, attempt_id: i.attempt_id, ordinal: i.ordinal, try_no: n, prompt, feedback, cap_usd4: i.cap_usd4 });
       r.tries = n;
       r.turns += Math.max(0, Math.trunc(t.turns));
-      // The egress proxy enforces the cap per call (m2-08); the record never goes past this attempt's reservation.
-      r.spent_usd4 = Math.min(i.cap_usd4, r.spent_usd4 + Math.max(0, Math.trunc(t.spent_usd4)));
+      // The egress proxy enforces the cap per call (m2-08). The record is the money really spent, even above the cap;
+      // reaching the cap ends the tries (below), and the reservation refuses any new work.
+      r.spent_usd4 += Math.max(0, Math.trunc(t.spent_usd4));
       if (!(await intact())) {
         r.outcome = "tamper";
         r.note = "The frozen check changed during a try.";
