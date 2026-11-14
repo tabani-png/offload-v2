@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { jcs, sha256Hex } from "@offload/contracts";
-import { FakeConnectorError, fakeConnector, type FixtureSet, type Item } from "../../src/index.ts";
+import { FakeConnectorError, fakeConnector, type FixtureSet, type ItemInput } from "../../src/index.ts";
 
 // Synthetic fixture tokens (ADR 0027): `tok_` + 12 hex.
 const SHEET = "tok_5ee7000000a1";
@@ -70,7 +70,7 @@ test("FAKE: commit items are recorded and never executed", async () => {
 
 async function commitScenario(fetchCalls: () => number): Promise<void> {
   const fake = fakeConnector(payoutsFixture());
-  const items: Item[] = [
+  const items: ItemInput[] = [
     {
       item_key: PAYOUT_A,
       capability: "sheet.append",
@@ -98,15 +98,35 @@ async function commitScenario(fetchCalls: () => number): Promise<void> {
   expect(fetchCalls()).toBe(0);
 
   // Recorded as deep copies: changing the caller's objects later does not change the record.
-  (items[0] as Item).args["row"] = ["changed"];
+  (items[0] as ItemInput).args["row"] = ["changed"];
   const recorded = fake.items();
   expect(recorded.map((r) => r.item_hash)).toEqual(expectedHashes);
   expect(recorded[0]?.args).toEqual({ sheet: SHEET, row: [PAYOUT_A, 1250, "eur"] });
-  expect(recorded[1]).toEqual({ ...(items[1] as Item), item_hash: expectedHashes[1] as string });
+  expect(recorded[1]).toEqual({ ...(items[1] as ItemInput), item_hash: expectedHashes[1] as string });
 
   // Committing again appends; nothing is executed.
   await fake.commit([]);
   expect(fake.items()).toHaveLength(2);
+
+  // An SDK Item that carries its item_hash is accepted when the hash is right.
+  const withHash = { ...(items[1] as ItemInput), item_key: "tok_e0e0e0e0e0e4", item_hash: expectedHashes[1] as string };
+  expect(await fake.commit([withHash])).toEqual([
+    { item_key: "tok_e0e0e0e0e0e4", item_hash: expectedHashes[1] as string, outcome: "recorded" },
+  ]);
+  expect(fake.items()).toHaveLength(3);
+
+  // A wrong item_hash is refused and nothing in that batch is recorded.
+  const good = { ...(items[1] as ItemInput), item_key: "tok_f0f0f0f0f0f5" };
+  const wrong = { ...withHash, item_key: "tok_f0f0f0f0f0f6", item_hash: expectedHashes[0] as string };
+  let caught: unknown;
+  try {
+    await fake.commit([good, wrong]);
+  } catch (e) {
+    caught = e;
+  }
+  expect(caught).toBeInstanceOf(FakeConnectorError);
+  expect((caught as FakeConnectorError).code).toBe("item_hash_mismatch");
+  expect(fake.items()).toHaveLength(3);
   expect(fetchCalls()).toBe(0);
 }
 

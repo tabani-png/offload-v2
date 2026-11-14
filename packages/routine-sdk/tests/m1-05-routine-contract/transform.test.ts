@@ -97,15 +97,27 @@ test("TRANSFORM: a transform over 64 MiB is stopped", async () => {
   `;
   await expectTransformError(runTransform(source, null), "transform_memory");
 
-  // Large strings too.
+  // Large flat strings too (s + s would only build ropes and hit the string length limit, not memory).
   const strings = `
     export default function () {
-      let s = "x";
       const keep = [];
-      for (;;) { s = s + s; keep.push(s); }
+      for (let i = 0; ; i++) keep.push("x".repeat(1 << 20) + i);
     }
   `;
   await expectTransformError(runTransform(strings, null), "transform_memory");
+
+  // Many 1 MiB buffers, each under the limit on its own, are still stopped once the total passes 64 MiB.
+  const buffers = `
+    export default function () {
+      const keep = [];
+      for (let i = 0; i < 200; i++) keep.push(new Uint8Array(1 << 20));
+      return keep.length;
+    }
+  `;
+  await expectTransformError(runTransform(buffers, null), "transform_memory");
+
+  // The isolate is not left in a bad state: the next run works.
+  expect(await runTransform("export default (n) => n + 1;", 1)).toBe(2);
 }, 10_000);
 
 test("TRANSFORM: a transform well under 64 MiB still runs", async () => {
@@ -137,12 +149,16 @@ test("TRANSFORM: input and output must be JSON values", async () => {
   // Output that JSON cannot carry is rejected, not silently dropped.
   await expectTransformError(runTransform(`export default () => undefined;`, null), "transform_invalid");
   await expectTransformError(runTransform(`export default () => () => 1;`, null), "transform_invalid");
+  // An async transform returns a promise, not a JSON value.
+  await expectTransformError(runTransform(`export default async () => 1;`, null), "transform_invalid");
   await expectTransformError(
     runTransform(`export default () => { const o = {}; o.self = o; return o; };`, null),
     "transform_invalid",
   );
   // Input that JSON cannot carry is rejected before the isolate runs.
   await expectTransformError(runTransform(`export default (i) => i;`, { n: 1n }), "transform_invalid");
+  await expectTransformError(runTransform(`export default (i) => i;`, { n: Number.NaN }), "transform_invalid");
+  await expectTransformError(runTransform(`export default (i) => i;`, { n: undefined }), "transform_invalid");
   await expectTransformError(runTransform(`export default (i) => i;`, () => 1), "transform_invalid");
 });
 

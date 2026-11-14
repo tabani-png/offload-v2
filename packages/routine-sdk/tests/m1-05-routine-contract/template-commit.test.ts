@@ -36,10 +36,10 @@ test("ROUTINE: planCommit returns items with item_hash over JCS and performs no 
   expect(items).toHaveLength(2);
   expect(items[0]).toEqual({
     item_key: items[0]!.item_key,
-    item_hash: sha256Hex(jcs({ capability: "sheet.append", connection_ref: "finance_sheet", args: { sheet: "tok_aaaaaaaaaaaa", values: ["2026-11-09", "1250"] } })),
+    item_hash: sha256Hex(jcs({ capability: "sheet.append", connection_ref: "finance_sheet", args: { sheet: "tok_aaaaaaaaaaaa", values: ["2026-11-09", 1250] } })),
     capability: "sheet.append",
     connection_ref: "finance_sheet",
-    args: { sheet: "tok_aaaaaaaaaaaa", values: ["2026-11-09", "1250"] },
+    args: { sheet: "tok_aaaaaaaaaaaa", values: ["2026-11-09", 1250] }, // a whole-string reference keeps the number
   });
   for (const it of items) {
     expect(it.item_hash).toBe(sha256Hex(jcs({ capability: it.capability, connection_ref: it.connection_ref, args: it.args })));
