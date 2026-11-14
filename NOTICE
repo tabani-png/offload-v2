@@ -31,9 +31,43 @@ sparkle-project/Sparkle 2.10.1
   m3-03-mac-signing-sparkle. Offload.app carries this file as
   Contents/Resources/THIRD_PARTY_NOTICES.txt.
 
+GeneralUserModels/gum
+  https://github.com/GeneralUserModels/gum
+  License: MIT. Copyright (c) 2024 Omar Shaikh
+  Ideas and data shapes only, written fresh in TypeScript; no source copied;
+  not a dependency. gum's screen observer is never used.
+  - Proposition fields: text, a confidence on a 1..10 scale, a decay on a
+    1..10 scale, and a revision group shared by every version of one belief
+    (services/brain/src/user-model/types.ts).
+  - The identical/similar revise flow (gum _handle_identical and
+    _handle_similar): a fresh proposition with the same key and a similar
+    rate revises the current version (services/brain/src/user-model/merge.ts).
+  - Recency decay as an idea only: Offload computes confidence and decay by
+    rule from evidence counts, never by a model
+    (services/brain/src/user-model/propose.ts).
+
+getzep/graphiti
+  https://github.com/getzep/graphiti
+  License: Apache-2.0. Copyright Zep Software, Inc. (per its source file
+  headers, for example "Copyright 2024, Zep Software, Inc." in
+  graphiti_core/graphiti.py). https://www.apache.org/licenses/LICENSE-2.0
+  Ideas and data shapes only, written fresh in TypeScript; no source copied;
+  not a dependency. No file here is a modified Apache-2.0 file.
+  - The EntityEdge bi-temporal fields valid_at, invalid_at, expired_at and
+    created_at (stored as recorded_at) on propositions
+    (services/brain/src/user-model/types.ts, services/brain/sql/).
+  - The resolve_edge_contradictions idea: a fresh fact that contradicts the
+    current one ends it (invalid_at, expired_at) instead of deleting it; here
+    the contradiction is a rate rule, not a model
+    (services/brain/src/user-model/merge.ts).
+  - Episodes as evidence for derived records
+    (services/brain/src/records/day-record.ts).
+  Using graphiti itself as an optional adapter is an open question (OQ-14).
+
 No third-party source code is copied into this repository. The JCS vectors
-above are data. Everything else is original to it or listed under
-"Planned attributions" below.
+above are data; gum and graphiti above are ideas and data shapes written fresh
+(slice p43a-user-model-core, port of old PR #43). Everything else is original
+to it or listed under "Planned attributions" below.
 
 Rule: when a slice ports code from a third-party project, it moves that
 project's entry from "Planned" below to this section in the same commit, with
@@ -64,23 +98,6 @@ farzaa/clicky
   - leanring-buddy/CompanionScreenCaptureUtility.swift: frames capped at a
     1280 px long edge.
   Full MIT license text: at the end of this file.
-
-GeneralUserModels/gum
-  https://github.com/GeneralUserModels/gum
-  License: MIT. Copyright (c) 2024 Omar Shaikh
-  Planned, ideas and data shapes only: propositions with confidence and decay
-  on a 1..10 scale, revision groups, the identical/similar revise flow. gum's
-  screen observer is never used. No source copied.
-
-getzep/graphiti
-  https://github.com/getzep/graphiti
-  License: Apache-2.0. Copyright Zep Software, Inc. (per its source file
-  headers, for example "Copyright 2024, Zep Software, Inc." in
-  graphiti_core/graphiti.py)
-  Planned, ideas and data shapes only: bi-temporal fields (valid_at,
-  invalid_at, expired_at, created_at), contradiction resolution that ends a
-  fact instead of deleting it, episodes as evidence. Using graphiti itself as
-  an optional adapter is an open question (OQ-14).
 
 obra/superpowers
   https://github.com/obra/superpowers

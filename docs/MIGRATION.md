@@ -502,10 +502,11 @@ rule; `f9e2793` notes it was written with Claude Code.
 - `memory/opportunities.ts`, `usermodel/rank.ts`: goal-weighted score `hours × persistence × goalWeight × confidence ÷
   payback × declinePenalty`; declined and left-alone tasks stay out unless hours rise 50% or more; an empty profile
   changes no number. `paybackWeeks` is fixed at 1 in the branch; v2 computes it from the fix estimate.
-- `usermodel/{propose,merge,observe,types,model,workflows}.ts`: gum-style propositions (computed 1..10 confidence,
+- `usermodel/{propose,merge,observe,types,model}.ts`: gum-style propositions (computed 1..10 confidence,
   decay from days of evidence, revision groups, revise on a similar rate), graphiti-style bi-temporal fields
   (`valid_at`, `invalid_at`, `expired_at`, `created_at`), supersede when a rate moves by more than 50%, end beliefs
-  not seen for 7 days (`invalid_at`, never deleted).
+  not seen for 7 analysed days (`invalid_at`, never deleted). Ported in slices `p43a-user-model-core` and
+  `p43b-user-model-store-api` (design note: `slices/p43a-user-model-core/DESIGN.md`).
 - `profile/store.ts` validation rules: goals ≤ 3, each ≤ 80 chars, one line, enumerated drains and autonomy, review
   slot default Friday 16:00, goal ids stable for the same text.
 - `memory/{answers,review}.ts`: review answers (`not_now` takes a task out of opportunities; a goal override sets
@@ -535,6 +536,8 @@ rule; `f9e2793` notes it was written with Claude Code.
 **Drop**
 - Sealed local files under `$OFFLOAD_HOME/memory/` and the `memory`/`profile` brain keys (Postgres now).
 - `memory/seal.ts`, `memory/cli.ts`, `memory/update.ts` as written; `api/memory-routes.ts` as local routes.
+- `usermodel/workflows.ts`: task workflows repeat what week records and opportunities hold, chains need `sequence`
+  propositions, and no v2 table holds them (corrected in p43a; it was listed under port as code).
 - `sequence` propositions and `precedes` edges until M7; goal drift and realized stubs (re-specified with measured saving in M4 and user model depth in M7).
 - The spec's M5 plan for graphiti on a FalkorDB Lite sidecar (graphiti stays an optional adapter,
   [OQ-14](OPEN_QUESTIONS.md#oq-14-optional-graphiti-adapter-and-graph-backend-licenses)).

@@ -18,6 +18,8 @@ export interface Subject {
 export interface DayEvidence {
   instances: number;
   minutes: number;
+  /** 0..1, how alike that day's instances looked (the window's sameness). */
+  sameness?: number;
 }
 
 export interface PropositionEvidence {
@@ -27,6 +29,7 @@ export interface PropositionEvidence {
   dayList: DayLabel[];
   /** Counts only, per member-timezone day. */
   perDay: Record<DayLabel, DayEvidence>;
+  /** Instance-weighted mean of the per-day sameness. */
   sameness: number;
   medianMinutes: number;
   /** time_share: share of active time in the latest window. */

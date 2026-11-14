@@ -62,6 +62,9 @@ Slices: `p43a-user-model-core` (pure logic) and `p43b-user-model-store-api` (Pos
 17. `switchIds.push(eventIds[0]!)` pushes `undefined` for a span without events. v2 skips it.
 18. **Kinds from URL paths** (`docs.google.com/spreadsheets`): v2 has only the host and a `<doc:h_…>` pseudonym, so
     `docs.google.com` is `docs` (sheet and doc cannot be told apart; noted in Known gaps).
+19. **Sameness blend is not idempotent.** `revise` blends the stored mean with the fresh one, so merging one window
+    twice moves it. v2 keeps sameness per day in the evidence and recomputes the weighted mean; merge also derives
+    every rate from the evidence instead of trusting a stored `rate`.
 
 ## 3. Sealed files → Postgres tables
 
