@@ -163,7 +163,7 @@ Mac, with no model call and no upload).
 - The line, from the local now summary: "10 min · Cursor 6m · Chrome 3m · Slack 1m · 14 switches", with a bar of the
   top 3 apps.
 - The in-window pointer flies once to the line, and a lowercase remark types next to it, made from the numbers:
-  "that's you, a minute ago."
+  "that's you, mostly in cursor."
 - Then the typed invitation, at about 28 ms a character: "keep working. i'll take notes on this mac. next, you choose
   what gets sent."
 - Caption: "counted on your mac from the last 10 minutes · no model call · nothing sent".

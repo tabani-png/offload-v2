@@ -85,6 +85,8 @@ Conventions:
 | **Upload kind** | One of the closed set `observation_batch`, `review_event`, `notice_ack`, `keyframe`, `step_result`. Anything else is rejected `unknown_kind`. |
 | **Keyframe** | A masked, downscaled screenshot. Stays on the Mac unless the user turns on `keyframes_to_cloud`. |
 | **Exclusion** | An app, host or title marker that is never observed. Built-in plus user-added ("Never watch"). |
+| **Never watch** | The person's own exclusions, chosen on onboarding screen 9, in Settings or from the menu bar item. Applied on the Mac before any server call. |
+| **Local now summary** | The "last 10 minutes" line on onboarding screen 3: top apps by active minutes and app switches, counted in code on the Mac from the local buffer. No model call, nothing uploaded. |
 | **Data class** | `C0` raw on device, `C1` masked observations, `C2` derived user model, `C3` secrets, `C4` governance and account, `C5` build material, `C6` connector content. See [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md#2-data-classes). |
 | **Connector content** | Data read from a connected app (C6): fixture reads, instant reads, token maps. 30 days from capture. |
 | **Masking** | Destroying sensitive values (secrets, card numbers, IDs, bank numbers, codes) or replacing them with pseudonyms or placeholders before data leaves its boundary. |
