@@ -139,6 +139,9 @@ export class DockerProvider implements SandboxProvider {
       "--label", `offload.sandbox=${s.id}`,
       "--label", `offload.tag=${b.spec.tag}`,
       "--network", "none",
+      // Never fetch an image at check time: the image is prebuilt and on the host (ADR 0011); whoever controls a
+      // registry tag would otherwise control the harness that gives the verdict.
+      "--pull", "never",
       "--read-only",
       "--cap-drop", "ALL",
       "--security-opt", "no-new-privileges",
