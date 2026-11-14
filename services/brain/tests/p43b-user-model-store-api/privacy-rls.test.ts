@@ -14,9 +14,9 @@ beforeAll(async () => {
   NOW = await seedFourWeeks(db, db.A1, db.workspaceA);
   const deps = { runInTenant: db.run, now: () => NOW };
   const a = { tenantId: db.A1.tenantId, memberId: db.A1.memberId, principalId: db.A1.principalId, tenantRole: "owner" };
-  await handleUserModelRequest(new Request("https://offload.test/v1/profile", { method: "PATCH", body: JSON.stringify({ goals: ["Ship the Mac app"], role: "Founder" }) }), a, deps);
+  await handleUserModelRequest(new Request("https://offload.test/v1/profile", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ goals: ["Ship the Mac app"], role: "Founder" }) }), a, deps);
   const review = await (await handleUserModelRequest(new Request("https://offload.test/v1/review/week?w=2026-W45"), a, deps))!.json() as any;
-  await handleUserModelRequest(new Request("https://offload.test/v1/review/answers", { method: "POST", body: JSON.stringify({ iso_week: "2026-W45", subject_key: review.questions[0].subject_key, question_kind: "opportunity", answer: "keep" }) }), a, deps);
+  await handleUserModelRequest(new Request("https://offload.test/v1/review/answers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ iso_week: "2026-W45", subject_key: review.questions[0].subject_key, question_kind: "opportunity", answer: "keep" }) }), a, deps);
 });
 afterAll(async () => {
   if (HAS_DB) await db.cleanup();
@@ -94,5 +94,23 @@ describe.skipIf(!HAS_DB)("p43b privacy and isolation", () => {
     expect(await attempt(db.A2, db.A1.tenantId, db.A1.memberId)).toContain("row-level security");
     expect(await attempt(db.B1, db.A1.tenantId, db.B1.memberId)).toContain("row-level security");
     expect(await attempt(db.A2, db.A2.tenantId, db.A2.memberId)).toBe("inserted");
+  });
+
+  test("RLS: in every table, a copy of member A1's row cannot be inserted by member A2 or by tenant B", async () => {
+    for (const t of MEMBER_ISOLATED_TABLES) {
+      const [r] = await db.sql.unsafe(`SELECT to_jsonb(x) AS row FROM ${db.schema}.${t} x WHERE member_id = $1 LIMIT 1`, [db.A1.memberId]);
+      expect({ t, row: r !== undefined }).toEqual({ t, row: true });
+      const insertAs = async (ctx: TenantContext, row: Record<string, unknown>) => {
+        try {
+          await db.run(ctx, (tx) => tx.unsafe(`INSERT INTO ${t} SELECT * FROM jsonb_populate_record(NULL::${t}, $1::text::jsonb)`, [JSON.stringify(row)]));
+          return "inserted";
+        } catch (e) {
+          return String(e);
+        }
+      };
+      const row = r.row as Record<string, unknown>;
+      expect({ t, err: (await insertAs(db.A2, row)).includes("row-level security") }).toEqual({ t, err: true });
+      expect({ t, err: (await insertAs(db.B1, { ...row, member_id: db.B1.memberId })).includes("row-level security") }).toEqual({ t, err: true });
+    }
   });
 });

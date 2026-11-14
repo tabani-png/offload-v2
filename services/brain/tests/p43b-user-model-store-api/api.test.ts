@@ -156,6 +156,33 @@ describe.skipIf(!HAS_DB)("p43b records and review routes", () => {
     expect(await writeWeekNarrative(db.run, db.A1, "2026-W30", async () => good)).toBe("none");
   });
 
+  test("API: writes need a JSON content type (400 invalid_request otherwise)", async () => {
+    const send = async (method: string, path: string, headers: Record<string, string>, body: string) => {
+      const res = (await handleUserModelRequest(new Request(`https://offload.test${path}`, { method, headers, body }), auth(db.A1), { runInTenant: db.run, now: () => NOW }))!;
+      return [res.status, ((await res.json()) as any).error?.code ?? "ok"];
+    };
+    const before = (await call("/v1/profile"))!.body.version;
+    expect(await send("PATCH", "/v1/profile", { "content-type": "text/plain" }, JSON.stringify({ autonomy: "draft" }))).toEqual([400, "invalid_request"]);
+    expect(await send("POST", "/v1/review/answers", {}, JSON.stringify({ iso_week: W, subject_key: "k_0123456789ab", question_kind: "opportunity", answer: "keep" }))).toEqual([400, "invalid_request"]);
+    expect((await call("/v1/profile"))!.body.version).toBe(before);
+    expect(await send("PATCH", "/v1/profile", { "content-type": "Application/JSON; charset=utf-8" }, JSON.stringify({ autonomy: "draft" }))).toEqual([200, "ok"]);
+  });
+
+  test("API: an oversized body is 413 too_large and is not read to the end", async () => {
+    let pulled = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(c) {
+        if (pulled >= 100) return c.close();
+        pulled += 1;
+        c.enqueue(new Uint8Array(1024).fill(32));
+      },
+    });
+    const req = new Request("https://offload.test/v1/profile", { method: "PATCH", headers: { "content-type": "application/json" }, body: stream });
+    const res = (await handleUserModelRequest(req, auth(db.A1), { runInTenant: db.run, now: () => NOW }))!;
+    expect([res.status, ((await res.json()) as any).error.code]).toEqual([413, "too_large"]);
+    expect(pulled).toBeLessThan(100);
+  });
+
   test("API: paths and methods it does not own return null", async () => {
     expect(await call("/v1/today")).toBeNull();
     expect(await call("/v1/profile", "DELETE")).toBeNull();

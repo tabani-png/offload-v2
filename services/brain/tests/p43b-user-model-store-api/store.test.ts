@@ -2,6 +2,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { collectFigures } from "../../src/records/figure.ts";
 import { getDayRecord, listOpportunities, loadPropositions, markSourcePurged, resolveFigure, saveEpisodes, saveLedger } from "../../src/store/repository.ts";
+import { applyProfilePatch } from "../../src/profile/profile.ts";
+import { getProfile, saveProfile } from "../../src/store/repository.ts";
 import { runMemberUpdate } from "../../src/store/job.ts";
 import { MEMBER_ISOLATED_TABLES } from "../../src/store/migrate.ts";
 import { fixtureWeek, mondayNoonAfter, MONDAYS, SEED } from "../fixtures/window.ts";
@@ -109,5 +111,22 @@ describe.skipIf(!HAS_DB)("p43b storage rules", () => {
     await db.run(db.A1, (tx) => markSourcePurged(tx, "2026-10-17", "2026-12-15T00:00:00.000Z"));
     const hit = await db.run(db.A1, (tx) => resolveFigure(tx, id));
     expect(hit).toEqual({ record_kind: "day", record_key: "2026-10-18", json_pointer: "/totals/meeting_minutes" });
+  });
+
+  test("STORE: the job refuses a window whose timezone is not the profile's, and stores nothing", async () => {
+    await db.run(db.B1, async (tx) => {
+      const r = applyProfilePatch(await getProfile(tx), { timezone: "Asia/Karachi" }, Date.UTC(2026, 9, 1));
+      if (!r.ok) throw new Error(r.message);
+      await saveProfile(tx, r);
+    });
+    const fx = fixtureWeek(MONDAYS[0], { seed: SEED });
+    expect(fx.window.timezone).toBe("UTC");
+    await expect(db.run(db.B1, (tx) => runMemberUpdate(tx, { window: fx.window, now: mondayNoonAfter(MONDAYS[0]), workspaceId: db.workspaceB, estimateFor }))).rejects.toThrow(/timezone/);
+    const n = await db.sql.unsafe(`SELECT count(*)::int AS n FROM ${db.schema}.day_records WHERE member_id = $1`, [db.B1.memberId]);
+    expect(n[0].n).toBe(0);
+    const ok = fixtureWeek(MONDAYS[0], { seed: SEED, timezone: "Asia/Karachi" });
+    await db.run(db.B1, (tx) => runMemberUpdate(tx, { window: ok.window, now: mondayNoonAfter(MONDAYS[0]), workspaceId: db.workspaceB, estimateFor }));
+    const m = await db.sql.unsafe(`SELECT count(*)::int AS n FROM ${db.schema}.day_records WHERE member_id = $1`, [db.B1.memberId]);
+    expect(m[0].n).toBeGreaterThan(0);
   });
 });
