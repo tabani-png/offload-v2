@@ -37,9 +37,9 @@ extension M304 {
 
   @Test("COPY: no internal terms on screen; captions, remarks and the invitation are lowercase")
   func copyTerms() {
-    let internal = try! Regex("\\b(MCP|token|tokens|LLM|gate|OCR|TCC|ingest|tenant)\\b")
+    let internalTerms = try! Regex("\\b(MCP|token|tokens|LLM|gate|OCR|TCC|ingest|tenant)\\b")
     for s in OnboardingCopy.allStrings {
-      #expect(s.firstMatch(of: internal) == nil, "internal term: \(s)")
+      #expect(s.firstMatch(of: internalTerms) == nil, "internal term: \(s)")
     }
     #expect(!OnboardingCopy.captions.isEmpty)
     for c in OnboardingCopy.captions + [OnboardingCopy.invitation] {
