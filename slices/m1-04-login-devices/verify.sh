@@ -11,7 +11,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m1-04-login-devices"
-BASE=""                                  # commit this slice stacks on (required once status is in_progress)
+BASE="97dd1b0f31afc0ade8292127f27496cb72d8d16c"                                 # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="services/api/tests/m1-04-login-devices"   # one or more folders, space separated
 NEEDS_POSTGRES=1                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 # -------------------------------------------------------------------------

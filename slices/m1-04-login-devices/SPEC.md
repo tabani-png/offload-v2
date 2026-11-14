@@ -2,7 +2,7 @@
 id: m1-04-login-devices
 title: Login with one OIDC provider or a magic link, personal tenant on first login, web sessions, device enrollment (authorize + loopback PKCE) and device tokens for audiences device and member
 milestone: M1
-status: ready
+status: in_progress
 depends_on: [m1-02-contracts-ingest, m1-03-tenancy-rls]
 parallel_safe: false
 human_gated: false
