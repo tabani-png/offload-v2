@@ -143,7 +143,13 @@ deploy that can be retried, and p45b's unrounded threshold and stored raw minute
   pins `--network none` and `--entrypoint`. Run it once on a Docker host before m2-08 relies on it (it now also tries
   a registry and checks that the harness swept as PID 1). `parseProof` reports `swept` but does not require it yet:
   the emulated container in the guard tests is not PID 1. Require it for verification shards when the LIVE run passes.
-- **The guard's `onLoad` hook** is defence in depth: v2's layout keeps bare, alias and package-imports specifiers
-  from resolving into `/work` at all. A direct guard test (symlink, tsconfig alias, absolute path) covers it.
+- **The guard's two hooks**: `onResolve` refuses a path into `/work` at resolution; `onLoad` stops anything that
+  resolved there another way (symlink, alias, absolute path). Each has its own test. Data imports (JSON, text) are
+  not refused: data is not code.
+- **ADR 0031 retry path** (owner: m2-08): the retry endpoint, automatic retries and `infra_retries` are not built.
+  `release()` only marks the approval for that endpoint. Retrying the same build keeps its held-out check; a new
+  build after `infra_failed` needs a new one (ADR 0029), even when no worker turn ran.
+- **Image pin** (owner: spike S4, then m2-08): `docker run --pull never` stops fetching at check time, but the
+  default image is the tag `oven/bun:1.4.4`. Pin it by `@sha256:` digest, then refuse non-digest images in config.
 - Not ported here: verifier and repair turn, replay fixtures, receipt signing, egress proxy, reaper, E2B, artifact
   object storage, the artifact capability scan (m2-07, m2-08). The `LIVE:` Docker test has not run on this box.
