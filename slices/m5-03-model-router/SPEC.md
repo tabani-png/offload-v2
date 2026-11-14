@@ -2,7 +2,7 @@
 id: m5-03-model-router
 title: Model router - the one egress for product model calls, with the person-name masking second pass, leak scan, budgets, escalation, label-only structured output and the optional local tier
 milestone: M5
-status: in_progress
+status: done
 depends_on: [m1-02-contracts-ingest, m1-03-tenancy-rls, m3-01-ingest-batches]
 parallel_safe: true
 human_gated: false
@@ -176,6 +176,11 @@ runtime `model` step execution (m2-10, which calls this router); keyframe captio
 - **Extra refusal reasons** from review: `invalid_call` (bad `max_tokens`, `call_id`, roles or empty messages),
   `schema_holds_name` (a schema is sent unmasked, so it may not hold a name) and `call_in_flight` (a `call_id` with an
   open reservation is not sent twice). A provider error now settles at the reserved amount, not zero.
+- **Re-review**: the schema name check uses the run's masker after the messages (so a name the run already masked
+  cannot go out raw in an enum); `RunMaskers` keeps one masker per run and the masker gains
+  `setOwnName(name, mode)` so a later call's own name joins the run's map without a new tag (`keep` after `mask`
+  stays masked; a different own name in one run is `invalid_call`); `untrusted()` folds NFKC and angle-bracket
+  look-alikes before escaping, and the tag check counts tags in that folded form.
 - **`models.json` gains `local_model`** (the model name the OpenAI-compatible local endpoint serves; default
   `"default"`, edited by the operator), and the allowlist of model ids lives in
   `services/brain/config/model-allowlist.json` so that "changing a model id is a config change plus a router allowlist

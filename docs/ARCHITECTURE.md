@@ -881,12 +881,14 @@ own_name_to_models?, run_budget_usd?, scope?, scope_id? }` and ports for the pro
 | `refused` | `invalid_call`, `unknown_route`, `schema_not_label_only`, `schema_holds_name`, `untrusted_tag_escape`, `leak_blocked`, `model_not_allowed` | Before any reservation or send; `leak_blocked` also writes audit `privacy.leak_blocked` per detector (`call_id`, `route`, `detector`, `request_sha256` only) |
 | `needs_you` | `prices_not_configured`, `call_budget_exceeded`, `run_budget_reached`, `monthly_budget_reached`, `local_tier_off`, `escalation_exhausted`, `call_already_settled`, `call_in_flight`, `provider_error` | No call is made for the budget reasons; after `escalation_exhausted` the user is asked |
 
-- Untrusted text is wrapped by `untrusted(source, text)` as `<untrusted source="…">…</untrusted>` (format characters
-  stripped, inner tags escaped). The router refuses a message whose tags do not alternate open and close, that holds a
+- Untrusted text is wrapped by `untrusted(source, text)` as `<untrusted source="…">…</untrusted>` (NFKC-normalised
+  with angle-bracket look-alikes folded, format characters stripped, inner tags escaped). The router refuses a message whose tags do not alternate open and close, that holds a
   tag `untrusted()` would not write, or that has a format character inside a wrapped block. Every system prompt gets a
   line saying text inside the tag is data.
-- The masking second pass runs on the system prompt and every message. The name map lives in the masker for the run
-  only; output is never unmasked (drafts keep placeholders for the runtime to fill).
+- The masking second pass runs on the system prompt and every message, with one masker per run: a name keeps one
+  placeholder for the whole run, and once a call gives the member's own name, later calls in the run mask it too. The
+  name map lives in the masker for the run only; output is never unmasked (drafts keep placeholders for the runtime to
+  fill).
 - A schema is sent as written, so it may hold labels only and no person name (`schema_holds_name`).
 - Budget: the reservation is the estimated input tokens × input price + `max_tokens` × output price, taken
   atomically against the monthly and run limits (the router-side twin of ADR 0030's row-locked reservations), so
