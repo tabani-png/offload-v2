@@ -105,6 +105,14 @@
     "services/brain": {
       "name": "@offload/brain",
       "version": "0.0.0",
+      "dependencies": {
+        "@offload/contracts": "workspace:*",
+        "@offload/masking": "workspace:*",
+        "zod": "4.6.7",
+      },
+      "devDependencies": {
+        "@offload/testkit": "workspace:*",
+      },
     },
     "services/broker": {
       "name": "@offload/broker",
