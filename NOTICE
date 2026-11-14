@@ -1,37 +1,153 @@
 Offload v2
 Copyright (c) 2026 Muhammad Ali Tabani / consultance.ai
 
-License: pending owner decision. See LICENSE and docs/OPEN_QUESTIONS.md (OQ-01).
+License: pending owner decision. See LICENSE and docs/OPEN_QUESTIONS.md (OQ-11).
 
 Third-party code included in this repository
---------------------------------------------
+============================================
 None yet. This repository holds architecture docs and an empty skeleton.
 
-Rule: when a slice ports code from a third-party project, it adds that project
-here in the same commit, with the project name, URL, license, the exact files or
-functions taken, and the full license text when the license requires it.
-See AGENTS.md ("License boundary and notices").
+Rule: when a slice ports code from a third-party project, it moves that
+project's entry from "Planned" below to this section in the same commit, with
+the exact files or functions taken, and keeps the full license text when the
+license requires it. See AGENTS.md ("License boundary and notices").
 
-Planned ports (see docs/MIGRATION.md). Each will be listed here when it lands:
-- farzaa/clicky (MIT, Copyright (c) 2026 Farza): non-activating floating panel
-  configuration and permission polling cadence (1.5 s) for apps/mac.
-- obra/superpowers (MIT): TDD and verification skills loaded into build workers
-  (vendored skill files keep their license header).
-- nizos/tdd-guard (MIT): PreToolUse hook pattern for build workers.
+Planned attributions
+====================
+Each entry says what v2 plans to take, and whether that is code, paraphrased
+text, or ideas only. Copyright lines were read from each project's LICENSE or
+source headers on 2026-11-14. The old Offload branches that first used them are
+listed in docs/MIGRATION.md (section 6).
 
-Ideas only, no code copied
---------------------------
-- kortix-ai/CompanyOS (Elastic License 2.0): verifier, change requests, swarms.
-  ELv2 forbids offering it as a hosted service. Never copy its code.
-- GeneralUserModels/gum (MIT): proposition model with confidence, revise, decay.
-  Its screen observer is never used.
-- getzep/graphiti (Apache-2.0): bi-temporal episodes, entities and edges.
-- storytold/craft-anything (MIT or Apache-2.0): check callable mid-build,
-  per-action-kind approval.
-- Quantexa, Cortexa (commercial): patterns only.
+farzaa/clicky
+  https://github.com/farzaa/clicky
+  License: MIT. Copyright (c) 2026 Farza
+  Planned, code (adapted), for apps/mac:
+  - leanring-buddy/CompanionManager.swift: permission rows polled every 1.5 s
+    that tick live; the first-run "proof it sees your screen" moment (done in
+    Offload with no model call).
+  - leanring-buddy/WindowPositionManager.swift: the permission gate (system
+    prompt once per launch, then the Settings pane; a confirmed Screen
+    Recording grant survives a CGPreflightScreenCaptureAccess false negative;
+    Privacy pane deep links; reveal the app in Finder).
+  - leanring-buddy/MenuBarPanelManager.swift: the KeyablePanel pattern (a
+    non-activating NSPanel that can become key) for the recordings import
+    progress panel.
+  - leanring-buddy/CompanionScreenCaptureUtility.swift: frames capped at a
+    1280 px long edge.
+  Full MIT license text: at the end of this file.
+
+GeneralUserModels/gum
+  https://github.com/GeneralUserModels/gum
+  License: MIT. Copyright (c) 2024 Omar Shaikh
+  Planned, ideas and data shapes only: propositions with confidence and decay
+  on a 1..10 scale, revision groups, the identical/similar revise flow. gum's
+  screen observer is never used. No source copied.
+
+getzep/graphiti
+  https://github.com/getzep/graphiti
+  License: Apache-2.0. Copyright Zep Software, Inc. (per its source file
+  headers, for example "Copyright 2024, Zep Software, Inc." in
+  graphiti_core/graphiti.py)
+  Planned, ideas and data shapes only: bi-temporal fields (valid_at,
+  invalid_at, expired_at, created_at), contradiction resolution that ends a
+  fact instead of deleting it, episodes as evidence. Using graphiti itself as
+  an optional adapter is an open question (OQ-14).
+
+obra/superpowers
+  https://github.com/obra/superpowers
+  License: MIT. Copyright (c) 2025 Jesse Vincent
+  Planned, vendored skill files and paraphrased text: test-driven-development,
+  verification-before-completion and subagent-driven-development skills loaded
+  into build workers. Vendored files keep their license header.
+
+garrytan/gstack
+  https://github.com/garrytan/gstack
+  License: MIT. Copyright (c) 2026 Garry Tan
+  Planned, vendored skill files: QA and ship skills for build workers.
+  Vendored files keep their license header.
+
+dagger/container-use
+  https://github.com/dagger/container-use
+  License: Apache-2.0 (its LICENSE carries no separate copyright line)
+  Planned, ideas, and use as a tool: one container and one git branch per
+  agent, failed environments discarded. Used as the self-host and dev sandbox
+  provider; not vendored.
+
+storytold/craft-anything
+  https://github.com/storytold/craft-anything
+  License: MIT OR Apache-2.0, at your option. Copyright (c) 2026 ArtCraft Team
+  and the Craft Anything contributors
+  Planned, ideas only: study, build, check against the original, refine; checks
+  callable mid-build; approval per action kind; stopping a build whose turns
+  change nothing. The ArtCraft name and logos are trademarks and are not used.
+
+nizos/tdd-guard
+  https://github.com/nizos/tdd-guard
+  License: MIT. Copyright (c) 2025 Nizar Selander
+  Planned, ideas: the PreToolUse hook pattern (no code before a failing test)
+  for build workers.
+
+apple/container
+  https://github.com/apple/container
+  License: Apache-2.0. Copyright (c) Apple Inc.
+  Ideas only in v2 (the old build loop ran its CLI per test shard). Not
+  bundled.
+
+exo-explore/exo
+  https://github.com/exo-explore/exo
+  License: Apache-2.0
+  Optional local model tier through its OpenAI-compatible API. Not bundled, no
+  code copied.
+
+Ideas only, no code, text or assets copied
+==========================================
+kortix-ai/CompanyOS (Elastic License 2.0)
+  Ideas only: a separate verifier, change requests, swarms, each session in
+  its own sandbox and branch, a ship step that checks before it goes live.
+  ELv2 forbids offering it as a hosted service. Never copy its code, text or
+  assets.
+
+Quantexa, Cortexa (commercial)
+  Patterns only: entity resolution, context graph, governed decisions and
+  flows.
+
+Not ported (listed so nobody adds them by accident)
+===================================================
+Simple Icons 16.37.0 (https://simpleicons.org)
+  SVG data CC0-1.0; each mark is a trademark of its owner. The old app bundled
+  single-colour logos from it (old branch ui/mac-audit-fixes,
+  app/Resources/Logos/NOTICE.md). v2 shows monograms until the owner decides
+  (OQ-20).
 
 Prior Offload code
-------------------
+==================
 Parts of this design are harvested from the owner's earlier repository, which is
 "all rights reserved". Relicensing that code under the chosen v2 license is the
-owner's decision (OQ-02).
+owner's decision (OQ-12). The old repo's five notice files (root NOTICE on
+wip/s34-mac, feat/capture-from-clicky and feat/build-loop;
+brain/src/usermodel/NOTICE.md on feat/user-model-gum-graphiti;
+app/Resources/Logos/NOTICE.md on ui/mac-audit-fixes) are merged into this file.
+
+--------------------------------------------------------------------------------
+MIT License (farzaa/clicky)
+
+Copyright (c) 2026 Farza
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
