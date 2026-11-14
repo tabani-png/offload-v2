@@ -7,7 +7,7 @@ import { migrate, PgBuildStore } from "../../src/store-pg.ts";
 import { BuildConflict, type NewBuild } from "../../src/store.ts";
 import { OTHER_TENANT, T0, TENANT } from "./setup.ts";
 
-const URL = process.env.DATABASE_URL ?? "";
+const URL = process.env["DATABASE_URL"] ?? "";
 const suffix = `${process.pid.toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 const SCHEMA = `p45a_${suffix}`;
 const ROLE = `p45a_app_${suffix}`;
@@ -74,8 +74,9 @@ describe("p45a Postgres build store", () => {
     const b = await store.insertQueued(newBuild("brief_cap"), T0, STALE);
     const got = await Promise.all([1, 2, 3].map((i) => store.reserve({ tenant_id: TENANT, build_id: b.id, attempt_id: `att${i}`, call_id: `attempt:att${i}`, kind: "model", usd4: 7_000, ceiling_usd4: 17_000 }, T0)));
     expect(got.filter(Boolean)).toHaveLength(2);
-    // settling frees what was not spent; spend counts against the ceiling
-    await store.settle({ tenant_id: TENANT, build_id: b.id, call_id: "attempt:att1", idempotency_key: "attempt:att1", scope: "build", usd4: 1_000 }, T0 + 1);
+    // settling frees what was not spent; spend counts against the ceiling (settle one that won: the race picks which)
+    const won = `attempt:att${got.indexOf(true) + 1}`;
+    await store.settle({ tenant_id: TENANT, build_id: b.id, call_id: won, idempotency_key: won, scope: "build", usd4: 1_000 }, T0 + 1);
     expect(await store.reserve({ tenant_id: TENANT, build_id: b.id, attempt_id: "att4", call_id: "attempt:att4", kind: "model", usd4: 7_000, ceiling_usd4: 17_000 }, T0 + 2)).toBe(true);
     expect((await store.get(TENANT, b.id))!.spent_usd4).toBe(1_000);
   });
@@ -101,9 +102,12 @@ describe("p45a Postgres build store", () => {
     expect((await store.get(TENANT, b.id))!.deployed_at).toBe(T0 + 2);
   });
 
-  test("HELDOUT: (Postgres) a held-out hash used by a build of the brief is remembered", async () => {
+  test("HELDOUT: (Postgres) a held-out hash is used once a build of the brief ran a worker with it", async () => {
     const nb = newBuild("brief_held");
     await store.insertQueued(nb, T0, STALE);
+    // queued, no worker ran: the held-out check revealed nothing yet (a stale build does not burn it)
+    expect(await store.heldOutUsed(TENANT, "brief_held", nb.bound_hashes["held_out_hash"]!)).toBe(false);
+    await store.putAttempt({ tenant_id: TENANT, id: uuid(), build_id: nb.id, ordinal: 1, sandbox_provider: "docker", sandbox_id: null, outcome: "fail", spent_usd4: 0, tries: 1, turns: 1, frozen_pass: false, held_out_pass: false, check_groups: [], artifact_sha256: null, artifact_bytes: 0, artifact_files: [], note: "" });
     expect(await store.heldOutUsed(TENANT, "brief_held", nb.bound_hashes["held_out_hash"]!)).toBe(true);
     expect(await store.heldOutUsed(TENANT, "brief_held", "e".repeat(64))).toBe(false);
     expect(await store.heldOutUsed(OTHER_TENANT, "brief_held", nb.bound_hashes["held_out_hash"]!)).toBe(false);

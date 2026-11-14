@@ -134,7 +134,7 @@ describe("p45a docker provider", () => {
 
 const dockerUp = (() => {
   try {
-    return Bun.spawnSync(["docker", "info"], { stdout: "ignore", stderr: "ignore", env: { PATH: process.env.PATH ?? "/usr/bin:/bin" } }).exitCode === 0;
+    return Bun.spawnSync(["docker", "info"], { stdout: "ignore", stderr: "ignore", env: { PATH: process.env["PATH"] ?? "/usr/bin:/bin" } }).exitCode === 0;
   } catch {
     return false;
   }
@@ -144,7 +144,7 @@ describe.skipIf(!dockerUp)("p45a docker provider (live)", () => {
   test("LIVE: a real shard passes an honest check, fails a failing one, and cannot reach the network", async () => {
     const p = new DockerProvider({ executor: spawnExecutor, docker: "docker" });
     made.push(p);
-    const image = process.env.OFFLOAD_SANDBOX_IMAGE ?? "oven/bun:1.4.4";
+    const image = process.env["OFFLOAD_SANDBOX_IMAGE"] ?? "oven/bun:1.4.4";
     const spec = { ...SPEC, image };
     const honest = 'import { expect, test } from "bun:test";\ntest("slug", () => { const r = Bun.spawnSync([process.execPath, "run", "slug.ts", "A B"]); expect(r.stdout.toString().trim()).toBe("a-b"); });\n';
     const net = 'import { expect, test } from "bun:test";\ntest("no network", async () => { let ok = false; try { await fetch("http://1.1.1.1", { signal: AbortSignal.timeout(3000) }); ok = true; } catch {} expect(ok).toBe(false); });\n';

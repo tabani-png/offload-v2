@@ -86,3 +86,12 @@ present and passing; the full suite passes; every change since `BASE` matches `p
 ## Scope changes
 - `paths_in_scope` is shared with `p45b-measured-saving` (one port, two slices), so re-verifying either done slice
   does not trip on the other's files.
+- DATA_MODEL `builds` gains `fix_id`, `bound_hashes`, `artifact_sha256`, `receipt_hash`, `definition_hash`,
+  `created_at`, `heartbeat_at`, `deployed_at` and the build-lock index; `worker_attempts` gains `artifact_sha256`,
+  `artifact_bytes`, `artifact_files`, `note`. The docs had no place for the lock's staleness, for "deployed once", or
+  for the hashes a held-out regeneration is checked against.
+- A held-out check counts as used once a build bound to it ran a worker attempt (ADR 0029 says a new build
+  regenerates it). A build that never ran a worker (a stale queued build, a teeth failure) revealed nothing about it,
+  so the stale-lock recovery can start the next build with the same hashes. API.md and DATA_MODEL.md say so.
+- API.md: the OK, build and deploy rows list the codes this slice returns (400, 404, 409 `state_conflict`).
+- MIGRATION 5.6: `models/local.ts` is handed to m5-03 (the router owns it), and the port is linked.

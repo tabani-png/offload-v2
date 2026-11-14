@@ -64,10 +64,52 @@ getzep/graphiti
     (services/brain/src/records/day-record.ts).
   Using graphiti itself as an optional adapter is an open question (OQ-14).
 
+obra/superpowers
+  https://github.com/obra/superpowers
+  License: MIT. Copyright (c) 2025 Jesse Vincent
+  Included, paraphrased text (no files vendored yet), slice p45a-build-loop:
+  - services/builder/src/attempt.ts, TDD_INSTRUCTIONS: the worker's test-first
+    and verify-before-done instructions paraphrase its test-driven-development
+    and verification-before-completion skills (first used by the old
+    feat/build-loop branch, loop.ts TDD_SYSTEM_APPEND).
+  Full MIT license text: at the end of this file.
+
 No third-party source code is copied into this repository. The JCS vectors
 above are data; gum and graphiti above are ideas and data shapes written fresh
-(slice p43a-user-model-core, port of old PR #43). Everything else is original
-to it or listed under "Planned attributions" below.
+(slice p43a-user-model-core, port of old PR #43); the superpowers text is
+paraphrased (slice p45a-build-loop). Everything else is original to it or
+listed under "Planned attributions" below.
+
+Ideas used in code (no code, text or assets copied)
+===================================================
+Slice p45a-build-loop ports the old feat/build-loop branch (PR #45), whose root
+NOTICE listed these; they are merged here (docs/MIGRATION.md section 5.6).
+
+storytold/craft-anything
+  https://github.com/storytold/craft-anything
+  License: MIT OR Apache-2.0. Copyright (c) 2026 ArtCraft Team and the Craft
+  Anything contributors
+  Idea: stop a build whose turns change nothing (services/builder/src/attempt.ts,
+  stop_on_stall: the same failing artifact twice in a row ends the attempt).
+
+apple/container
+  https://github.com/apple/container
+  License: Apache-2.0. Copyright (c) Apple Inc.
+  Idea: the old branch ran its `container run` per check shard with no network,
+  a read-only root, every capability dropped and the check mounted read-only.
+  v2 keeps that flag set in the Docker provider
+  (services/builder/src/sandbox/docker.ts). Its CLI is not used or bundled.
+
+dagger/container-use
+  https://github.com/dagger/container-use
+  License: Apache-2.0
+  Idea: one isolated environment per agent, discarded after
+  (services/builder/src/attempt.ts, one sandbox per worker attempt;
+  services/builder/src/shards.ts, one sandbox per check shard).
+
+kortix-ai/CompanyOS (Elastic License 2.0)
+  Ideas only, as listed below: each session in its own sandbox; a ship step that
+  checks before it goes live (the deploy approval). No code, text or assets.
 
 Rule: when a slice ports code from a third-party project, it moves that
 project's entry from "Planned" below to this section in the same commit, with
@@ -102,9 +144,10 @@ farzaa/clicky
 obra/superpowers
   https://github.com/obra/superpowers
   License: MIT. Copyright (c) 2025 Jesse Vincent
-  Planned, vendored skill files and paraphrased text: test-driven-development,
+  Planned, vendored skill files: test-driven-development,
   verification-before-completion and subagent-driven-development skills loaded
-  into build workers. Vendored files keep their license header.
+  into build workers (m2-07). Vendored files keep their license header. Its
+  paraphrased text is already included (above).
 
 garrytan/gstack
   https://github.com/garrytan/gstack
@@ -117,15 +160,17 @@ dagger/container-use
   License: Apache-2.0 (its LICENSE carries no separate copyright line)
   Planned, ideas, and use as a tool: one container and one git branch per
   agent, failed environments discarded. Used as the self-host and dev sandbox
-  provider; not vendored.
+  provider; not vendored. (Its one-environment-per-agent idea is already used,
+  above.)
 
 storytold/craft-anything
   https://github.com/storytold/craft-anything
   License: MIT OR Apache-2.0, at your option. Copyright (c) 2026 ArtCraft Team
   and the Craft Anything contributors
   Planned, ideas only: study, build, check against the original, refine; checks
-  callable mid-build; approval per action kind; stopping a build whose turns
-  change nothing. The ArtCraft name and logos are trademarks and are not used.
+  callable mid-build; approval per action kind. (Stopping a build whose turns
+  change nothing is already used, above.) The ArtCraft name and logos are
+  trademarks and are not used.
 
 nizos/tdd-guard
   https://github.com/nizos/tdd-guard
@@ -133,17 +178,12 @@ nizos/tdd-guard
   Planned, ideas: the PreToolUse hook pattern (no code before a failing test)
   for build workers.
 
-apple/container
-  https://github.com/apple/container
-  License: Apache-2.0. Copyright (c) Apple Inc.
-  Ideas only in v2 (the old build loop ran its CLI per test shard). Not
-  bundled.
-
 exo-explore/exo
   https://github.com/exo-explore/exo
   License: Apache-2.0
-  Optional local model tier through its OpenAI-compatible API. Not bundled, no
-  code copied.
+  Optional local model tier through its OpenAI-compatible API (old
+  brain/src/models/local.ts on feat/build-loop; handed to m5-03, the model
+  router's local tier). Not bundled, no code copied.
 
 Ideas only, no code, text or assets copied
 ==========================================
@@ -334,3 +374,26 @@ HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
 IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
+
+--------------------------------------------------------------------------------
+MIT License (obra/superpowers)
+
+Copyright (c) 2025 Jesse Vincent
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

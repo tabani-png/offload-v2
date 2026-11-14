@@ -43,10 +43,11 @@ const emulate: Executor = async (argv, o) => {
     else if (a === "--env") env[v.slice(0, v.indexOf("="))] = v.slice(v.indexOf("=") + 1);
   }
   const targets = maps.map((m) => m[0]).sort((a, b) => b.length - a.length);
+  // One rewrite per value: the host folders themselves live under the host's /tmp, which is also a container path.
   const map = (s: string) => {
     for (const c of targets) {
-      const host = maps.find((m) => m[0] === c)![1];
-      s = s.replace(new RegExp(`(^|=)${c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=/|$)`), `$1${host}`);
+      const re = new RegExp(`(^|=)${c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=/|$)`);
+      if (re.test(s)) return s.replace(re, `$1${maps.find((m) => m[0] === c)![1]}`);
     }
     return s;
   };
@@ -55,7 +56,7 @@ const emulate: Executor = async (argv, o) => {
   cmd[0] = process.execPath;
   const p = Bun.spawn(cmd, {
     cwd: map(workdir),
-    env: { PATH: process.env.PATH ?? "/usr/bin:/bin", ...Object.fromEntries(Object.entries(env).map(([k, v]) => [k, map(v)])) },
+    env: { PATH: process.env["PATH"] ?? "/usr/bin:/bin", ...Object.fromEntries(Object.entries(env).map(([k, v]) => [k, map(v)])) },
     stdin: new TextEncoder().encode(o.stdin ?? ""),
     stdout: "pipe",
     stderr: "pipe",
@@ -98,7 +99,7 @@ describe("p45a container guard", () => {
       mkdirSync(join(ws, f.path, ".."), { recursive: true });
       writeFileSync(join(ws, f.path), f.bytes);
     }
-    const env = { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: ws };
+    const env = { PATH: process.env["PATH"] ?? "/usr/bin:/bin", HOME: ws };
     writeFileSync(join(ws, "ctl.test.ts"), `import "./evil.ts";\n${FAILING_CHECK}`);
     expect(Bun.spawnSync([process.execPath, "test", "--no-env-file", "./ctl.test.ts"], { cwd: ws, env, stdout: "pipe", stderr: "pipe" }).exitCode).toBe(0);
     // the planted bunfig.toml alone is enough when the check runs with cwd = the artifact (the old shard layout)
@@ -121,7 +122,7 @@ describe("p45a container guard", () => {
   });
 
   test("SHARDS: a builder-planted .env is not loaded into the check", async () => {
-    const check = 'import { expect, test } from "bun:test";\ntest("no planted env", () => { expect(process.env.OFFLOAD_PLANTED).toBeUndefined(); });\n';
+    const check = 'import { expect, test } from "bun:test";\ntest("no planted env", () => { expect(process.env["OFFLOAD_PLANTED"]).toBeUndefined(); });\n';
     const r = await run(check);
     expect(r.output).not.toContain("OFFLOAD_PLANTED=1");
     expect(r.passed).toBe(true);
