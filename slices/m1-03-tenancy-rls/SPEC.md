@@ -2,7 +2,7 @@
 id: m1-03-tenancy-rls
 title: Postgres 17 migrations for tenancy, identity and capture tables with forced tenant RLS, restrictive member isolation, roles, resolver functions, withTenant and the audit chain writer
 milestone: M1
-status: ready
+status: in_progress
 depends_on: [m1-01-durable-spike, m1-02-contracts-ingest]
 parallel_safe: false
 human_gated: false
