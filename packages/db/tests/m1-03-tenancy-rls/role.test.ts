@@ -85,7 +85,7 @@ test("ROLE: resolver functions return ids only and nothing for unknown keys", as
       [fn],
     )).rows;
     expect(meta).toHaveLength(1);
-    expect(meta[0]).toEqual({ prosecdef: true, owner: "offload_migrator", proconfig: ["search_path=public"], args: expect.stringContaining(argType), app: true, jobs: false });
+    expect(meta[0]).toEqual({ prosecdef: true, owner: "offload_migrator", proconfig: ["search_path=pg_catalog, public, pg_temp"], args: expect.stringContaining(argType), app: true, jobs: false });
     const unknown = argType === "uuid" ? uuidv7() : sha256Hex("unknown");
     const c = await fx.app.connect();
     try {
