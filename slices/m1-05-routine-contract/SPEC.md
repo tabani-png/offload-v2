@@ -2,7 +2,7 @@
 id: m1-05-routine-contract
 title: Routine artifact contract in packages/routine-sdk - routine.json schema, definition_hash, pure transform isolate, manifest checks, and the testkit fake connector
 milestone: M1
-status: ready
+status: in_progress
 depends_on: [m1-02-contracts-ingest]
 parallel_safe: false
 human_gated: false
