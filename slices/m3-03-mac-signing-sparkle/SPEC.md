@@ -2,7 +2,7 @@
 id: m3-03-mac-signing-sparkle
 title: App bundle, Developer ID signing, notarization and Sparkle updates in the CI mac job and the release workflows, with placeholder secret names and a clean skip when secrets are absent
 milestone: M3
-status: in_progress
+status: done
 depends_on: [m3-02-mac-capture-upload]
 parallel_safe: true
 human_gated: true
@@ -165,4 +165,29 @@ owner's Mac run).
 `swift part: SKIPPED (needs macOS)` for SPARKLE; with `REQUIRE_MAC=1` (CI `mac` job) a skipped Swift part fails.
 
 ## Scope changes
-None.
+Recorded by the implementer (2026-11-14). No path outside `paths_in_scope` changed; `docs/**` is untouched.
+- **Sparkle version**: 2.10.1 confirmed as the newest 2.x (released 2026-10-25, after 2.9.6's installer security
+  fixes). Tag commit `ab7d71291238df6e0492143b120c9b696a35f603` pinned in `Package.resolved` (format 2); the tools
+  archive is pinned to GitHub's published digest `sha256:1a856d2a…cf27`.
+- **Executable target**: `apps/mac` had no executable, and the only in-scope source folder is `Sources/OffloadMac`,
+  so `OffloadMac` became an `.executableTarget` and the library product became `.executable(name: "Offload")`
+  (`@main` in `OffloadMac.swift`, which keeps `OffloadMacTodo` for `SmokeTests.swift`). An rpath
+  `@executable_path/../Frameworks` is added as a linker flag so the bundled app loads Sparkle.
+- **Interfaces m3-02 did not provide yet**: `PermissionSource` (and `Permission`) and `CaptureLifecycle` are defined
+  in `Updates/`; `CaptureLifecycle` also has `start()` for the self-check. `CaptureNotStarted` and
+  `SystemPermissionSource` stand in until m3-02 conforms its real types.
+- **Extra packaging files**: `lib.sh` (shared presence checks), `fetch-sparkle-tools.sh` (the checksum-verified
+  download, testable on its own), `promote.sh` and `appcast-edit.ts` (for `promote-mac.yml`), `README.md`.
+- **appcast.sh** also needs the public `OFFLOAD_DOWNLOADS_HOST` for the download URL prefix; it checks the private
+  key first, so the empty-environment skip line names only `SPARKLE_ED_PRIVATE_KEY`.
+- **Ad hoc mode** passes `--timestamp=none`: an ad hoc signature cannot be timestamped. Developer ID always gets a
+  real `--timestamp`.
+- **Publishing**: `release-mac.yml` publishes a GitHub prerelease (the only `contents: write` job) and uploads the
+  files as an artifact; `promote-mac.yml` uploads the edited, re-signed appcast as an artifact. Copying to the
+  `downloads.` host needs cloud credentials (O7, O13) and is not automated.
+- **Path filter**: a `changes` job (plain `git diff`, no extra action) gates the `mac` job.
+- **Extra tests** beyond the table: an ad hoc signing order check through a fake `codesign`, the Sparkle tools
+  checksum refusal, an unknown signing mode, a good bundle passing, malformed `bundle.sh` inputs, the entitlements
+  file, the mac job path filter, appcast promote and halt, and a fifth Swift test for the self-check.
+- **Test fixes after red** (test bugs, not behaviour): the secret-reference regex now ignores `steps.secrets.outputs`
+  (the SPEC names that step `secrets`), and the mac-job suite match ignores the result step's echo lines.
