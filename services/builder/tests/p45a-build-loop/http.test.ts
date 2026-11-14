@@ -137,6 +137,22 @@ describe("p45a /v1 builds", () => {
     expect(real).toHaveLength(1);
   });
 
+  test("SHIP: every deploy call carries the build id as its idempotency key, so a retry after a timeout cannot make a second routine", async () => {
+    const a = api();
+    const keys: string[] = [];
+    let fail = true;
+    const route = buildRoutes({ ...a.deps, runner: a.runner, routines: { async deploy(i) { keys.push(i.idempotency_key); if (fail) throw new Error("timeout after the version was created"); return { routine_id: "r", version: 1 }; } } });
+    const ok = await a.call("POST", `/v1/fixes/${FIX}/build-approvals`, hashesOf(a.fix));
+    await a.runner.idle();
+    const b = (await a.call("GET", `/v1/builds/${ok.body.build_id}`)).body;
+    const body = JSON.stringify({ artifact_sha256: b.artifact_sha256, receipt_hash: b.receipt_hash, definition_hash: b.definition_hash });
+    const post = () => route(new Request(`http://offload.test/v1/builds/${ok.body.build_id}/deploy`, { method: "POST", body, headers: { "content-type": "application/json" } }), { tenant_id: TENANT, member_id: MEMBER });
+    expect((await post())!.status).toBe(500);
+    fail = false;
+    expect((await post())!.status).toBe(201);
+    expect(keys).toEqual([`deploy:${ok.body.build_id}`, `deploy:${ok.body.build_id}`]);
+  });
+
   test("API: GET /v1/builds/{id} shows state, spend against the cap, stages and attempts with check groups; never another tenant's", async () => {
     const a = api();
     const ok = await a.call("POST", `/v1/fixes/${FIX}/build-approvals`, hashesOf(a.fix));
