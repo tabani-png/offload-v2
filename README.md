@@ -82,7 +82,7 @@ packages/license    offline license-key verification
 packages/testkit    fixtures, fake connector, fakes
 ee/                 Enterprise code (identity, governance, audit-export, server-ee); see ee/LICENSE
 infra/              self-host skeletons: docker-compose (one host), Helm chart (Kubernetes)
-slices/             slice specs and verify scripts (_template, M1, M3)
+slices/             slice specs and verify scripts (_template, M1, M3, Wave 1: docs/WAVE1.md)
 scripts/            harness: verify-all, license boundary, slices, doc links, copy, secrets, workflows
 docs/               everything above
 ```
