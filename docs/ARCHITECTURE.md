@@ -870,6 +870,32 @@ flowchart LR
   LOG --> OUT[Result; numbers checked by code]
 ```
 
+**Call contract** (m5-03, `services/brain/src/models/router.ts`; callers import it by subpath). `route(call, deps)` takes
+`{ call_id?, tenant_id, member_id?, run_id?, route, system, messages, schema?, max_tokens, own_name?,
+own_name_to_models?, run_budget_usd?, scope?, scope_id? }` and ports for the provider, budget ledger, leak scanner
+(the `packages/masking` transport check), audit writer and clock. It returns one of:
+
+| `status` | `reason` | When |
+|---|---|---|
+| `ok` | | Content, the parsed labels when a `schema` was given, the tier and model that answered, `usd` and every attempt |
+| `refused` | `unknown_route`, `schema_not_label_only`, `untrusted_tag_escape`, `leak_blocked`, `model_not_allowed` | Before any reservation or send; `leak_blocked` also writes audit `privacy.leak_blocked` per detector (`call_id`, `route`, `detector`, `request_sha256` only) |
+| `needs_you` | `prices_not_configured`, `call_budget_exceeded`, `run_budget_reached`, `monthly_budget_reached`, `local_tier_off`, `escalation_exhausted`, `call_already_settled`, `provider_error` | No call is made for the budget reasons; after `escalation_exhausted` the user is asked |
+
+- Untrusted text is wrapped by `untrusted(source, text)` as `<untrusted source="…">…</untrusted>` (format characters
+  stripped, inner tags escaped). The router refuses a message whose tags do not alternate open and close, that holds a
+  tag `untrusted()` would not write, or that has a format character inside a wrapped block. Every system prompt gets a
+  line saying text inside the tag is data.
+- The masking second pass runs on the system prompt and every message. The name map lives in the masker for the run
+  only; output is never unmasked (drafts keep placeholders for the runtime to fill).
+- Budget: the reservation is the estimated input tokens × input price + `max_tokens` × output price. Attempt 1 is
+  keyed `call_id`, attempt n is keyed `call_id:n`, each with its own reservation, settled with actual usage, plus the
+  `model_usage` day row. A retry of a settled `call_id` is not sent again. Default ledger scope is `brain`.
+- Model ids must be on `services/brain/config/model-allowlist.json` (checked at load and again before sending). Prices
+  in `models.json` are committed as `null`; a route whose tier has no price is refused.
+- Local tier: off unless `OFFLOAD_LOCAL_MODEL_URL` is set to a loopback or private-network host (a public host fails
+  config load). It serves `local_routes` (never `build`); `classify` and `caption` move there at 80% of the monthly
+  budget, `embed` only runs there. A failed local attempt escalates to the route's paid tier.
+
 ## 18. Failure modes
 
 Adapted from PR #42 A§17 for the cloud brain.
