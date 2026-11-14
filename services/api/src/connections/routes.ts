@@ -7,7 +7,7 @@ import {
 } from "@offload/contracts/src/connections/index.ts";
 import {
   CAPABILITIES, availableEntries, composioSession, createAdapter, findEntry, launchCatalog, recordPins,
-  type BrokerPort, type ComposioSession,
+  type BrokerPort, type ComposioSession, type NormalizedTool,
 } from "@offload/connectors-sdk";
 import { appendAudit, uuidv7, withTenant, type TenantContext, type Tx } from "@offload/db";
 import type { Clock } from "../clock.ts";
@@ -53,6 +53,8 @@ const MAX_LABEL = 256;
 
 const notFound = (what = "no such connection") => new ApiError(404, "not_found", what);
 const noBroker = () => new ApiError(404, "not_found", "connections are not configured");
+const stateConflict = () => new ApiError(409, "state_conflict", "the connection is not waiting for authorization");
+const auditorRefused = () => new ApiError(403, "forbidden", "an auditor cannot change connections");
 
 interface ConnectionRow {
   id: string;
@@ -106,19 +108,47 @@ export function mountConnections(app: Hono, deps: ConnectionsDeps): void {
     return composioSession(entry, memberId);
   }
 
-  /** Lists the tools through the adapter (outside any transaction), then records the pins and audits them. */
-  async function pinTools(broker: BrokerPort, p: ConnectionsPrincipal, conn: ConnectionRow, composio: ComposioSession | undefined): Promise<void> {
-    if (conn.adapter === "browser") return;
+  /** Lists the connection's tools through its adapter. Network I/O: never call it inside a transaction. */
+  async function listFor(broker: BrokerPort, p: ConnectionsPrincipal, conn: ConnectionRow, composio: ComposioSession | undefined): Promise<NormalizedTool[]> {
+    if (conn.adapter === "browser") return [];
     const adapter = createAdapter(conn.adapter, broker);
-    const tools = await adapter.listTools({
+    return adapter.listTools({
       tenant_id: p.tenantId, connection_id: conn.id, adapter: conn.adapter, provider: conn.provider, ...(composio ? { composio } : {}),
     });
-    await withTenant(pool, ctxOf(p), async (tx) => {
-      const pins = await recordPins(tx, conn.id, tools);
+  }
+
+  /**
+   * One transaction: needs_reauth becomes active (guarded, so a connection revoked meanwhile stays revoked), the pins
+   * are recorded, and connection.activated and connection.pins_recorded are audited. 409 state_conflict when the row
+   * is no longer needs_reauth.
+   */
+  async function activate(p: ConnectionsPrincipal, id: string, acct: { account_label: string; account_hash: string }, tools: NormalizedTool[]): Promise<ConnectionRow> {
+    return withTenant(pool, ctxOf(p), async (tx) => {
+      const row = (await tx.query<ConnectionRow>(
+        `update connections set state = 'active', account_label = $2, account_hash = $3 where id = $1 and state = 'needs_reauth' returning ${COLUMNS}`,
+        [id, acct.account_label.slice(0, MAX_LABEL), acct.account_hash],
+      )).rows[0];
+      if (!row) throw stateConflict();
       await appendAudit(tx, {
-        principalId: p.memberId, action: "connection.pins_recorded", subjectType: "connection", subjectId: conn.id,
+        principalId: p.memberId, action: "connection.activated", subjectType: "connection", subjectId: id,
+        details: { account_hash: acct.account_hash },
+      });
+      const pins = await recordPins(tx, id, tools);
+      await appendAudit(tx, {
+        principalId: p.memberId, action: "connection.pins_recorded", subjectType: "connection", subjectId: id,
         details: { count: pins.length, pins_hash: sha256Hex(jcs(pins)) },
       });
+      return row;
+    });
+  }
+
+  /** Revokes a connection that was not revoked yet and audits it, in one transaction. */
+  async function revoke(p: ConnectionsPrincipal, id: string, via: string): Promise<void> {
+    await withTenant(pool, ctxOf(p), async (tx) => {
+      const r = await tx.query("update connections set state = 'revoked' where id = $1 and state <> 'revoked'", [id]);
+      if ((r.rowCount ?? 0) > 0) {
+        await appendAudit(tx, { principalId: p.memberId, action: "connection.revoked", subjectType: "connection", subjectId: id, details: { via } });
+      }
     });
   }
 
@@ -151,6 +181,7 @@ export function mountConnections(app: Hono, deps: ConnectionsDeps): void {
     const broker = deps.broker;
     if (!broker) throw noBroker();
     const p = await deps.authenticate(c);
+    if (p.tenantRole === "auditor") throw auditorRefused();
     const parsed = ConnectionCreateSchema.safeParse(await deps.jsonBody(c));
     if (!parsed.success) throw invalidRequest("body does not match ConnectionCreate");
     const body = parsed.data;
@@ -167,7 +198,8 @@ export function mountConnections(app: Hono, deps: ConnectionsDeps): void {
     const idemKey = c.req.header("idempotency-key");
     if (idemKey !== undefined && !ULID_RE.test(idemKey)) throw invalidRequest("Idempotency-Key must be a ULID");
     const { api_key: apiKey, ...rest } = body;
-    const requestSha256 = sha256Hex(jcs({ ...rest, api_key_present: apiKey !== undefined }));
+    // Bound to the member: another member reusing the key and body gets 409, never this member's response.
+    const requestSha256 = sha256Hex(jcs({ ...rest, api_key_present: apiKey !== undefined, member_id: p.memberId }));
 
     const memberId = body.personal ? p.memberId : null;
     const composio = composioFor(entry, p.memberId);
@@ -185,7 +217,12 @@ export function mountConnections(app: Hono, deps: ConnectionsDeps): void {
           return { replay: { status: prior.status, response: prior.response } };
         }
         if (prior) await tx.query("delete from idempotency_keys where key = $1", [idemKey]);
-        await tx.query("insert into idempotency_keys (tenant_id, key, request_sha256, status) values ($1, $2, $3, 0)", [p.tenantId, idemKey, requestSha256]);
+        // A concurrent request with the same key inserted first: this one waits for it, then conflicts (never 500).
+        const ins = await tx.query(
+          "insert into idempotency_keys (tenant_id, key, request_sha256, status) values ($1, $2, $3, 0) on conflict (tenant_id, key) do nothing",
+          [p.tenantId, idemKey, requestSha256],
+        );
+        if ((ins.rowCount ?? 0) === 0) throw new ApiError(409, "idempotency_conflict", "Idempotency-Key already used");
       }
       // The workspace must be in this tenant (RLS) and the caller in it, unless the caller is an owner or admin.
       const ws = await tx.query(
@@ -207,36 +244,41 @@ export function mountConnections(app: Hono, deps: ConnectionsDeps): void {
     });
     if ("replay" in first) return c.json(first.replay.response as object, first.replay.status as 201);
 
+    const dropPending = async () => {
+      if (idemKey === undefined) return;
+      await withTenant(pool, ctxOf(p), (tx) => tx.query("delete from idempotency_keys where key = $1 and status = 0", [idemKey])).catch(() => undefined);
+    };
+
     let out: ConnectionCreated;
-    try {
-      if (entry.method === "openapi") {
+    if (entry.method === "openapi") {
+      let stored = false;
+      try {
         const acct = await broker.putApiKey({ tenant_id: p.tenantId, connection_id: connectionId, api_key: apiKey! });
-        const active = await withTenant(pool, ctxOf(p), async (tx) => {
-          const row = (await tx.query<ConnectionRow>(
-            `update connections set state = 'active', account_label = $2, account_hash = $3 where id = $1 returning ${COLUMNS}`,
-            [connectionId, acct.account_label.slice(0, MAX_LABEL), acct.account_hash],
-          )).rows[0]!;
-          await appendAudit(tx, {
-            principalId: p.memberId, action: "connection.activated", subjectType: "connection", subjectId: connectionId,
-            details: { account_hash: acct.account_hash },
-          });
-          return row;
-        });
-        await pinTools(broker, p, active, undefined);
-        out = ConnectionCreatedSchema.parse({ connection_id: connectionId });
-      } else {
+        stored = true;
+        const tools = await listFor(broker, p, first.row, undefined);
+        await activate(p, connectionId, acct, tools);
+      } catch (err) {
+        if (stored) {
+          // The broker holds a key for a connection that will never be active: shred it and revoke the row.
+          await broker.shred({ tenant_id: p.tenantId, connection_id: connectionId }).catch(() => undefined);
+          await revoke(p, connectionId, "connect_failed").catch(() => undefined);
+        }
+        await dropPending();
+        throw err;
+      }
+      out = ConnectionCreatedSchema.parse({ connection_id: connectionId });
+    } else {
+      try {
         const begun = await broker.oauthBegin({
           tenant_id: p.tenantId, connection_id: connectionId, provider: entry.provider, scopes: [...entry.scopes],
           redirect_uri: `${base}/v1/connections/callback`, ...(composio ? { composio } : {}),
         });
         out = ConnectionCreatedSchema.parse({ connection_id: connectionId, authorize_url: begun.authorize_url });
+      } catch (err) {
+        // The connection stays needs_reauth; the key may be retried.
+        await dropPending();
+        throw err;
       }
-    } catch (err) {
-      // The key may be retried: drop the pending record (the connection stays needs_reauth).
-      if (idemKey !== undefined) {
-        await withTenant(pool, ctxOf(p), (tx) => tx.query("delete from idempotency_keys where key = $1 and status = 0", [idemKey])).catch(() => undefined);
-      }
-      throw err;
     }
     if (idemKey !== undefined) {
       await withTenant(pool, ctxOf(p), (tx) =>
@@ -250,6 +292,8 @@ export function mountConnections(app: Hono, deps: ConnectionsDeps): void {
     const broker = deps.broker;
     if (!broker) throw noBroker();
     const p = await deps.authenticate(c);
+    // Refused before oauthFinish, so the state is not spent.
+    if (p.tenantRole === "auditor") throw auditorRefused();
     const state = c.req.query("state") ?? "";
     const code = c.req.query("code") ?? "";
     if (!STATE_RE.test(state) || !STATE_RE.test(code)) throw invalidRequest("state and code are required");
@@ -260,23 +304,17 @@ export function mountConnections(app: Hono, deps: ConnectionsDeps): void {
       throw invalidRequest("the authorization could not be finished");
     }
     if (!UUID_RE.test(finished.connection_id)) throw notFound();
-    const conn = await withTenant(pool, ctxOf(p), async (tx) => {
-      const found = await visible(tx, p, finished.connection_id, true);
-      if (!found) throw notFound();
-      if (found.state !== "needs_reauth") throw new ApiError(409, "state_conflict", "the connection is not waiting for authorization");
-      const row = (await tx.query<ConnectionRow>(
-        `update connections set state = 'active', account_label = $2, account_hash = $3 where id = $1 returning ${COLUMNS}`,
-        [found.id, finished.account_label.slice(0, MAX_LABEL), finished.account_hash],
-      )).rows[0]!;
-      await appendAudit(tx, {
-        principalId: p.memberId, action: "connection.activated", subjectType: "connection", subjectId: found.id,
-        details: { account_hash: finished.account_hash },
-      });
-      return row;
-    });
-    const composio = conn.adapter === "composio" ? conn.member_id ? composioFor(findEntry(catalog, conn.provider), conn.member_id) : undefined : undefined;
-    if (conn.adapter === "composio" && !composio) throw new ApiError(409, "state_conflict", "the app is no longer in the catalog");
-    await pinTools(broker, p, conn, composio);
+    const conn = await withTenant(pool, ctxOf(p), (tx) => visible(tx, p, finished.connection_id));
+    if (!conn) throw notFound();
+    if (conn.state !== "needs_reauth") throw stateConflict();
+    let composio: ComposioSession | undefined;
+    if (conn.adapter === "composio") {
+      composio = conn.member_id ? composioFor(findEntry(catalog, conn.provider), conn.member_id) : undefined;
+      if (!composio) throw new ApiError(409, "state_conflict", "the app is no longer in the catalog");
+    }
+    // Listed outside any transaction; a failure leaves the connection needs_reauth (500, the cause is not echoed).
+    const tools = await listFor(broker, p, conn, composio);
+    await activate(p, conn.id, finished, tools);
     c.header("cache-control", "no-store");
     return c.redirect(`${base}/connections?connection_id=${conn.id}`, 302);
   });
@@ -302,18 +340,15 @@ export function mountConnections(app: Hono, deps: ConnectionsDeps): void {
     const broker = deps.broker;
     if (!broker) throw noBroker();
     const p = await deps.authenticate(c);
+    if (p.tenantRole === "auditor") throw auditorRefused();
     const id = c.req.param("id");
     if (!UUID_RE.test(id)) throw notFound();
     const found = await withTenant(pool, ctxOf(p), (tx) => visible(tx, p, id));
     if (!found) throw notFound();
+    if (found.member_id === null && !seesAll(p)) throw new ApiError(403, "forbidden", "only an owner or admin removes a workspace connection");
     if (found.state === "revoked") return c.body(null, 204);
     await broker.shred({ tenant_id: p.tenantId, connection_id: id });
-    await withTenant(pool, ctxOf(p), async (tx) => {
-      const r = await tx.query("update connections set state = 'revoked' where id = $1 and state <> 'revoked'", [id]);
-      if ((r.rowCount ?? 0) > 0) {
-        await appendAudit(tx, { principalId: p.memberId, action: "connection.revoked", subjectType: "connection", subjectId: id, details: { via: p.via } });
-      }
-    });
+    await revoke(p, id, p.via);
     return c.body(null, 204);
   });
 }

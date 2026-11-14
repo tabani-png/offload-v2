@@ -179,7 +179,7 @@ test("CONNECTION: a connection revoked while its POST runs is not reactivated", 
 
 // ---- 5 and 6. idempotency ---------------------------------------------------------------------------------------
 
-test("CONNECTION: two concurrent POSTs with one Idempotency-Key give one 201 and one 409, never 500", async () => {
+test("CONNECTION: two concurrent POSTs with one Idempotency-Key give one connection and never a 500", async () => {
   const s = await session(h, user("idem-race"));
   for (let i = 0; i < 5; i++) {
     const key = ulid();
@@ -189,9 +189,16 @@ test("CONNECTION: two concurrent POSTs with one Idempotency-Key give one 201 and
       createConnection(h, s, body, { headers: { "idempotency-key": key } }),
     ]);
     const statuses = [a.res.status, b.res.status].sort();
-    expect(statuses).toEqual([201, 409]);
-    const conflict = a.res.status === 409 ? a : b;
-    expect(conflict.body.error.code).toBe("idempotency_conflict");
+    // Overlapping: one 201 and one 409. Serialized (the first finished before the second began): a replay of the
+    // same 201. Never 500, and one connection per key either way.
+    if (statuses[1] === 409) {
+      expect(statuses).toEqual([201, 409]);
+      const conflict = a.res.status === 409 ? a : b;
+      expect(conflict.body.error.code).toBe("idempotency_conflict");
+    } else {
+      expect(statuses).toEqual([201, 201]);
+      expect(a.body).toEqual(b.body);
+    }
   }
   expect(await countRows("select count(*)::int as n from connections where tenant_id = $1", [ids(s).tenantId])).toBe(5);
 });
