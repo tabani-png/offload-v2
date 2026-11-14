@@ -1,0 +1,77 @@
+# Downloadable test build of Offload.app (slice m3-09-mac-test-build). Separate from ci.yml on purpose: ci.yml and
+# the Developer ID, notarization and Sparkle pipeline are m3-03's. This one builds a release bundle, signs it ad hoc,
+# smoke-tests an installed copy and uploads Offload-mac-<shortsha>.zip with apps/mac/TestBuild/INSTALL_AND_TEST.md.
+# Job shape ported from the old repo's mac-release.yml (docs/MIGRATION.md section 5.2), without bun or the brain.
+# The upload runs whenever the bundle was built, so a red smoke check never hides an installable build; the last step
+# then fails the job. `swift test` runs in ci.yml's mac job, not here.
+# Actions are pinned by tag as in ci.yml (SHA pinning is the M8 test).
+name: mac-artifact
+concurrency:
+  group: mac-artifact-${{ github.ref }}
+  cancel-in-progress: true
+on:
+  push:
+    branches: [w1/h-shell-onboarding]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    name: mac test build (ad hoc signed Offload.app)
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      TZ: UTC
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+    steps:
+      - uses: actions/checkout@v4
+      - name: select toolchain and print it
+        # The image's newest Xcode, as in ci.yml (Swift 6 and the macOS SDK).
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer"
+          xcode-select -p
+          xcodebuild -version
+          swiftc --version
+          xcrun --show-sdk-version
+          sw_vers
+          uname -m
+      - name: names
+        id: names
+        run: |
+          zip="$(bash apps/mac/TestBuild/build-app.sh artifact-name "$GITHUB_SHA")"
+          short="${zip#Offload-mac-}"
+          echo "short=${short%.zip}" >> "$GITHUB_OUTPUT"
+          echo "dir=$RUNNER_TEMP/testbuild" >> "$GITHUB_OUTPUT"
+      - name: build Offload.app (release, ad hoc signed, zipped)
+        id: build
+        timeout-minutes: 30
+        env:
+          OFFLOAD_COMMIT: ${{ github.sha }}
+          OFFLOAD_BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          bash apps/mac/TestBuild/build-app.sh all "${{ steps.names.outputs.dir }}"
+      - name: installed-copy smoke check
+        id: smoke
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          bash apps/mac/TestBuild/build-app.sh smoke "${{ steps.names.outputs.dir }}/Offload.app"
+      - name: upload the test build
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Offload-mac-${{ steps.names.outputs.short }}
+          path: |
+            ${{ steps.names.outputs.dir }}/Offload-mac-${{ steps.names.outputs.short }}.zip
+            ${{ steps.names.outputs.dir }}/INSTALL_AND_TEST.md
+          retention-days: 14
+          if-no-files-found: error
+      - name: result
+        if: always()
+        run: |
+          echo "build: ${{ steps.build.outcome }}"
+          echo "smoke: ${{ steps.smoke.outcome }}"
+          test "${{ steps.build.outcome }}" = success
+          test "${{ steps.smoke.outcome }}" = success
