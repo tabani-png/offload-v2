@@ -4,7 +4,7 @@ Status: accepted, revised 2026-11-14 · Date: 2026-11-14 · Carries over old ADR
 
 ## Context
 Different jobs need different models. All model calls must be masked, budgeted and logged in one place. Model ids and
-prices change often and are configuration, not decisions (review-c P2).
+prices change often and are configuration, not decisions ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P2).
 
 ## Decision
 - One **model router** module in the brain (`services/brain`, exported for the builder and runtime modules) is the
@@ -52,6 +52,6 @@ Old ADR 0008, 0009; old `brain/src/models/router.ts`; PR #42 A§9.2, A§12; PR #
 garrytan/gstack; exo-explore/exo.
 
 ## Revisions
-- 2026-11-14: model ids and prices moved to config and ARCHITECTURE §17 (review-c P2, review-a #106); Fable 5.2 is
-  dev-time only, no price claim (owner fact, review-b 24); owned Messages loop for runtime model steps (review-c P0-2);
-  gstack skills and exo attributed (review-b 11).
+- 2026-11-14: model ids and prices moved to config and ARCHITECTURE §17 ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P2, [design review A (2026-11-14)](../SOURCES.md#design-review-a), #106); Fable 5.2 is
+  dev-time only, no price claim (owner fact, [design review B (2026-11-14)](../SOURCES.md#design-review-b), 24); owned Messages loop for runtime model steps ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-2);
+  gstack skills and exo attributed ([design review B (2026-11-14)](../SOURCES.md#design-review-b), 11).

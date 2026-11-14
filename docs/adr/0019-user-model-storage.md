@@ -40,9 +40,9 @@ the gum and graphiti shapes in TypeScript in the old repo.
 - Mem0 / Cognee: weaker time semantics (spec section 7).
 
 ## Sources
-`/workspace/offload-app/spec.md` sections 3, 4, 7; PR #43 (`brain/src/usermodel`, gum MIT and graphiti Apache-2.0
+[product spec (M0 to M9)](../SOURCES.md#product-spec-m0-to-m9) sections 3, 4, 7; PR #43 (`brain/src/usermodel`, gum MIT and graphiti Apache-2.0
 credited in its `NOTICE.md`); repo-scout log.
 
 ## Revisions
-- 2026-11-14: Kuzu date marked "verify", Amazon Neptune listed (review-b 25); exact scan instead of HNSW (review-c P2);
-  people as stable keyed pseudonyms (review-c P0-4).
+- 2026-11-14: Kuzu date marked "verify", Amazon Neptune listed ([design review B (2026-11-14)](../SOURCES.md#design-review-b), 25); exact scan instead of HNSW ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P2);
+  people as stable keyed pseudonyms ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-4).

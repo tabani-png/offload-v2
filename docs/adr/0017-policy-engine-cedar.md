@@ -6,7 +6,7 @@ Status: accepted, revised 2026-11-14 · Date: 2026-11-14
 Offload must decide, deterministically and explainably, who may approve what, which routines may commit without
 asking, which capabilities a workspace may use, and spend limits. Enterprise customers want to write their own rules.
 The first milestones need about seven fixed rules; Cedar on Bun through WASM is a second unverified dependency on the
-critical path (review-c P1(6)).
+critical path ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(6)).
 
 ## Decision
 - A **`PolicyEngine` port** in `packages/policy`:
@@ -38,7 +38,7 @@ critical path (review-c P1(6)).
   Cedar JSON template slot-id validation against the pinned version.
 
 ## Alternatives considered
-- Cedar from the start (the previous version): off the critical path now (review-c P1(6)).
+- Cedar from the start (the previous version): off the critical path now ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(6)).
 - OPA/Rego: Apache-2.0, mature, but a separate server or WASM build and a less readable language for admins.
 - Casbin: weaker typing and analysis.
 
@@ -47,6 +47,6 @@ cedar-policy/cedar (Apache-2.0); research Page ("rule id on every decision"); co
 only); old ADR 0102, 0105 (quiet window), 0106.
 
 ## Revisions
-- 2026-11-14: TypeScript rules first, Cedar only with EE custom policies in M9 (review-c P1(6)); quiet hours are a
-  per-routine default (review-c P2); Cortexa reference is cortexa.network, rule id attributed to the research Page
-  (review-b 7).
+- 2026-11-14: TypeScript rules first, Cedar only with EE custom policies in M9 ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(6)); quiet hours are a
+  per-routine default ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P2); Cortexa reference is cortexa.network, rule id attributed to the research Page
+  ([design review B (2026-11-14)](../SOURCES.md#design-review-b), 7).

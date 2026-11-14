@@ -472,14 +472,14 @@ At most one notification a day in the first week.
 | Source | Taken |
 |---|---|
 | Approved mockups (`mockups-page.tsx`, onboarding, 10 steps) | Screen order (proof before questions), copy of screens 1, 3, 6 to 9, 11 to 13, captions, 1.5 s ticks |
-| `/workspace/offload-app/spec.md` §2 | The questions, their storage and what each changes; the first-run line computed in code |
-| spec.md §6 (Clicky teardown) and clicky (MIT) | Cadence: explain, live permission ticks, one unprompted proof, a typed invitation; permission gate; Show in Finder |
+| [product spec (M0 to M9)](SOURCES.md#product-spec-m0-to-m9) §2 | The questions, their storage and what each changes; the first-run line computed in code |
+| product spec §6 (Clicky teardown) and clicky (MIT) | Cadence: explain, live permission ticks, one unprompted proof, a typed invitation; permission gate; Show in Finder |
 | PR #42 `docs/ONBOARDING.md` §6, §9, §10 | Permission mechanics and relaunch, product modes and skip paths, re-consent and lost permissions, re-ask limits |
 | PR #44 (s34-recordings-ingest), `wip/s34-*` | Local now summary, Never watch, recordings import |
-| `/workspace/offload-pricing/LEARNINGS.md` | Copy and motion rules |
+| [pricing LEARNINGS](SOURCES.md#pricing-learnings) | Copy and motion rules |
 
 Where this differs from the mockups, and why:
-- **Two permissions, not three.** The mockup's Input Monitoring row is dropped (review C; PR #42 ONB§6).
+- **Two permissions, not three.** The mockup's Input Monitoring row is dropped ([design review C (2026-11-14)](SOURCES.md#design-review-c); PR #42 ONB§6).
 - **Screen 1 caption.** The mockup's "runs on your mac · nothing leaves it unless you say ok" overstated v2: masked
   screen text does leave, after screen 5. The caption now says nothing is sent until the person says so, and screen 5
   says exactly what.

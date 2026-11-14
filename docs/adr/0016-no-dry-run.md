@@ -37,5 +37,5 @@ dry-run stuff should not be in the product.
 Owner brief; old `plan/CONTEXT.md` ("Dry run"); PR #41 (`release/mac-testable` commit `c85ef44`, no dry-run ceremony).
 
 ## Revisions
-- 2026-11-14: replay fixtures come from fixture capture of connector reads, not from screen observations (review-c
-  P0-3); gate modes defined (review-a #81).
+- 2026-11-14: replay fixtures come from fixture capture of connector reads, not from screen observations ([design review C (2026-11-14)](../SOURCES.md#design-review-c),
+  P0-3); gate modes defined ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #81).

@@ -39,8 +39,8 @@ does not pay off is flagged. PR #45 implemented fix outcomes in the old repo (`b
 
 ## Sources
 Old ADR 0109; old `packages/hours-saved/src/{core,aggregate,report,digest}.ts`; PR #45 `brain/src/builder/outcomes.ts`;
-`/workspace/offload-app/spec.md` §4.4.
+[product spec (M0 to M9)](../SOURCES.md#product-spec-m0-to-m9) §4.4.
 
 ## Revisions
-- 2026-11-14: outcomes thresholds from `outcomes.ts` and the spec's monthly flag (review-b 18); `items_sent` naming
-  (review-a #79); grade C start for the hand-fed loop (review-c §9).
+- 2026-11-14: outcomes thresholds from `outcomes.ts` and the spec's monthly flag ([design review B (2026-11-14)](../SOURCES.md#design-review-b), 18); `items_sent` naming
+  ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #79); grade C start for the hand-fed loop ([design review C (2026-11-14)](../SOURCES.md#design-review-c), §9).

@@ -7,7 +7,7 @@ The connector chain resolved MCP → Composio → API → browser at run time, s
 shapes could run against another. There was no launch catalog, and "MCP first" is not available from a server for
 the tools that matter: Gmail, Calendar and Sheets restricted scopes need Google verification and a yearly assessment;
 Slack, GitHub and Asana MCP servers need a registered app and secret (PR #42 A§10.3-10.4, R§2.10, R§3.9). Composio's
-constraints from PR #42 were dropped (review-c P1(3)).
+constraints from PR #42 were dropped ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(3)).
 
 ## Decision
 - **Pinned at design time.** The brief names, per step: `connection_id`, adapter (`mcp`, `composio`, `openapi`,
@@ -49,4 +49,4 @@ constraints from PR #42 were dropped (review-c P1(3)).
   payloads by default.
 
 ## Sources
-Review-c P1(3); PR #42 A§10.3, A§10.4, A§10.5; old `brain/src/connectors/{catalog,mcp-probe}.ts`.
+[Design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(3); PR #42 A§10.3, A§10.4, A§10.5; old `brain/src/connectors/{catalog,mcp-probe}.ts`.

@@ -5,7 +5,7 @@ Status: accepted · Date: 2026-11-14
 ## Context
 There was no state for a sandbox provider outage, model 429/529, an orchestrator crash with an orphaned microVM, or an
 egress-proxy failure. Such failures would burn the user's single-use OK and his $4.00 on something that was not his
-build's fault (review-c P1(2)).
+build's fault ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(2)).
 
 ## Decision
 - New build state **`infra_failed`** for: sandbox provider errors or outage, model 429/529 still failing after the
@@ -32,4 +32,4 @@ build's fault (review-c P1(2)).
 - Unlimited automatic retries: hides persistent outages.
 
 ## Sources
-Review-c P1(2); PR #45 (stale locks recoverable, fan-out builders never orphaned).
+[Design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(2); PR #45 (stale locks recoverable, fan-out builders never orphaned).

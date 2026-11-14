@@ -7,7 +7,7 @@ The owner decided on 2026-11-14 that masked screen text may go to the cloud
 ([OQ-28](../OPEN_QUESTIONS.md#oq-28-masked-screen-text-to-the-cloud)); this ADR is how it stays masked on the way.
 Model providers are third parties. Screen text holds names, emails, secrets and numbers. The cloud brain also needs to
 know that two observations mention the same person, the same sheet or the same customer, or it cannot find tasks and
-design fixes (review-c P0-4).
+design fixes ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-4).
 
 ## Decision
 - Masking happens twice:
@@ -41,7 +41,7 @@ design fixes (review-c P0-4).
 
 ## Alternatives considered
 - Destructive masking of every name and path on the device (the previous version). Rejected: it removes the join keys
-  the brain needs (review-c P0-4).
+  the brain needs ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-4).
 - Model-based PII detection as the only pass: non-deterministic, and itself needs to see the text. An on-device model
   pass on top of the rules is evaluated in M3 ([ADR 0035](0035-mac-egress-guard-and-ledger.md)).
 
@@ -50,6 +50,6 @@ Old ADR 0007, 0010, 0012; old `brain/src/privacy/names.ts`, `engine/Sources/Offl
 
 ## Revisions
 - 2026-11-14: people, emails, phones and URL paths become stable keyed pseudonyms instead of being destroyed
-  (review-c P0-4); server scan described honestly as a transport check (review-c P1(7)); real values for commits come
+  ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-4); server scan described honestly as a transport check ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(7)); real values for commits come
   from connector content.
 - 2026-11-14 (decision pass D): masked text upload confirmed by the owner (OQ-28). No change to the masking rules.

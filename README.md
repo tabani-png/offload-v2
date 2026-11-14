@@ -56,6 +56,7 @@ One person uses it free. Teams pay. Run it on Offload Cloud or on your own serve
 | [ONBOARDING](docs/ONBOARDING.md) | First-run flow, permissions, skip paths, re-consent |
 | [DEPLOYMENT](docs/DEPLOYMENT.md) | Signing, notarization, Sparkle, Offload Cloud and self-host side by side |
 | [MIGRATION](docs/MIGRATION.md) | What is harvested from the old repo and its branches |
+| [SOURCES](docs/SOURCES.md) | Named sources the docs cite: public links and internal notes |
 | [OPEN_QUESTIONS](docs/OPEN_QUESTIONS.md) | Owner decisions, each with a recommended default |
 | [GLOSSARY](docs/GLOSSARY.md) | The one vocabulary |
 | [AGENTS](AGENTS.md) · [CLAUDE](CLAUDE.md) | How agents work here |

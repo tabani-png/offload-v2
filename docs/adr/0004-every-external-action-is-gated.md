@@ -43,13 +43,13 @@ send cannot be taken back.
 ## Alternatives considered
 - Trust a model-based "is this safe" check. Rejected: non-deterministic.
 - Show the token to the client and have it send it back. Rejected: the hashes already bind the approval; a bearer
-  token adds a secret to leak (review-a #55).
+  token adds a secret to leak ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #55).
 
 ## Sources
 Old ADR 0006, 0015, 0105, 0106, 0112-review-b, 0113-round-2; old `brain/src/workflows/{gate,batch}.ts`, `builder/approval.ts`;
 PR #45 (concurrent OK race fixed).
 
 ## Revisions
-- 2026-11-14: approval token is internal; concurrency codes defined (review-a #55); journal edges match the state
-  diagram, `released` is not a state (review-a #51); device commits use the same gate (review-c P0-1); release after
-  `infra_failed` (review-c P1(2)); gate modes `read` and `live` defined here (review-a #81).
+- 2026-11-14: approval token is internal; concurrency codes defined ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #55); journal edges match the state
+  diagram, `released` is not a state ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #51); device commits use the same gate ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-1); release after
+  `infra_failed` ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(2)); gate modes `read` and `live` defined here ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #81).

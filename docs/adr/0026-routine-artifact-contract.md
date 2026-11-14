@@ -5,7 +5,7 @@ Status: accepted · Date: 2026-11-14
 ## Context
 Nothing said what a worker builds or what the runtime runs: entry point, language, how code calls a capability, how a
 step declares read/draft/commit, how commit items reach a batch, or what stops artifact code doing I/O outside the gate
-(review-c P0-2). Opus wrote checks against an undefined interface and "reaches `ready`" was unfalsifiable.
+([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-2). Opus wrote checks against an undefined interface and "reaches `ready`" was unfalsifiable.
 
 ## Decision
 - An **artifact** is `routine.json` plus optional **transform modules** plus their tests.
@@ -54,4 +54,4 @@ step declares read/draft/commit, how commit items reach a batch, or what stops a
 - Agent SDK loops at run time: brings tools the runtime would have to deny; PR #42 A§9.2 chose an owned loop.
 
 ## Sources
-Review-c P0-2; PR #42 A§9.2, A§15.1; old `brain/src/workflows/*` (step classes, item journal).
+[Design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-2; PR #42 A§9.2, A§15.1; old `brain/src/workflows/*` (step classes, item journal).

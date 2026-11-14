@@ -5,7 +5,7 @@ Status: accepted · Date: 2026-11-14
 ## Context
 The first opportunity needed a week of capture and week records. PR #42's onboarding had an "instant read" that used
 connected-app history on day one (ONB§7 screen 9a), and the owner can name a task himself. Manual opportunities existed
-only as an MCP tool (review-c P1(1)).
+only as an MCP tool ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(1)).
 
 ## Decision
 - `opportunities.source` is one of:
@@ -28,4 +28,4 @@ only as an MCP tool (review-c P1(1)).
 - Wait for a week of capture (the previous version): the risky half of the product would be proven last.
 
 ## Sources
-Review-c P1(1), §9; PR #42 ONB§7; review-a #67 (source column, masking at the MCP edge).
+[Design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(1), §9; PR #42 ONB§7; [design review A (2026-11-14)](../SOURCES.md#design-review-a), #67 (source column, masking at the MCP edge).

@@ -1,6 +1,6 @@
 # Migration from the old repo
 
-What v2 harvests from the old Offload repo (`/workspace/offload`, `main` at `1df915d`, every local and `origin/*`
+What v2 harvests from the old Offload repo ([`tabani-png/offload`](https://github.com/tabani-png/offload), `main` at `1df915d`, every local and `origin/*`
 branch) and from the other inputs. Words follow [GLOSSARY.md](GLOSSARY.md).
 
 **Fates.** **keep**: port the code, behaviour unchanged (tests come with it). **rewrite**: keep the idea and the
@@ -37,13 +37,13 @@ code ported by a Claude Code worker, and a Claude Code (Opus) review before merg
 | Input | Used for |
 |---|---|
 | Old repo `main` and every branch (below) | sections 2 to 5 |
-| PR summaries #41 to #45 (`offload-v2-brief/prs/`) | section 5 |
-| `/workspace/offload-app/spec.md` (M0 to M9 spec, onboarding questions, memory design, ranking formula, Clicky teardown, Mem0/Cognee vs gum+graphiti, recap UI refs) | [ARCHITECTURE sections 5 and 6](ARCHITECTURE.md#5-cloud-brain-and-user-model), [ONBOARDING.md](ONBOARDING.md), [ROADMAP](ROADMAP.md), [ADR 0019](adr/0019-user-model-storage.md) |
-| `/workspace/repo-scout/log.md` (scouted repos, licenses, fit scores) | sandbox, connector and memory choices; [NOTICE](../NOTICE) |
+| PR summaries #41 to #45 ([old repo pull requests](SOURCES.md#old-repo-pull-requests)) | section 5 |
+| [product spec (M0 to M9)](SOURCES.md#product-spec-m0-to-m9) (M0 to M9 spec, onboarding questions, memory design, ranking formula, Clicky teardown, Mem0/Cognee vs gum+graphiti, recap UI refs) | [ARCHITECTURE sections 5 and 6](ARCHITECTURE.md#5-cloud-brain-and-user-model), [ONBOARDING.md](ONBOARDING.md), [ROADMAP](ROADMAP.md), [ADR 0019](adr/0019-user-model-storage.md) |
+| [repo scout log](SOURCES.md#repo-scout-log) (scouted repos, licenses, fit scores) | sandbox, connector and memory choices; [NOTICE](../NOTICE) |
 | Research Page "approve → build → ship" | build pipeline, verifier, receipts, layered user model |
 | Mockups Page (onboarding, Today, Weekly review, Build progress) | [PRODUCT.md section 4](PRODUCT.md#4-screens), [ONBOARDING.md](ONBOARDING.md) |
-| `/workspace/offload-bench/README.md` | [ADR 0012](adr/0012-builder-policy-one-worker-held-out-fan-out.md) |
-| `/workspace/offload-pricing/LEARNINGS.md` | [PRODUCT.md copy rules](PRODUCT.md#copy-rules), [ONBOARDING.md copy](ONBOARDING.md#13-copy-accessibility-and-test-hooks) |
+| [builder bench report](SOURCES.md#builder-bench-report) | [ADR 0012](adr/0012-builder-policy-one-worker-held-out-fan-out.md) |
+| [pricing LEARNINGS](SOURCES.md#pricing-learnings) | [PRODUCT.md copy rules](PRODUCT.md#copy-rules), [ONBOARDING.md copy](ONBOARDING.md#13-copy-accessibility-and-test-hooks) |
 | PR #42 plan docs (`docs/architecture-plan`, 7 files) | [section 5.3](#53-pr-42-docsarchitecture-plan-plan-documents); [ONBOARDING.md](ONBOARDING.md), [DEPLOYMENT.md](DEPLOYMENT.md) |
 
 ## 2. Old repo parts

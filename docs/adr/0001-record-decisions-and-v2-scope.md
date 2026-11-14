@@ -3,7 +3,7 @@
 Status: accepted, revised 2026-11-14 · Date: 2026-11-14
 
 ## Context
-The old repo (`tabani-png/offload`, local at `/workspace/offload`) is a working local-first prototype: a Swift observer,
+The old repo ([`tabani-png/offload`](https://github.com/tabani-png/offload)) is a working local-first prototype: a Swift observer,
 a Bun brain on 127.0.0.1, a SwiftUI app, and a stage-2 control plane. It grew slice by slice. It has duplicate ADR
 numbers (three 0112s, three 0113s), stub ADRs (0001 to 0006 are two lines each), per-slice route files, three JSON
 canonicalisers and two approval token schemes. v2 moves the brain to the cloud ([ADR 0007](0007-cloud-brain-thin-mac-client.md)),
@@ -32,4 +32,4 @@ is an earlier plan of record whose privacy controls v2 now reconciles ([ADR 0035
 Old `plan/plan.md`, old ADRs 0001 to 0015 and 0101 to 0114, `docs/adam-rules.md`; PR summaries #41 to #45.
 
 ## Revisions
-- 2026-11-14: in-place editing rule moved to the ADR index; first port named (review-b 8); PRs #41 to #45 named as inputs.
+- 2026-11-14: in-place editing rule moved to the ADR index; first port named ([design review B (2026-11-14)](../SOURCES.md#design-review-b), 8); PRs #41 to #45 named as inputs.

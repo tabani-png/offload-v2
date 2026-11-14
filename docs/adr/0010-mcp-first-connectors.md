@@ -5,7 +5,7 @@ Status: accepted, revised 2026-11-14 · Date: 2026-11-14 · Carries over old ADR
 ## Context
 Offload joins tools already on the market instead of rebuilding them. The old chain was MCP → Composio → direct API →
 computer use, with a fixed capability vocabulary. From a server, Offload is a confidential OAuth client, which makes
-"MCP first" unavailable for several of the tools that matter on day one (review-c P1(3)).
+"MCP first" unavailable for several of the tools that matter on day one ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(3)).
 
 ## Decision
 - `packages/connectors-sdk` defines the **connector port**: `listCapabilities()`, `read(capability, args)`,
@@ -50,13 +50,13 @@ computer use, with a fixed capability vocabulary. From a server, Offload is a co
 - n8n as the integration layer: Sustainable Use License forbids offering it as a service to others. Rejected (also old ADR 0004).
 - Composio first: fewer moving parts but ties every tenant to a proprietary service.
 - Resolve the adapter per step at run time (the previous version). Rejected: an artifact verified against one adapter's
-  shapes would run against another (review-c P1(3)).
+  shapes would run against another ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(3)).
 
 ## Sources
 Old ADR 0004, 0007, 0015; old `brain/src/connectors/*`, `workflows/allowlist.ts`; PR #42 A§10.3-10.5.
 
 ## Revisions
-- 2026-11-14: resolution pinned at design time and launch catalog moved to ADR 0033 (review-c P1(3)); browser
-  automation runs on the device and browser commits always ask, Enterprise exception removed (review-c P0-1, review-a
+- 2026-11-14: resolution pinned at design time and launch catalog moved to ADR 0033 ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(3)); browser
+  automation runs on the device and browser commits always ask, Enterprise exception removed ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-1, [design review A (2026-11-14)](../SOURCES.md#design-review-a),
   #56); credentials only through the broker; Offload MCP server lands in M8.
 - 2026-11-14 (final pass): device capabilities `shortcut.run`, `appleevent.template`, `ax.action`, `browser.step` added to the vocabulary (final-pass audit).

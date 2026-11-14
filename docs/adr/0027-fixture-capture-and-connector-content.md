@@ -5,7 +5,7 @@ Status: accepted · Date: 2026-11-14
 ## Context
 Replay of the user's real instances is the owner's replacement for a dry run. The only recordings were masked screen
 observations: titles, URL hosts and masked text. Those are not connector responses and not the outputs he produced, so
-there was nothing to replay for "Stripe payouts → sheet rows" (review-c P0-3).
+there was nothing to replay for "Stripe payouts → sheet rows" ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-3).
 
 ## Decision
 - The fix designer works in this order: the user picks an option → **connect apps** (opportunity state
@@ -36,4 +36,4 @@ there was nothing to replay for "Stripe payouts → sheet rows" (review-c P0-3).
   works with every provider.
 
 ## Sources
-Review-c P0-3; old `brain/src/workflows/read-fetch.ts`, `workflows/observed.ts`.
+[Design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-3; old `brain/src/workflows/read-fetch.ts`, `workflows/observed.ts`.

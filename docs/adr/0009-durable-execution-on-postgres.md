@@ -63,4 +63,4 @@ Owner brief ("self-host with only Postgres"); dbos-inc/dbos-transact-ts reposito
 ## Revisions
 - 2026-11-14: spike moved to its own first slice with a written outcome; fallback order DBOS-Bun → DBOS-Node for
   builder/runtime → graphile-worker; workflows end at human waits; ids-only durable state with purge; port signature
-  and kill method spelled out (review-c P1(4), review-a #34, #118).
+  and kill method spelled out ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(4), [design review A (2026-11-14)](../SOURCES.md#design-review-a), #34, #118).

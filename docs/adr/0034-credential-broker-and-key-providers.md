@@ -5,7 +5,7 @@ Status: accepted, revised 2026-11-14 · Date: 2026-11-14
 ## Context
 The vault decrypted credentials inside the process that also runs model steps, so "models never open a gate" was a
 convention, not a boundary. The `credentials` table was OAuth-shaped and thin, and "self-host with only Postgres" had
-no key provider without a cloud KMS (review-c P1(3)).
+no key provider without a cloud KMS ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(3)).
 
 ## Decision
 - **`services/broker`** is a small separate process, the one exception to the modular monolith
@@ -40,7 +40,7 @@ no key provider without a cloud KMS (review-c P1(3)).
 - Row lock held during refresh: pins a pooled connection across a network call.
 
 ## Sources
-Review-c P1(3); PR #42 A§13.3 (connector broker); old `brain/src/connectors/secrets.ts`.
+[Design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(3); PR #42 A§13.3 (connector broker); old `brain/src/connectors/secrets.ts`.
 
 ## Revisions
 - 2026-11-14 (decision pass D): on Kubernetes with a KMS key provider the broker runs as its own Deployment and

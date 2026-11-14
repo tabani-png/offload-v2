@@ -39,5 +39,5 @@ and agents know this stack. Self-hosters need a small footprint.
 Old ADR 0110, old `control/package.json`, [MIGRATION.md](../MIGRATION.md) (inputs read).
 
 ## Revisions
-- 2026-11-14: Node 22 fallback for builder and runtime (review-c P1(4)); real Postgres for RLS and durable tests
-  (review-c P2, review-a #10); local key provider for Postgres-only self-host (review-c P1(3)).
+- 2026-11-14: Node 22 fallback for builder and runtime ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(4)); real Postgres for RLS and durable tests
+  ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P2, [design review A (2026-11-14)](../SOURCES.md#design-review-a), #10); local key provider for Postgres-only self-host ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(3)).

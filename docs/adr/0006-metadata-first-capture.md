@@ -41,7 +41,7 @@ tree gives it structured, cheaply, and without the screen-recording permission t
 
 ## Alternatives considered
 - OCR on every change as the primary text source (the previous version). Rejected: more CPU, unstructured text, and it
-  stops when macOS re-asks for screen recording (review-c P1(8)).
+  stops when macOS re-asks for screen recording ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(8)).
 - Continuous screenshots to the cloud (Kortix Capture, screenpipe style). Rejected: privacy and cost.
 
 ## Sources
@@ -51,4 +51,4 @@ Old ADR 0003, 0007; old `engine/` (no-network test `S02NoNetworkTests`); PR #42 
 ## Revisions
 - 2026-11-14: Accessibility-first text, OCR under 200 characters, input counts off by default and no Input Monitoring
   at setup, pause on lock and sleep, `permission_change`, observer as a child of the app, `SMAppService`, resource
-  budgets (review-c P1(8), PR #42 A§4).
+  budgets ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(8), PR #42 A§4).

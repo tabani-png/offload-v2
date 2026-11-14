@@ -5,7 +5,7 @@ Status: accepted, revised 2026-11-14; license texts pending [OQ-11](../OPEN_QUES
 ## Context
 Offload will be open core: a free core, Pro (teams) and Enterprise (governance, SSO/SCIM, deployment options). The
 boundary must exist in the code from day one. With a permissive core, anyone can host the same product, so what sits
-outside the core must be something a hosted clone cannot just switch on (review-c P1(6)).
+outside the core must be something a hosted clone cannot just switch on ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(6)).
 
 ## Decision
 - **Layout (Langfuse style)**: all Enterprise code lives under top-level `ee/` (`ee/packages/*`, package scope
@@ -56,5 +56,5 @@ Langfuse, n8n, Temporal and Composio licensing (summarized in [OPEN_CORE.md](../
 - 2026-11-14 (decision pass D): plan split decided by the owner (OQ-13); hosting-only Pro and fair-code core
   alternatives closed; license gating per tenant plan, identical in Cloud and self-host (ADR 0037).
 - 2026-11-14: recommended default plan split "single-player core, multiplayer paid", all split values pending OQ-13
-  (review-c P1(6), review-b 9/10); Pro "none by default" aligned with OPEN_CORE (review-a #107); EE route mounting and
-  403 vs 404 (review-a #57).
+  ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(6), [design review B (2026-11-14)](../SOURCES.md#design-review-b), 9/10); Pro "none by default" aligned with OPEN_CORE ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #107); EE route mounting and
+  403 vs 404 ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #57).

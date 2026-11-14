@@ -4,7 +4,7 @@ Status: accepted · Date: 2026-11-14
 
 ## Context
 The deploy approval bound `artifact_sha256` and `receipt_hash`, hashes the user cannot read. The second OK must be an
-informed OK: what triggers it, what it can do, on which account, within which limits (review-c P1(2)).
+informed OK: what triggers it, what it can do, on which account, within which limits ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(2)).
 
 ## Decision
 - `definition_hash = sha256(JCS(resolved routine.json))`. The resolved definition covers the trigger, every step's
@@ -25,4 +25,4 @@ informed OK: what triggers it, what it can do, on which account, within which li
 - Bind only artifact and receipt hashes (the previous version): not readable.
 
 ## Sources
-Review-c P1(2); old `brain/src/builder/approval.ts` (exact-hash single-use token).
+[Design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(2); old `brain/src/builder/approval.ts` (exact-hash single-use token).

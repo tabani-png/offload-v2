@@ -61,8 +61,8 @@ shapes, from known devices, exactly once, and the Swift and TypeScript sides mus
 Old ADR 0103, 0111; old `brain/src/sync/*`.
 
 ## Revisions
-- 2026-11-14: `step_result` kind (review-c P0-1); signature encoding and signed bytes (review-a #4); check order with
-  `body_sha256` lookup (review-a #21, #22); `clock_skew` (review-a #23); device id equality (review-a #24); `too_old`
-  and future `ts` (review-a #20); `not_enabled` (review-a #6); keyframes only on their route; rate limit
-  (review-a #117); restart resend rule (review-a #43, #44).
+- 2026-11-14: `step_result` kind ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-1); signature encoding and signed bytes ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #4); check order with
+  `body_sha256` lookup ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #21, #22); `clock_skew` ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #23); device id equality ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #24); `too_old`
+  and future `ts` ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #20); `not_enabled` ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #6); keyframes only on their route; rate limit
+  ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #117); restart resend rule ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #43, #44).
 - 2026-11-14 (final pass): check order aligned with API.md (rate limit with the token, size and JCS before the signature, device id before seq); upload consent check (`consent_missing`); imported objects skip `too_old` and use the ingest date as `day` (final pass, W2 handoff).

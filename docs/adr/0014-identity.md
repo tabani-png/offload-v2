@@ -5,7 +5,7 @@ Status: accepted, revised 2026-11-14 · Date: 2026-11-14 · Carries over old ADR
 ## Context
 Self-hosters need login without a vendor. The tenant of one needs one login, not an identity platform. Pro teams want
 hosted login; Enterprise needs SSO and SCIM. Macs need credentials without long-lived bearer tokens, and the owner must
-not be logged out of his own Mac app every half hour (review-c P1(5)).
+not be logged out of his own Mac app every half hour ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(5)).
 
 ## Decision
 - **Core web login**: OpenID Connect against one configured provider (`OFFLOAD_OIDC_ISSUER`, client id, secret), or
@@ -45,7 +45,7 @@ not be logged out of his own Mac app every half hour (review-c P1(5)).
 - The Mac app never holds a cookie session and never times out on its owner; a stolen Mac is handled by device revoke.
 
 ## Alternatives considered
-- WorkOS in M1 (the previous version): a vendor the tenant of one does not need (review-c P1(5)).
+- WorkOS in M1 (the previous version): a vendor the tenant of one does not need ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(5)).
 - Cookie sessions for the Mac UI: logs the owner out every 30 minutes.
 - Long-lived device API keys: rejected (old ADR 0102).
 
@@ -54,7 +54,7 @@ Old ADR 0102, 0111; old `control/src/auth/*`; PR #42 A§13.1 (device-key enrollm
 
 ## Revisions
 - 2026-11-14: one OIDC provider or magic link in M1, WorkOS from M8; Mac UI via device token audience `member` and
-  device-signed approvals (review-c P1(5)); Secure Enclave wording (review-c P2); authorize step and code table
-  (review-a #3); signature encoding (review-a #4); CSRF delivery (review-a #37); `nonce_used` (review-a #36);
-  `return_to` same-origin (review-a #113); last-owner helper names (review-a #32).
+  device-signed approvals ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(5)); Secure Enclave wording ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P2); authorize step and code table
+  ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #3); signature encoding ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #4); CSRF delivery ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #37); `nonce_used` ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #36);
+  `return_to` same-origin ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #113); last-owner helper names ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #32).
 - 2026-11-14 (final pass): challenge carries the audience and the nonce lives 2 minutes; enroll body includes `key_storage` (final-pass audit, matching API.md and m1-04).

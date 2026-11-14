@@ -50,15 +50,15 @@ sandbox: the worker agent has Bash as the same uid as anything else in its VM.
 - Apple Containerization microVM on the user's Mac (old ADR 0013 option B): still on the user's machine. Kept only as a
   dev provider on a dedicated build Mac.
 - Hidden user + root helper (old option A): complex, still same machine.
-- Registry access through a filtering proxy (the previous version). Rejected: sandboxes hold user data (review-c P2).
+- Registry access through a filtering proxy (the previous version). Rejected: sandboxes hold user data ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P2).
 - Managed Agents sandboxes for builds: possible later behind the same port.
 
 ## Sources
-Old ADR 0013; old `brain/src/builder/{sandbox,supervisor,harness}.ts`; `/workspace/offload-bench/README.md`; PR #45
+Old ADR 0013; old `brain/src/builder/{sandbox,supervisor,harness}.ts`; [builder bench report](../SOURCES.md#builder-bench-report); PR #45
 (`container.ts`, shards with `--network none`, read-only, cap-drop ALL); apple/container; dagger/container-use; e2b-dev/E2B.
 
 ## Revisions
-- 2026-11-14: verdict only from a fresh sandbox (review-c P1(2)); prebuilt images and no registry access (review-c P2);
-  tokenised fixtures (review-c P0-3); `apple-container` dev provider and shard rule from PR #45; reaper tag (review-c
-  P1(2)); apple/container attributed (review-b 11).
+- 2026-11-14: verdict only from a fresh sandbox ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(2)); prebuilt images and no registry access ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P2);
+  tokenised fixtures ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-3); `apple-container` dev provider and shard rule from PR #45; reaper tag ([design review C (2026-11-14)](../SOURCES.md#design-review-c),
+  P1(2)); apple/container attributed ([design review B (2026-11-14)](../SOURCES.md#design-review-b), 11).
 - 2026-11-14 (final pass): check shards split one verification's sandbox reservation (final-pass audit of the $4.00 arithmetic).

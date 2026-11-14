@@ -43,5 +43,5 @@ Every approval, commit, policy decision, person-data read and settings change mu
 Old ADR 0108 section 5; old `control/src/audit/{audit,anchor,verify-chain,anchor-job}.ts`, migration `0103_wave_a`.
 
 ## Revisions
-- 2026-11-14: one hash formula with the concatenation stated (review-a #86); chain writer ported in M1 (review-a #31);
-  anchors described honestly, EE external anchor sink (review-c P1(6)); lock taken last (review-c P1(5)).
+- 2026-11-14: one hash formula with the concatenation stated ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #86); chain writer ported in M1 ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #31);
+  anchors described honestly, EE external anchor sink ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(6)); lock taken last ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(5)).

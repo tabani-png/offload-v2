@@ -5,7 +5,7 @@ Status: accepted · Date: 2026-11-14
 ## Context
 PR #42 promised one egress guard, a readable ledger of what was sent, and fail-closed redaction (A§6.2, A§6.4, G9). v2
 moved the brain to the cloud and uploads masked screen text; the guard and the ledger were lost, and the server's
-"second" leak scan used the same detectors as the device (review-c P1(7)). The controls that still apply are kept.
+"second" leak scan used the same detectors as the device ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(7)). The controls that still apply are kept.
 
 ## Decision
 - **The Mac uploader is the egress guard.** It sends to one destination (the configured Offload API host), only
@@ -33,4 +33,4 @@ moved the brain to the cloud and uploads masked screen text; the guard and the l
 - No local ledger: cheaper by a few lines, loses the trust feature.
 
 ## Sources
-Review-c P1(7); PR #42 A§6.2, A§6.3, A§6.4, A§13.1, A§13.2 (V5/V6 canaries).
+[Design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(7); PR #42 A§6.2, A§6.3, A§6.4, A§13.1, A§13.2 (V5/V6 canaries).

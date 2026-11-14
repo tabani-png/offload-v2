@@ -7,7 +7,7 @@ The previous design took "frozen checks pass" from the worker's own sandbox, whe
 as the harness and can read the nonce or print `OFFLOAD_PROOF` itself: the same-uid lesson of
 [ADR 0011](0011-sandboxed-build-workers.md). A Claude Code review of PR #45 found a fake-pass hole of this kind.
 An LLM verifier's false fail triggered a full fan-out. Reusing a held-out check across retries leaks it
-(review-c P1(2)).
+([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(2)).
 
 ## Decision
 - **The only pass that counts** is frozen checks + replay fixtures + held-out check re-run in a **fresh verification
@@ -33,7 +33,7 @@ An LLM verifier's false fail triggered a full fan-out. Reusing a held-out check 
 - Keep one held-out check per brief forever: retries learn it.
 
 ## Sources
-Review-c P1(2); PR #45 (fake-pass hole fixed in review; mutation scoring dropped); `/workspace/offload-bench/README.md`.
+[Design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(2); PR #45 (fake-pass hole fixed in review; mutation scoring dropped); [builder bench report](../SOURCES.md#builder-bench-report).
 
 ## Revisions
 

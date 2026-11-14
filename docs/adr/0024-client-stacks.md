@@ -35,15 +35,15 @@ identity, and every client fix needs a way to reach the Mac without a manual rei
 
 ## Alternatives considered
 - Electron/Tauri for the Mac: loses Accessibility/ScreenCaptureKit/Vision ergonomics and native feel.
-- Signing at M8 (the previous version): TCC grants would not survive rebuilds before then (review-c P1(8)).
+- Signing at M8 (the previous version): TCC grants would not survive rebuilds before then ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(8)).
 
 ## Sources
-Old ADR 0002, 0110, old 0114 (CSP); approved mockups; `/workspace/offload-pricing/LEARNINGS.md`; PR #41
+Old ADR 0002, 0110, old 0114 (CSP); approved mockups; [pricing LEARNINGS](../SOURCES.md#pricing-learnings); PR #41
 (macos-26 runner, INSTALL_AND_TEST.md); PR #42 D§5.
 
 ## Revisions
 - 2026-11-14: signing, bundle id and TCC moved to M0, Sparkle at M3, `macos-26` runner and bundling step, Mac targets
-  named (review-c P1(8), review-b 21, PR #41).
+  named ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(8), [design review B (2026-11-14)](../SOURCES.md#design-review-b), 21, PR #41).
 - 2026-11-14 (final pass): signing and identity start in M0 and are needed by M3 (final-pass audit).
 - 2026-11-14 (decision pass D): Apple Developer enrolment as the organisation consultance.ai decided by the owner, who
   enrols himself as Account Holder (OQ-16 (b)).

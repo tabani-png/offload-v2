@@ -5,7 +5,7 @@ Status: accepted, revised 2026-11-14 · Date: 2026-11-14
 ## Context
 The orchestrator checked the budget "before each call", but calls are made by the Agent SDK inside the sandbox, where
 the orchestrator cannot see them. Parallel fan-out workers could overshoot together. The old worst-case arithmetic left
-out the first verifier run and all sandbox minutes (review-c P1(2), review-a #52/#53, review-b 19).
+out the first verifier run and all sandbox minutes ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(2), [design review A (2026-11-14)](../SOURCES.md#design-review-a), #52/#53, [design review B (2026-11-14)](../SOURCES.md#design-review-b), 19).
 
 ## Decision
 - Each attempt gets an **attempt-scoped token** for the model egress proxy. The sandbox has no API key; the proxy adds
@@ -42,7 +42,7 @@ out the first verifier run and all sandbox minutes (review-c P1(2), review-a #52
 - Provider-side spend limits: per organisation, not per build.
 
 ## Sources
-Review-c P1(2); review-a #52, #53, #119; review-b 19; owner decision ($4 cap).
+[Design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(2); [design review A (2026-11-14)](../SOURCES.md#design-review-a), #52, #53, #119; [design review B (2026-11-14)](../SOURCES.md#design-review-b), 19; owner decision ($4 cap).
 
 ## Revisions
 

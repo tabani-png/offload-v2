@@ -24,10 +24,10 @@ Offload's value is trust in its numbers: hours, savings, counts, scores. A model
 
 ## Alternatives considered
 - Let the model estimate savings and label them estimates. Rejected: the old blind test showed estimates drift.
-- Let the model score within bounds. Rejected: a bounded number is still a model number (review-a #59).
+- Let the model score within bounds. Rejected: a bounded number is still a model number ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #59).
 
 ## Sources
 Old ADR 0005 (via `plan/plan.md` Decisions), 0009, 0011, 0015, 0109, 0114; PR #43 `checkNarrative`.
 
 ## Revisions
-- 2026-11-14: models return labels from a fixed enum, code maps them to numbers (review-a #59); Figure carries an id.
+- 2026-11-14: models return labels from a fixed enum, code maps them to numbers ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #59); Figure carries an id.

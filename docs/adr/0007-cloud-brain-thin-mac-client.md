@@ -34,13 +34,13 @@ on a cloud backend and the Mac client to be capture and UI only. Some fixes stil
 ## Alternatives considered
 - Keep a local brain and sync derived data. Rejected by the owner; also keeps builds on the Mac.
 - Hybrid with local understanding. Rejected for v2: two brains to keep in step.
-- No execution on the Mac at all (the previous version). Rejected: three fix kinds had nowhere to run (review-c P0-1).
+- No execution on the Mac at all (the previous version). Rejected: three fix kinds had nowhere to run ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-1).
 
 ## Sources
-Owner brief; old ADR 0013, 0014, 0103; `/workspace/offload-app/spec.md` section 3; PR #42 A§9.5.
+Owner brief; old ADR 0013, 0014, 0103; [product spec (M0 to M9)](../SOURCES.md#product-spec-m0-to-m9) section 3; PR #42 A§9.5.
 
 ## Revisions
-- 2026-11-14: the Mac runs typed device commands from M6 (review-c P0-1, review-b P0-5); plain wording that screen
-  text is uploaded and split C1 TTLs (review-c P1(7)); local egress ledger.
+- 2026-11-14: the Mac runs typed device commands from M6 ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-1, [design review B (2026-11-14)](../SOURCES.md#design-review-b), P0-5); plain wording that screen
+  text is uploaded and split C1 TTLs ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(7)); local egress ledger.
 - 2026-11-14 (decision pass D): masked screen text upload confirmed by the owner (OQ-28); pixels stay on the Mac by
   default, keyframes opt-in.

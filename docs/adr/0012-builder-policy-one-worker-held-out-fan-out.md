@@ -65,13 +65,13 @@ OK, build (exact-hash approval over those four hashes plus `cap_usd = 4.00`). Th
 - Fan out on a verifier fail (the previous version): an LLM judge's false fail would cost $2.10 of workers.
 
 ## Sources
-`/workspace/offload-bench/README.md`; research Page "approve → build → ship"; old `brain/src/builder/*`; PR #45
+[builder bench report](../SOURCES.md#builder-bench-report); research Page "approve → build → ship"; old `brain/src/builder/*`; PR #45
 (`loop.ts`, `heldout.ts`, `container.ts`); kortix-ai/CompanyOS (Elastic License 2.0, **ideas only, no code**:
 a separate verifier that did not write the code, change requests); storytold/craft-anything (checks callable mid-build
 as `run_checks`, compare-to-original for `small_app`); obra/superpowers (MIT); nizos/tdd-guard; garrytan/gstack (MIT).
 
 ## Revisions
-- 2026-11-14: fixture capture by the fix designer before approval (review-a #54, review-c P0-3); verdict only from a
-  fresh sandbox, verifier fail → one repair turn, held-out regenerated per new build (review-c P1(2)); caps and
-  arithmetic moved to ADR 0030 (review-a #52/#53, review-b 19); winner without mutation score (review-c P2, PR #45);
-  s35 facts and attributions (review-b 11, 20); M2 runs one retry worker.
+- 2026-11-14: fixture capture by the fix designer before approval ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #54, [design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-3); verdict only from a
+  fresh sandbox, verifier fail → one repair turn, held-out regenerated per new build ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(2)); caps and
+  arithmetic moved to ADR 0030 ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #52/#53, [design review B (2026-11-14)](../SOURCES.md#design-review-b), 19); winner without mutation score ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P2, PR #45);
+  s35 facts and attributions ([design review B (2026-11-14)](../SOURCES.md#design-review-b), 11, 20); M2 runs one retry worker.

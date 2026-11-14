@@ -4,7 +4,7 @@ Status: accepted, revised 2026-11-14 · Date: 2026-11-14
 
 ## Context
 The brief suggested `services/{api,ingest,brain,builder,runtime}` "or fewer, justify". The first deployment serves a
-tenant of one. Four services, an outbox and a load balancer for one user is cost with no benefit (review-c P1(1)).
+tenant of one. Four services, an outbox and a load balancer for one user is cost with no benefit ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(1)).
 
 ## Decision
 - **One process, `offload serve`, runs four modules** until there is a second tenant. Each module keeps its own
@@ -33,7 +33,7 @@ tenant of one. Four services, an outbox and a load balancer for one user is cost
 - Broker inside the monolith: decrypt rights would belong to the whole process.
 
 ## Sources
-Owner brief; review-c P1(1), P1(3).
+Owner brief; [design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(1), P1(3).
 
 ## Revisions
-- 2026-11-14: modular monolith first, split at M8 if needed (review-c P1(1)); broker as a separate process (review-c P1(3)).
+- 2026-11-14: modular monolith first, split at M8 if needed ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(1)); broker as a separate process ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(3)).

@@ -5,7 +5,7 @@ Status: accepted · Date: 2026-11-14
 ## Context
 On-device masking replaced emails, phones, names and URL paths with per-run placeholders or removed them. That
 destroyed the join keys the cloud brain needs: every Google Sheet became `docs.google.com`, names could not be matched
-across days, and "the same 4 docs" or "which customer" could not be computed (review-c P0-4). PR #42 kept names and
+across days, and "the same 4 docs" or "which customer" could not be computed ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-4). PR #42 kept names and
 paths in the local store for this reason (A§6.1). The ingest contract freezes the choice, so it is made now.
 
 ## Decision
@@ -42,4 +42,4 @@ paths in the local store for this reason (A§6.1). The ingest contract freezes t
 - A key per member: makes shared customers in a team unmatched; the member wall already separates data.
 
 ## Sources
-Review-c P0-4; PR #42 A§6.1, A§6.2; old `brain/src/privacy/names.ts`.
+[Design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-4; PR #42 A§6.1, A§6.2; old `brain/src/privacy/names.ts`.

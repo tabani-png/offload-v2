@@ -4,7 +4,7 @@ Status: accepted, revised 2026-11-14 · Date: 2026-11-14
 
 ## Context
 The thin Mac client did no running ([ADR 0007](0007-cloud-brain-thin-mac-client.md), previous version), so three of the
-six build kinds had nowhere to run (review-c P0-1, review-b P0-5). A cloud browser has no logged-in session; getting
+six build kinds had nowhere to run ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-1, [design review B (2026-11-14)](../SOURCES.md#design-review-b), P0-5). A cloud browser has no logged-in session; getting
 one means storing passwords or session cookies, then fighting MFA, device binding, bot detection and a datacenter IP.
 macOS Shortcuts, Apple Events, local files and desktop apps are unreachable from the cloud by definition. PR #42 A§9.5
 designed a typed actuator for exactly this.
@@ -48,13 +48,13 @@ designed a typed actuator for exactly this.
 - Browser automation in the cloud stays rare and opt-in.
 
 ## Alternatives considered
-- Cloud Playwright with vault-held session cookies (review-b P0-5 option). Rejected: MFA, bot detection, and a new
+- Cloud Playwright with vault-held session cookies ([design review B (2026-11-14)](../SOURCES.md#design-review-b), P0-5 option). Rejected: MFA, bot detection, and a new
   class of stored secrets with no model in the data classes.
 - Free-form AppleScript or shell on the Mac: a model could write the script; rejected.
 - Leave these kinds out of v2: three of the six build kinds named by the owner would be missing.
 
 ## Sources
-Review-c P0-1; review-b P0-5; PR #42 A§9.5, A§9.6; old `brain/src/connectors/computer/osa-driver.ts` (dropped).
+[Design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-1; [design review B (2026-11-14)](../SOURCES.md#design-review-b), P0-5; PR #42 A§9.5, A§9.6; old `brain/src/connectors/computer/osa-driver.ts` (dropped).
 
 ## Revisions
 

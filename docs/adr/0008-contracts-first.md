@@ -30,11 +30,11 @@ a separate folder. Drift caused bugs.
 ## Alternatives considered
 - TypeBox (JSON Schema native). Close second. zod chosen because the old brain used zod and it has wider agent familiarity.
 - OpenAPI-first with codegen to TS. Heavier; MCP tools and events are not HTTP.
-- quicktype for Swift generation: another dependency for a small emitter (review-a #11).
+- quicktype for Swift generation: another dependency for a small emitter ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #11).
 
 ## Sources
 Old `schemas/` (Draft 2020-12), old `control/src/schema/`, old `brain/src/api/types.ts`.
 
 ## Revisions
-- 2026-11-14: Swift generator chosen (dependency-free emitter) and target `OffloadContracts` named (review-a #11, #45,
-  #46); routine schema in `packages/routine-sdk` (review-c P0-2).
+- 2026-11-14: Swift generator chosen (dependency-free emitter) and target `OffloadContracts` named ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #11, #45,
+  #46); routine schema in `packages/routine-sdk` ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P0-2).

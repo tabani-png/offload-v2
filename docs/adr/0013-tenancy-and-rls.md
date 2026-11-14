@@ -5,7 +5,7 @@ Status: accepted, revised 2026-11-14 · Date: 2026-11-14 · Carries over old ADR
 ## Context
 Offload starts as a tenant of one (Muhammad) and grows to Pro teams and Enterprise. Isolation must hold from day one,
 including between members of one team tenant: their screen-derived data must not leak to each other through a query
-bug (review-c P1(5)).
+bug ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(5)).
 
 ## Decision
 - Hierarchy: **tenant → workspace → member**. A personal tenant (`kind = 'personal'`) has one workspace and one member
@@ -63,14 +63,14 @@ bug (review-c P1(5)).
 ## Alternatives considered
 - Schema per tenant or database per tenant for everyone: heavier migrations, no benefit for personal tenants.
 - Tenant-only RLS with member checks in authorization code (the previous version). Rejected: one query bug shows a
-  colleague's screen-derived data (review-c P1(5)).
+  colleague's screen-derived data ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(5)).
 
 ## Sources
 Old ADR 0101, 0102, 0108; old `control/migrations/0102_rls_roles.sql`.
 
 ## Revisions
 - 2026-11-14: member-level restrictive RLS on C1/C2/C6 tables, no network I/O inside `withTenant`, audit lock last
-  (review-c P1(5)); bootstrap resolver functions (review-a #2); `tenants` under RLS (review-a #28); partitions and
-  `durable` schema rules (review-a #27); append-only list links DATA_MODEL (review-a #30); `offload_jobs` role
-  (review-c P2); real Postgres in CI (review-c P2, review-a #10).
+  ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(5)); bootstrap resolver functions ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #2); `tenants` under RLS ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #28); partitions and
+  `durable` schema rules ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #27); append-only list links DATA_MODEL ([design review A (2026-11-14)](../SOURCES.md#design-review-a), #30); `offload_jobs` role
+  ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P2); real Postgres in CI ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P2, [design review A (2026-11-14)](../SOURCES.md#design-review-a), #10).
 - 2026-11-14 (final pass): member-wall list points at DATA_MODEL's MI marks and adds the missing MI tables (final-pass audit).
