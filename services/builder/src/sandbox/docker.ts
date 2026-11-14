@@ -3,7 +3,7 @@
 // shard, temps removed. Hardened beyond it: a non-root user, no-new-privileges, a pids limit, an env allowlist, and a
 // timed-out container is removed (the old runner killed the CLI client and left the VM running).
 // A sandbox is two private host folders plus labels; every exec is a fresh `docker run --rm` over them.
-import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { sha256Hex } from "../hash.ts";
@@ -121,9 +121,27 @@ export class DockerProvider implements SandboxProvider {
     return out.sort((x, y) => (x.path < y.path ? -1 : x.path > y.path ? 1 : 0));
   }
 
+  /** Every entry of the folder: files with their content hash, folders (empty ones too), symlinks with their target,
+   * anything else by its kind. The teeth gate compares two snapshots: any change means a check wrote. */
   async snapshot(s: Sandbox, mount: Mount): Promise<string> {
-    const files = await this.getFiles(s, mount);
-    return sha256Hex(files.map((f) => `${f.path}\u0000${sha256Hex(f.bytes)}`).join("\n"));
+    const b = this.box(s);
+    const base = mount === "work" ? b.work : b.check;
+    const lines: string[] = [];
+    const walk = (dir: string, rel: string) => {
+      for (const name of readdirSync(dir).sort()) {
+        const r = rel === "" ? name : `${rel}/${name}`;
+        const p = join(dir, name);
+        const st = lstatSync(p);
+        if (st.isSymbolicLink()) lines.push(`l ${r}\u0000${readlinkSync(p)}`);
+        else if (st.isDirectory()) {
+          lines.push(`d ${r}`);
+          walk(p, r);
+        } else if (st.isFile()) lines.push(`f ${r}\u0000${sha256Hex(readFileSync(p))}`);
+        else lines.push(`o ${r}`);
+      }
+    };
+    walk(base, "");
+    return sha256Hex(lines.join("\n"));
   }
 
   /** The exact `docker run` argv for one exec. */
