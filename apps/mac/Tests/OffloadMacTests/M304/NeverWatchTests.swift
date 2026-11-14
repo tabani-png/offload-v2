@@ -26,9 +26,9 @@ extension M304 {
   @Test("NEVERWATCH: locked entries are on from the start and cannot be removed")
   func lockedEntries() {
     #expect(NeverWatchChip.locked.map(\.label) == ["1Password", "Banking sites", "Private windows"])
-    #expect(NeverWatchChip.locked.allSatisfy(\.isLocked))
+    #expect(NeverWatchChip.locked.allSatisfy { $0.isLocked })
     #expect(NeverWatchChip.optional.map(\.label) == ["Messages", "WhatsApp", "Photos", "Spotify"])
-    #expect(!NeverWatchChip.optional.contains(where: \.isLocked))
+    #expect(!NeverWatchChip.optional.contains { $0.isLocked })
     let store = NeverWatchStore()
     let builtIn = store.currentExclusions()
     #expect(builtIn.contains(Exclusion(kind: .bundleID, value: "com.1password.1password", source: .builtin)))
