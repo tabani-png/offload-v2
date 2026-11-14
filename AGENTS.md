@@ -87,6 +87,8 @@ starts from when you set `status: in_progress`; `scripts/check-slices.sh` fails 
 an empty `BASE`.
 In CI the checkout has full history and `SLICE_UPSTREAM` is set (the PR merge commit's first parent, or the previous
 `main` tip on push), so only the change's own commits are scope-checked and a slice already `done` there is skipped.
+A `done` slice is scope-checked only from `BASE` to the commit that set `status: done` in its SPEC, so later slices
+stacked on the same branch are not charged to it; `in_progress` slices still check everything since `BASE`.
 
 `scripts/verify-all.sh` lints every SPEC and `verify.sh`, then runs `verify.sh` for every slice marked `done` with
 `SKIP_FULL_SUITE=1` (it already ran the full suite once).

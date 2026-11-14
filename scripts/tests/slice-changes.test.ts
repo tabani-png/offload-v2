@@ -81,3 +81,55 @@ test("SCOPE: an unknown SLICE_UPSTREAM is an error", () => {
   const { root, base } = prMergeRepo();
   expect(files(root, base, { SLICE_UPSTREAM: "f".repeat(40) }).rc).toBe("rc=1");
 });
+
+// Stacked slices on one branch: s1 is built and marked done, then s2 is built on top of it.
+const spec = (id: string, status: string) => `---\nid: ${id}\nstatus: ${status}\n---\n`;
+
+function stackedRepo(opts: { s1Extra?: Record<string, string> } = {}) {
+  const root = mkdtempSync(join(tmpdir(), "slice-changes-stacked-"));
+  dirs.push(root);
+  git(root, "init", "-q", "-b", "main");
+  const base = commit(root, { "README.md": "a\n", "slices/s1/SPEC.md": spec("s1", "ready"), "slices/s2/SPEC.md": spec("s2", "ready") }, "base");
+  commit(root, { "slices/s1/SPEC.md": spec("s1", "in_progress") }, "s1: start");
+  commit(root, { "packages/a/x.ts": "x\n", ...(opts.s1Extra ?? {}) }, "s1: work");
+  commit(root, { "slices/s1/SPEC.md": spec("s1", "done") }, "s1: done");
+  commit(root, { "slices/s2/SPEC.md": spec("s2", "in_progress") }, "s2: start");
+  commit(root, { "packages/b/y.ts": "y\n", "README.md": "b\n" }, "s2: work");
+  return { root, base };
+}
+
+function filesFor(id: string, root: string, base: string) {
+  const r = Bun.spawnSync(
+    ["bash", "-uc", `set -o pipefail; . "${lib}"; SLICE_ID="$2"; slice_files "$1"; echo "rc=$?"; printf '%s\\n' "$SLICE_FILES"`, "x", base, id],
+    { cwd: root, env, stdout: "pipe", stderr: "pipe" },
+  );
+  const out = r.stdout.toString().trim().split("\n");
+  const i = out.findIndex((l) => l.startsWith("rc="));
+  return { rc: out[i], files: out.slice(i + 1).filter(Boolean) };
+}
+
+test("SCOPE: a done slice is checked only up to the commit that set status: done (later slices' files are not its)", () => {
+  const { root, base } = stackedRepo();
+  writeFileSync(join(root, "packages", "b", "z.ts"), "uncommitted work of the next slice\n");
+  expect(filesFor("s1", root, base)).toEqual({ rc: "rc=0", files: ["packages/a/x.ts", "slices/s1/SPEC.md"] });
+});
+
+test("SCOPE: a file the done slice itself changed outside its scope is still reported", () => {
+  const { root, base } = stackedRepo({ s1Extra: { "apps/web/oops.ts": "o\n" } });
+  expect(filesFor("s1", root, base).files).toEqual(["apps/web/oops.ts", "packages/a/x.ts", "slices/s1/SPEC.md"]);
+});
+
+test("SCOPE: an in_progress slice still counts every change since BASE, committed or not", () => {
+  const { root, base } = stackedRepo();
+  writeFileSync(join(root, "packages", "b", "z.ts"), "z\n");
+  expect(filesFor("s2", root, base).files).toEqual([
+    "README.md", "packages/a/x.ts", "packages/b/y.ts", "packages/b/z.ts", "slices/s1/SPEC.md", "slices/s2/SPEC.md",
+  ]);
+});
+
+test("SCOPE: status: done not yet committed falls back to everything since BASE", () => {
+  const { root, base } = stackedRepo();
+  writeFileSync(join(root, "slices", "s2", "SPEC.md"), spec("s2", "done"));
+  expect(filesFor("s2", root, base).files).toContain("packages/b/y.ts");
+  expect(filesFor("s2", root, base).files).toContain("slices/s2/SPEC.md");
+});
