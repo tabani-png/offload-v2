@@ -22,6 +22,8 @@ export interface OutcomeWeek {
   start: number;
   end: number;
   measured_minutes: number | null;
+  /** The task's minutes over the week's stored days, before scaling (the Figure shows this input). */
+  raw_minutes: number | null;
   days_stored: number | null;
   source_purged: boolean;
   source_purged_at: number | null;
@@ -63,6 +65,7 @@ export function recordShip(i: ShipInput): FixOutcome {
     start: i.shipped_at + n * WEEK_MS,
     end: i.shipped_at + (n + 1) * WEEK_MS,
     measured_minutes: null,
+    raw_minutes: null,
     days_stored: null,
     source_purged: false,
     source_purged_at: null,
@@ -101,13 +104,17 @@ export function summarize(i: { estimated_minutes_per_week: number; baseline_minu
   const median_saved_minutes = med === null ? null : r1(med);
   const complete = i.weeks.length === WEEKS_TRACKED && i.weeks.every((w) => w !== null);
   const e10 = tenths(i.estimated_minutes_per_week);
-  const m10 = median_saved_minutes === null ? null : tenths(median_saved_minutes);
+  // Twice the median in integer tenths (exact for an even count), so thresholds never depend on float rounding.
+  const sorted = saved_per_week.map(tenths).sort((a, b) => a - b);
+  const h = sorted.length >> 1;
+  const m20 = sorted.length === 0 ? null : sorted.length % 2 === 1 ? 2 * sorted[h]! : sorted[h - 1]! + sorted[h]!;
+  const m10 = m20 === null ? null : m20 / 2;
   const ratio = m10 === null || e10 <= 0 ? null : m10 / e10;
   let flag: OutcomeFlag;
   if (!complete) flag = "pending";
-  else if (m10 === null || e10 <= 0) flag = "unmeasured";
-  else if (m10 * 10 >= e10 * 8) flag = "on_track";
-  else if (m10 * 10 >= e10 * 5) flag = "partial";
+  else if (m20 === null || e10 <= 0) flag = "unmeasured";
+  else if (m20 * 10 >= e10 * 2 * 8) flag = "on_track";
+  else if (m20 * 10 >= e10 * 2 * 5) flag = "partial";
   else flag = "under";
   const shown = i.weeks.map((w) => (w === "purged" ? "purged" : w === null ? "not yet" : fmt(w))).join(", ");
   const percent = m10 === null || e10 <= 0 ? null : Math.round((m10 * 100) / e10);
@@ -127,7 +134,7 @@ function refresh(o: FixOutcome): FixOutcome {
     let f: Figure | null = null;
     if (w.source_purged) f = figure({ value: null, unit: "minutes_per_week", arithmetic: `week ${w.week}: its raw days were purged before it was measured; not guessed`, evidence: [weekRef(w)], source_purged_at: iso(w.source_purged_at) });
     else if (w.measured_minutes !== null && w.days_stored !== null) {
-      const raw = r1((w.measured_minutes * w.days_stored) / 7);
+      const raw = w.raw_minutes ?? r1((w.measured_minutes * w.days_stored) / 7);
       const arithmetic = w.days_stored === 7 ? `${fmt(w.measured_minutes)} min over 7 stored days = ${fmt(w.measured_minutes)} min/wk` : `${fmt(raw)} min over ${w.days_stored} stored ${w.days_stored === 1 ? "day" : "days"} × 7 / ${w.days_stored} = ${fmt(w.measured_minutes)} min/wk`;
       f = figure({ value: w.measured_minutes, unit: "minutes_per_week", arithmetic, evidence: [weekRef(w)], source_purged_at: null });
     }
@@ -145,7 +152,9 @@ function refresh(o: FixOutcome): FixOutcome {
   return { ...o, weeks, flag: s.flag, ratio: s.ratio, median_saved_minutes: s.median_saved_minutes, arithmetic: s.arithmetic, figures };
 }
 
-/** Measures every ended, unmeasured week of a copy of `o`. `measureWeek` returns the task's minutes over that week's own
+/** Measures every ended, unmeasured week of a copy of `o`. A week is source purged when its FIRST day is past the raw
+ * TTL, even if later days are still stored: a week is measured whole or not at all (with a TTL under 7 days every
+ * ended week is purged, which is the conservative reading). `measureWeek` returns the task's minutes over that week's own
  * stored days and how many days were stored (see weekMinutes), or null when it cannot tell yet. A week whose first
  * day is older than the raw TTL is source purged and never asked. `o` itself is not changed. */
 export async function measureDue(
@@ -165,6 +174,7 @@ export async function measureDue(
     if (m === null || typeof m.minutes !== "number" || !Number.isFinite(m.minutes) || m.minutes < 0) continue;
     if (!Number.isInteger(m.days_stored) || m.days_stored < 1 || m.days_stored > 7) continue;
     w.measured_minutes = r1((m.minutes * 7) / m.days_stored);
+    w.raw_minutes = r1(m.minutes);
     w.days_stored = m.days_stored;
     w.measured_at = i.now;
   }

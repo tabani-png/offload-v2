@@ -45,10 +45,20 @@ export interface MintInput {
   parent_approval_id?: string;
 }
 
+export interface ClaimInput {
+  tenant_id: string;
+  approval_id: string;
+  token: string;
+  bound: Record<string, string>;
+  /** What the claimer is about to do: the approval must be of this kind, for this subject. */
+  kind?: ApprovalKind;
+  subject_id?: string;
+}
+
 export interface ApprovalPort {
   mint(i: MintInput, now: number): Promise<{ approval_id: string; token: string }>;
   /** Atomically claims the approval once (twice when released once); every bound hash must equal. */
-  claim(i: { tenant_id: string; approval_id: string; token: string; bound: Record<string, string> }, now: number): Promise<Approval>;
+  claim(i: ClaimInput, now: number): Promise<Approval>;
   /** Releases a claimed approval once (ADR 0031: an infra_failed build with no model spend). */
   release(i: { tenant_id: string; approval_id: string }, now: number): Promise<void>;
   get(tenant_id: string, approval_id: string): Promise<Approval | null>;
@@ -94,12 +104,13 @@ export class MemoryApprovals implements ApprovalPort {
     return { approval_id: id, token };
   }
 
-  async claim(i: { tenant_id: string; approval_id: string; token: string; bound: Record<string, string> }, now: number): Promise<Approval> {
+  async claim(i: ClaimInput, now: number): Promise<Approval> {
     const a = this.rows.get(i.approval_id);
     if (a === undefined || a.tenant_id !== i.tenant_id) throw new ApprovalError("not_found", "no such approval");
     const want = Buffer.from(a.token_sha256, "hex");
     const got = Buffer.from(sha256Hex(typeof i.token === "string" ? i.token : ""), "hex");
     if (want.length !== got.length || !timingSafeEqual(want, got)) throw new ApprovalError("forbidden", "wrong approval token");
+    if ((i.kind !== undefined && i.kind !== a.kind) || (i.subject_id !== undefined && i.subject_id !== a.subject_id)) throw new ApprovalError("forbidden", "the approval is for another action");
     if (now > a.expires_at) throw new ApprovalError("approval_expired", "the approval is older than 24 hours");
     if (!sameBound(a.bound_hashes, i.bound)) throw new ApprovalError("hash_mismatch", "the approval is for other hashes");
     const used = this.claims.get(a.id) ?? 0;

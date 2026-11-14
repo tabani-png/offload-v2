@@ -126,8 +126,14 @@ async function deploy(d: HttpDeps, ctx: { tenant_id: string; member_id: string }
   for (const k of keys) if (got[k] !== want[k]) return error("hash_mismatch", `${k} is not this build's: read the definition again`);
   // Once: the first deploy sets deployed_at; any other gets state_conflict and changes nothing.
   if (!(await d.store.markDeployed(ctx.tenant_id, id, d.now()))) return error("state_conflict", "this build is already deployed");
-  const a = await d.approvals.mint({ tenant_id: ctx.tenant_id, kind: "deploy", subject_id: id, bound: want, approver_kind: "person", approver_member_id: ctx.member_id }, d.now());
-  await d.approvals.claim({ tenant_id: ctx.tenant_id, approval_id: a.approval_id, token: a.token, bound: want }, d.now());
-  const r = await d.routines.deploy({ tenant_id: ctx.tenant_id, member_id: ctx.member_id, build_id: id, ...want });
-  return json(201, r);
+  try {
+    const a = await d.approvals.mint({ tenant_id: ctx.tenant_id, kind: "deploy", subject_id: id, bound: want, approver_kind: "person", approver_member_id: ctx.member_id }, d.now());
+    await d.approvals.claim({ tenant_id: ctx.tenant_id, approval_id: a.approval_id, token: a.token, bound: want, kind: "deploy", subject_id: id }, d.now());
+    const r = await d.routines.deploy({ tenant_id: ctx.tenant_id, member_id: ctx.member_id, build_id: id, ...want });
+    return json(201, r);
+  } catch (e) {
+    // No routine was created: the build may be deployed again (a new deploy approval is minted then).
+    await d.store.unmarkDeployed(ctx.tenant_id, id).catch(() => undefined);
+    throw e;
+  }
 }

@@ -4,7 +4,7 @@
 // lock on the build (ADR 0030); budget_entries are append-only and idempotent by key (ADR 0031).
 import type { SQL } from "bun";
 import { join } from "node:path";
-import { staleNote, BuildConflict, type AttemptRow, type BuildPatch, type BuildRow, type BuildStore, type NewBuild, type Reservation, type Settlement, type Stage } from "./store.ts";
+import { staleNote, BuildConflict, BuildEnded, type AttemptRow, type BuildPatch, type BuildRow, type BuildStore, type NewBuild, type Reservation, type Settlement, type Stage } from "./store.ts";
 
 export const MIGRATIONS = ["0001_builder.sql"];
 
@@ -123,6 +123,7 @@ export class PgBuildStore implements BuildStore {
     return this.tx(tenant_id, async (tx) => {
       const cur = await this.read(tx, tenant_id, id, true);
       if (cur === null) throw new Error("no such build");
+      if (!LIVE.includes(cur.state)) throw new BuildEnded();
       const n = { ...cur, ...patch };
       const d = (v: number | null) => (v === null ? null : new Date(v));
       await tx`UPDATE builds SET approval_id = ${n.approval_id}, state = ${n.state}, stages = ${jsonb(n.stages)}::text::jsonb, winner_attempt_id = ${n.winner_attempt_id},
@@ -177,6 +178,15 @@ export class PgBuildStore implements BuildStore {
       if (ins.length > 0 && s.scope === "build") await tx`UPDATE builds SET spent_usd = spent_usd + ${usd(s.usd4)}::numeric WHERE tenant_id = ${s.tenant_id} AND id = ${s.build_id}`;
       await tx`UPDATE budget_reservations SET settled_at = ${new Date(now)} WHERE tenant_id = ${s.tenant_id} AND build_id = ${s.build_id} AND call_id = ${s.call_id} AND settled_at IS NULL`;
     });
+  }
+
+  async unmarkDeployed(tenant_id: string, id: string): Promise<void> {
+    await this.tx(tenant_id, (tx) => tx`UPDATE builds SET deployed_at = NULL WHERE tenant_id = ${tenant_id} AND id = ${id}`);
+  }
+
+  async heartbeat(tenant_id: string, id: string, now: number): Promise<void> {
+    const r = await this.tx(tenant_id, (tx) => tx`UPDATE builds SET heartbeat_at = ${new Date(now)} WHERE tenant_id = ${tenant_id} AND id = ${id} AND state IN ${tx(LIVE)} RETURNING id`);
+    if (r.length !== 1) throw new BuildEnded();
   }
 
   async markDeployed(tenant_id: string, id: string, now: number): Promise<boolean> {

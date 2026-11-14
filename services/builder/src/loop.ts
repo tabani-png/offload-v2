@@ -24,7 +24,7 @@ import { artifactSha256, canonicalJson, HEX64, sha256Hex } from "./hash.ts";
 import type { ApprovalPort } from "./approvals.ts";
 import { runShards, type Shard, type ShardResult } from "./shards.ts";
 import type { SandboxProvider, SandboxSpec } from "./sandbox/provider.ts";
-import { BuildConflict, type AttemptRow, type BuildRow, type BuildState, type BuildStore, type Stage } from "./store.ts";
+import { BuildConflict, BuildEnded, type AttemptRow, type BuildRow, type BuildState, type BuildStore, type Stage } from "./store.ts";
 
 export interface BuildDeps {
   store: BuildStore;
@@ -86,9 +86,16 @@ export async function okBuild(d: BuildDeps, i: { tenant_id: string; member_id: s
     if (e instanceof BuildConflict) throw new OkBuildError("already_running", "a build of this fix is queued or running");
     throw e;
   }
-  const { approval_id, token } = await d.approvals.mint({ tenant_id: i.tenant_id, kind: "build", subject_id: build_id, bound: want, approver_kind: "person", approver_member_id: i.member_id }, d.now());
-  await d.store.update(i.tenant_id, build_id, { approval_id }, d.now());
-  return { build_id, token };
+  try {
+    const { approval_id, token } = await d.approvals.mint({ tenant_id: i.tenant_id, kind: "build", subject_id: build_id, bound: want, approver_kind: "person", approver_member_id: i.member_id }, d.now());
+    await d.store.update(i.tenant_id, build_id, { approval_id }, d.now());
+    return { build_id, token };
+  } catch (e) {
+    // Never leave a queued build without an approval holding the lock.
+    const now = d.now();
+    await d.store.update(i.tenant_id, build_id, { state: "failed", ended_at: now, stages: [{ name: "end", state: "failed", started_at: now, ended_at: now, note: "The OK, build approval could not be recorded. Press OK, build again." }] }, now).catch(() => undefined);
+    throw e;
+  }
 }
 
 /** Winner among passing attempts: all shards passed, then lower cost, then smaller artifact, then earlier. */
@@ -101,6 +108,17 @@ export function pickWinner(xs: readonly AttemptRow[]): AttemptRow | null {
 const shardWords = (s: string) => (s === "held_out" ? "held-out" : "frozen");
 
 export async function runBuild(d: BuildDeps, i: { tenant_id: string; build_id: string; token: string }): Promise<void> {
+  try {
+    await runBuildInner(d, i);
+  } catch (e) {
+    // Ended by someone else (stale recovery): stop, write nothing more. Attempts it started finish on their own and
+    // are stopped by their next heartbeat.
+    if (e instanceof BuildEnded) return;
+    throw e;
+  }
+}
+
+async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: string; token: string }): Promise<void> {
   const first = await d.store.get(i.tenant_id, i.build_id);
   if (first === null || first.state !== "queued" || first.approval_id === null) return;
   const b: BuildRow = first;
@@ -123,7 +141,7 @@ export async function runBuild(d: BuildDeps, i: { tenant_id: string; build_id: s
 
   // 1. The approval, claimed once by this workflow. Nothing runs before it.
   try {
-    await d.approvals.claim({ tenant_id: i.tenant_id, approval_id: b.approval_id!, token: i.token, bound: b.bound_hashes }, d.now());
+    await d.approvals.claim({ tenant_id: i.tenant_id, approval_id: b.approval_id!, token: i.token, bound: b.bound_hashes, kind: "build", subject_id: b.id }, d.now());
   } catch (e) {
     const code = e instanceof ApprovalError ? e.code : null;
     const note = code === "approval_expired" ? "The OK, build approval expired (older than 24 hours). Press OK, build again." : code === "approval_used" ? "The OK, build approval was already used." : "The OK, build approval could not be used.";
@@ -188,7 +206,15 @@ export async function runBuild(d: BuildDeps, i: { tenant_id: string; build_id: s
         row.note = "This worker's approval claim could not be made, so it did not start.";
         return { row, frozenOutput, heldOutFailed, infra: false };
       }
-      res = await runAttempt({ provider: d.provider, worker: d.worker, approvals: d.approvals, config: d.config, now: d.now }, { tenant_id: i.tenant_id, build_id: b.id, attempt_id: id, ordinal, claim: { ...claim, bound: attemptBound }, brief_md, visible: fix.check_set, fixtures: fix.fixtures, feedback, cap_usd4: cap, tag });
+      // The row exists before the worker starts: from now on this held-out check counts as used (ADR 0029).
+      try {
+        await d.store.putAttempt({ ...row, outcome: "running", note: "This worker is building." });
+      } catch {
+        row.note = "This worker could not be recorded, so it did not start.";
+        return { row, frozenOutput, heldOutFailed, infra: false };
+      }
+      const beat = () => d.store.heartbeat(i.tenant_id, b.id, d.now());
+      res = await runAttempt({ provider: d.provider, worker: d.worker, approvals: d.approvals, config: d.config, now: d.now, beat }, { tenant_id: i.tenant_id, build_id: b.id, attempt_id: id, ordinal, claim: { ...claim, bound: attemptBound }, brief_md, visible: fix.check_set, fixtures: fix.fixtures, feedback, cap_usd4: cap, tag });
       Object.assign(row, { sandbox_id: res.sandbox_id, tries: res.tries, turns: res.turns, spent_usd4: res.spent_usd4, note: res.note });
       frozenOutput = res.advisory_output;
       if (res.artifact.length > 0) {
@@ -201,6 +227,7 @@ export async function runBuild(d: BuildDeps, i: { tenant_id: string; build_id: s
       else if (res.outcome === "error") row.outcome = "error";
       else if (res.tries > 0 && res.artifact.length > 0) {
         // The only pass that counts: fresh verification sandboxes, one per shard, in parallel.
+        await beat();
         const v: ShardResult[] = await runShards({ provider: d.provider, spec: verifySpec, artifact: res.artifact, shards, timeout_ms: d.config.verify_wall_ms });
         const f = v.find((x) => x.shard === "frozen")!;
         const h = v.find((x) => x.shard === "held_out")!;

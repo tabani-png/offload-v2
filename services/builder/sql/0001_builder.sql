@@ -38,7 +38,7 @@ CREATE TABLE worker_attempts (
   ordinal int NOT NULL CHECK (ordinal >= 1),
   sandbox_provider text NOT NULL,
   sandbox_id text,
-  outcome text NOT NULL CHECK (outcome IN ('pass','fail','cap','tamper','error')),
+  outcome text NOT NULL CHECK (outcome IN ('running','pass','fail','cap','tamper','error')),
   spent_usd numeric(10,4) NOT NULL DEFAULT 0,
   tries int NOT NULL DEFAULT 0,
   turns int NOT NULL DEFAULT 0,

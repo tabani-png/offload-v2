@@ -90,8 +90,13 @@ present and passing; the full suite passes; every change since `BASE` matches `p
   `created_at`, `heartbeat_at`, `deployed_at` and the build-lock index; `worker_attempts` gains `artifact_sha256`,
   `artifact_bytes`, `artifact_files`, `note`. The docs had no place for the lock's staleness, for "deployed once", or
   for the hashes a held-out regeneration is checked against.
-- A held-out check counts as used once a build bound to it ran a worker attempt (ADR 0029 says a new build
-  regenerates it). A build that never ran a worker (a stale queued build, a teeth failure) revealed nothing about it,
+- A held-out check counts as used once a build bound to it started a worker attempt (ADR 0029 says a new build
+  regenerates it); the attempt row is written before the worker starts. A build that never started a worker (a stale queued build, a teeth failure) revealed nothing about it,
   so the stale-lock recovery can start the next build with the same hashes. API.md and DATA_MODEL.md say so.
+- Review gate (an independent Opus security review) findings fixed: attempts beat the heartbeat before each try and
+  before their shards; a build ended by stale recovery refuses every later write (`BuildEnded`) and its orchestrator
+  stops; the attempt row exists before the worker starts; a failed approval mint ends the queued build; claims bind
+  `kind` and `subject_id`; a deploy that fails before the routine exists clears `deployed_at`. Open items are in
+  DESIGN.md section 7.
 - API.md: the OK, build and deploy rows list the codes this slice returns (400, 404, 409 `state_conflict`).
 - MIGRATION 5.6: `models/local.ts` is handed to m5-03 (the router owns it), and the port is linked.

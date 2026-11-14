@@ -4,7 +4,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { SQL } from "bun";
 import { migrate, PgBuildStore } from "../../src/store-pg.ts";
-import { BuildConflict, type NewBuild } from "../../src/store.ts";
+import { BuildConflict, BuildEnded, type NewBuild } from "../../src/store.ts";
 import { OTHER_TENANT, T0, TENANT } from "./setup.ts";
 
 const URL = process.env["DATABASE_URL"] ?? "";
@@ -68,6 +68,10 @@ describe("p45a Postgres build store", () => {
     const live = await store.insertQueued(newBuild("brief_beat"), T0, STALE);
     await store.update(TENANT, live.id, { state: "building" }, T0 + STALE - 1000);
     await expect(store.insertQueued(newBuild("brief_beat"), T0 + STALE + 1, STALE)).rejects.toBeInstanceOf(BuildConflict);
+    // the recovered build's old orchestrator can no longer write or beat
+    await expect(store.update(TENANT, dead.id, { state: "ready" }, later)).rejects.toBeInstanceOf(BuildEnded);
+    await expect(store.heartbeat(TENANT, dead.id, later)).rejects.toBeInstanceOf(BuildEnded);
+    await store.heartbeat(TENANT, live.id, T0 + STALE);
   });
 
   test("CAP: (Postgres) three parallel reservations cannot exceed the remaining cap", async () => {

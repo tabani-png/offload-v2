@@ -60,7 +60,8 @@ export interface AttemptRow {
   ordinal: number;
   sandbox_provider: string;
   sandbox_id: string | null;
-  outcome: "pass" | "fail" | "cap" | "tamper" | "error";
+  /** `running` from the moment the worker starts: its held-out check counts as used from then on. */
+  outcome: "running" | "pass" | "fail" | "cap" | "tamper" | "error";
   spent_usd4: number;
   tries: number;
   turns: number;
@@ -102,12 +103,19 @@ export class BuildConflict extends Error {
   }
 }
 
+/** The build already ended (stale recovery, or another writer): its orchestrator must stop and write nothing more. */
+export class BuildEnded extends Error {
+  constructor() {
+    super("the build already ended");
+  }
+}
+
 export interface BuildStore {
   insertQueued(b: NewBuild, now: number, stale_after_ms: number): Promise<BuildRow>;
   /** True when a build of this brief that ran at least one worker attempt was bound to this held-out hash. */
   heldOutUsed(tenant_id: string, brief_id: string, held_out_hash: string): Promise<boolean>;
   get(tenant_id: string, id: string): Promise<BuildRow | null>;
-  /** Applies the patch and sets heartbeat_at = now. */
+  /** Applies the patch and sets heartbeat_at = now. Throws BuildEnded when the build is no longer live. */
   update(tenant_id: string, id: string, patch: BuildPatch, now: number): Promise<BuildRow>;
   putAttempt(a: AttemptRow): Promise<void>;
   attempts(tenant_id: string, build_id: string): Promise<AttemptRow[]>;
@@ -117,6 +125,10 @@ export interface BuildStore {
   settle(s: Settlement, now: number): Promise<void>;
   /** Sets deployed_at once on a ready build; false when it was already set or the build is not ready. */
   markDeployed(tenant_id: string, id: string, now: number): Promise<boolean>;
+  /** Clears deployed_at when the deploy failed before a routine existed, so it can be retried. */
+  unmarkDeployed(tenant_id: string, id: string): Promise<void>;
+  /** Moves heartbeat_at to now. Throws BuildEnded when the build is no longer live. */
+  heartbeat(tenant_id: string, id: string, now: number): Promise<void>;
 }
 
 export const staleNote = "Offload's side stopped: no progress for longer than any stage can take. Ended so a new build can start.";
@@ -163,6 +175,7 @@ export class MemoryBuildStore implements BuildStore {
   async update(tenant_id: string, id: string, patch: BuildPatch, now: number): Promise<BuildRow> {
     const b = this.builds.get(this.key(tenant_id, id));
     if (b === undefined) throw new Error("no such build");
+    if (!isLive(b.state)) throw new BuildEnded();
     Object.assign(b, structuredClone(patch), { heartbeat_at: now });
     return structuredClone(b);
   }
@@ -198,5 +211,16 @@ export class MemoryBuildStore implements BuildStore {
     if (b === undefined || b.state !== "ready" || b.deployed_at !== null) return false;
     b.deployed_at = now;
     return true;
+  }
+
+  async unmarkDeployed(tenant_id: string, id: string): Promise<void> {
+    const b = this.builds.get(this.key(tenant_id, id));
+    if (b !== undefined) b.deployed_at = null;
+  }
+
+  async heartbeat(tenant_id: string, id: string, now: number): Promise<void> {
+    const b = this.builds.get(this.key(tenant_id, id));
+    if (b === undefined || !isLive(b.state)) throw new BuildEnded();
+    b.heartbeat_at = now;
   }
 }

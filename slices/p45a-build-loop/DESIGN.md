@@ -120,3 +120,18 @@ form, RFC 8785 for our value types) until `packages/contracts` exports JCS (W1-E
 - **Fan-out.** `fanout_workers` from config: default 1 (M2), at most 3 (M6). Old tests that fanned out to 3 set it.
 - **Money** is integer ten-thousandths of a dollar (`numeric(10,4)`): cap 40000, checks reserve 3000, attempt cap 7000.
 - Verifier, repair turn, replay fixtures, receipt signing, egress proxy and reaper stay with m2-07/m2-08.
+
+## 7. Review gate and known gaps
+
+An independent Opus security review (2026-11-14) confirmed the guard, proof, path, held-out, claim-order, budget and
+RLS rules. It also found stale-recovery and deploy issues, now fixed with tests: heartbeats inside attempts,
+`BuildEnded`, the attempt row written first, ending the build on a failed mint, kind- and subject-bound claims, a
+deploy that can be retried, and p45b's unrounded threshold and stored raw minutes. Open:
+- **Same uid for harness and tool.** In a Docker shard the harness, `bun test` and the built tool all run as 65534.
+  A forged JUnit report alone cannot pass (bun's exit code is still required). But on a host with Yama
+  `ptrace_scope = 0`, the tool could read the nonce from PID 1. Fix for m2-08: start the container as root with
+  only `SETUID`/`SETGID`, keep the report in a root-only folder, and run `bun test` as 65534. Spike it on real Docker.
+- **Approvals are in memory** (`MemoryApprovals`): a restart loses them. The Postgres adapter is m2-06.
+- **Durable handoff of the build token**: the inline runner holds it in process (section 4).
+- Not ported here: verifier and repair turn, replay fixtures, receipt signing, egress proxy, reaper, E2B, artifact
+  object storage, the artifact capability scan (m2-07, m2-08). The `LIVE:` Docker test has not run on this box.

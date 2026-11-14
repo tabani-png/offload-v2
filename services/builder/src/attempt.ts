@@ -73,6 +73,8 @@ export interface AttemptDeps {
   approvals: ApprovalPort;
   config: BuildConfig;
   now: () => number;
+  /** Moves the build's heartbeat; throws when the build already ended (the attempt then stops). */
+  beat: () => Promise<void>;
 }
 
 const enc = new TextEncoder();
@@ -89,7 +91,7 @@ export const feedbackText = (s: string) =>
 export async function runAttempt(d: AttemptDeps, i: AttemptInput): Promise<AttemptResult> {
   const r: AttemptResult = { outcome: "error", infra: false, tries: 0, turns: 0, spent_usd4: 0, artifact: [], note: "", advisory_output: "", sandbox_id: null };
   try {
-    await d.approvals.claim({ tenant_id: i.tenant_id, approval_id: i.claim.approval_id, token: i.claim.token, bound: i.claim.bound }, d.now());
+    await d.approvals.claim({ tenant_id: i.tenant_id, approval_id: i.claim.approval_id, token: i.claim.token, bound: i.claim.bound, kind: "build", subject_id: i.attempt_id }, d.now());
   } catch {
     r.note = "This worker's approval claim was refused, so it did not start.";
     return r;
@@ -123,6 +125,7 @@ export async function runAttempt(d: AttemptDeps, i: AttemptInput): Promise<Attem
         r.note = "This worker reached its share of the build cap.";
         break;
       }
+      await d.beat();
       const t = await d.worker.turn({ sandbox: sb, provider: d.provider, attempt_id: i.attempt_id, ordinal: i.ordinal, try_no: n, prompt, feedback, cap_usd4: i.cap_usd4 });
       r.tries = n;
       r.turns += Math.max(0, Math.trunc(t.turns));
