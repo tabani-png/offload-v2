@@ -96,7 +96,7 @@ Folder: `packages/db/tests/m1-03-tenancy-rls/`.
 | MIGRATE | MIGRATE: observations is partitioned by day with the day in the primary key | `(tenant_id, device_id, object_id, day)`; `ON CONFLICT` on it works |
 | MIGRATE | MIGRATE: an insert for a day with no partition lands in DEFAULT | |
 | MIGRATE | MIGRATE: ensurePartitions forces RLS on every new partition | |
-| RLS | RLS: every tenant table has FORCE ROW LEVEL SECURITY | `pg_class` in schema `public`, `relkind IN ('r','p')`, including partitions; allowlist only `schema_migrations`, `license_state` |
+| RLS | RLS: every tenant table has FORCE ROW LEVEL SECURITY | `pg_class` in schema `public`, `relkind IN ('r','p')`, including partitions; allowlist only `schema_migrations`, `license_state`, `magic_links` |
 | RLS | RLS: offload_app with tenant A reads zero rows of tenant B | for every tenant table |
 | RLS | RLS: with app.tenant_id unset offload_app reads zero rows | |
 | RLS | RLS: inserting a row for another tenant fails WITH CHECK | |
@@ -123,4 +123,12 @@ HTTP routes, device auth, user-model tables (M5), routine tables (M2), the sched
 `bash slices/m1-03-tenancy-rls/verify.sh` (needs `DATABASE_URL`).
 
 ## Scope changes
-None.
+- RLS allowlist: the Contract and DATA_MODEL.md list `magic_links` as global with no RLS (it holds no tenant data and
+  is read before a tenant is known); the red-test row listed only `schema_migrations` and `license_state`. The row now
+  lists all three. ADR 0013 still names two; `docs/adr/**` is out of scope, so that is an open issue for the owner.
+- `withTenant` takes the pool first: `withTenant(pool, ctx, fn)`, as m1-01's helper did; `memberId` may be `null` for
+  service work. m1-01's `packages/db/src/durable/tenant.ts` is removed and the durable runtime calls the new helper.
+- Added an AUDIT test for `verifyAuditChain` (edit, delete, fork), required by SECURITY_PRIVACY.md section 13 for this
+  slice, and a MIGRATE test for `config.ts`.
+- The chain writer is written fresh from ADR 0018: no old-repo code was copied, so OQ-12 relicensing is not needed
+  for it and `NOTICE` is unchanged.

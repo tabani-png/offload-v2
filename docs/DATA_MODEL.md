@@ -45,6 +45,9 @@ Words follow [GLOSSARY.md](GLOSSARY.md). Shapes on the wire are in [API.md](API.
 - **Partitions**: capture tables (`observations`, `observation_texts`) are `PARTITION BY RANGE (day)` with a `DEFAULT`
   partition. The daily `retentionPurge` durable workflow creates the next 7 days of partitions and enables and forces
   RLS (both policies) on each partition when it is created.
+  It calls `ensurePartitions(tx, fromDay, days)`, backed by the `SECURITY DEFINER` function
+  `ensure_partitions(from_day, days)`: partitions are named `<table>_pYYYYMMDD`, rows already in `DEFAULT` for that
+  day move into the new partition, and the call is idempotent.
 - **Content columns**: only columns on the content-column allowlist may hold C1, C2 or C6 text. The allowlist is a file
   in `packages/db` and a canary test enforces it ([ADR 0035](adr/0035-mac-egress-guard-and-ledger.md)).
 - **Retention classes** (column in each table section). TTLs come from config (`packages/db/src/config.ts`), never
@@ -128,6 +131,28 @@ revoked_at)`, `auth_resolve_enrollment_code(code_sha256) → (tenant_id, member_
 expires_at, used_at)`, `auth_resolve_pat(token_sha256) → (tenant_id, member_id, scopes, revoked_at)`. Unknown keys
 return no row. Cross-tenant jobs run as `offload_jobs`, which may only EXECUTE `jobs_list_tenants() → tenant_id[]` and
 `outbox_claim(limit)`, then work per tenant inside `withTenant`.
+
+**Implementation (m1-03).** Migrations are plain SQL in `packages/db/migrations/NNNN_name.sql`, applied in order by
+`migrate(client)` as `offload_migrator` and checksummed in `schema_migrations`; a changed applied file fails with
+`MigrationChecksumError`. The four roles are created once by `bootstrapRoles(adminClient)` (an administrator runs it
+before the first migration). `offload_migrator` has `BYPASSRLS` because every table forces RLS and the resolver
+functions it owns run before a tenant is known; `offload_app`, `offload_retention` and `offload_jobs` do not.
+- `withTenant(pool, { tenantId, principalId, memberId, tenantRole, memberScope? }, fn)` gives `fn` a `tx` with
+  `query` only. `memberId` is `null` for service work (durable workflows run as principal `durable`, role `service`);
+  member-isolated tables then show no rows unless `memberScope` is `tenant`. `withTransaction(pool, fn)` is the same
+  without a tenant, for `createPersonalTenant`. A `fetch` made while `fn` runs throws `NetworkIoInTransactionError`
+  once `installNetworkGuard()` has run (tests install it).
+- Resolvers skip rows of deleted tenants; `auth_resolve_identity` also skips `departed` members, and
+  `auth_resolve_session` skips revoked sessions. `members.idp_subject`, `sessions.token_sha256`, `devices.id`,
+  `device_enrollment_codes.code_sha256` and `personal_access_tokens.token_sha256` are unique across tenants.
+- `outbox_claim(limit)` (at most 1000) marks a claim by inserting the `outbox_deliveries` row with consumer
+  `workflow:outbox_dispatch`; claimed events are not returned again.
+- `MEMBER_ISOLATED_TABLES`, `APPEND_ONLY_TABLES` and `RLS_GLOBAL_ALLOWLIST` (`packages/db/src/tables.ts`) are the
+  lists of record in code; tests compare them with the policies and triggers in the database.
+- `offload_retention` has SELECT and DELETE on the capture, session and ops tables and the append-only set, INSERT on
+  `purge_log` and `audit_anchors`, and EXECUTE on `ensure_partitions(from_day, days)` and
+  `retention_drop_partition(partition, cutoff)`, which drops a daily capture partition only when its whole range is
+  before a cutoff in the past. The retention workflow (m3-01) picks the cutoffs from the config TTLs.
 
 | Table | Key | Fields | Retention |
 |---|---|---|---|
@@ -230,7 +255,7 @@ All `R-model` unless noted. All have `tenant_id`, `member_id` and carry `member_
 | `connection_tool_pins` | `(tenant_id, connection_id, tool_name)` | `pin_hash` (sha256 of JCS `{name, description, input_schema}`), `pinned_at` | life of connection. A change pauses routines that use it (`needs_review`, [ADR 0033](adr/0033-pinned-connector-resolution-and-launch-catalog.md)) |
 | `credentials` | `(tenant_id, connection_id)` | `ciphertext`, `nonce`, `wrapped_dek`, `key_provider` (`aws-kms`, `gcp-kms`, `local`), `key_ref`, `scopes[]`, `expires_at`, `refresh_state` (`ok`, `refreshing`, `failed`, `revoked`), `refresh_lease_until`, `last_refreshed_at`, `created_at`, `rotated_at` | `R-secret`. Only the broker can decrypt; KMS encryption context = `tenant_id` ([ADR 0034](adr/0034-credential-broker-and-key-providers.md)) |
 | `policies` | `(tenant_id, id)` | `source` (`builtin`, `custom`), `set` (`deny`, `auto`, `ask`), `engine` (`ts`, `cedar`), `rule_id`, `body` (Cedar text for custom), `version`, `enabled`, `created_by` | `R-gov`. Built-in rules are TypeScript; custom (Cedar) = EE, M9 |
-| `audit_events` | `(tenant_id, seq)` | `id` (ULID), `at`, `principal_id`, `action`, `subject_type`, `subject_id`, `rule_id`, `details jsonb` (ids and hashes only), `prev_hash`, `hash`; `UNIQUE (tenant_id, prev_hash)` | `R-gov`. Append-only. `hash = sha256Hex(prev_hash ‖ JCS(event_without_hash))` with `prev_hash` as its 64-char hex ASCII ([ADR 0018](adr/0018-audit-log-hash-chain.md)). Chain writer `appendAudit(tx, event)` from M1 |
+| `audit_events` | `(tenant_id, seq)` | `id` (ULID), `at`, `principal_id` (an id as text: member, device, service principal or `durable`), `action`, `subject_type`, `subject_id`, `rule_id`, `details jsonb` (ids and hashes only: strings without spaces, at most 128 characters), `prev_hash`, `hash`; `UNIQUE (tenant_id, prev_hash)` | `R-gov`. Append-only. `hash = sha256Hex(prev_hash ‖ JCS(event_without_hash))` with `prev_hash` as its 64-char hex ASCII ([ADR 0018](adr/0018-audit-log-hash-chain.md)); `event_without_hash` = `{tenant_id, seq, id, at, principal_id, action, subject_type, subject_id, rule_id, details, prev_hash}`, `seq` as a number, `at` as RFC 3339 UTC with milliseconds, absent fields `null`. Chain writer `appendAudit(tx, event)` and `verifyAuditChain(tx)` (`{ ok, checked, first_bad_seq? }`) in `packages/db/src/audit.ts` from M1 |
 | `audit_anchors` | `(tenant_id, seq)` | `head_hash`, `signed_at`, `signature`, `key_id`, `sink_ref` (EE external anchor sink, null in core) | `R-gov`. Append-only |
 | `budget_entries` | `(tenant_id, id)` | `idempotency_key` (`UNIQUE (tenant_id, idempotency_key)`; call id or step id), `scope` (`build`, `design`, `run`, `brain`, `infra`), `scope_id` (for builds: `scope = 'build'`, `scope_id = build_id`), `model`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `sandbox_seconds`, `usd`, `at` | `R-gov`. Append-only. `infra` entries never count toward the build cap |
 | `model_usage` | `(tenant_id, day, model, route)` | `calls`, `input_tokens`, `output_tokens`, `usd` | `R-ops`. Read through `GET /v1/budget` |
