@@ -166,6 +166,16 @@ runtime `model` step execution (m2-10, which calls this router); keyframe captio
   (result statuses and reasons, ledger idempotency keys per attempt, untrusted-tag rule), which the docs did not state.
 - **`BudgetLedger` gains `monthlyBudgetUsd(tenant)`** next to the four methods named above, so the router reads
   `tenants.monthly_model_budget_usd` through the port instead of from the caller.
+- **`reserve` takes the limits and is atomic** (review finding): `reserve({…, limits: { month_start,
+  monthly_budget_usd, run_budget_usd } })` returns `over_budget` when a paid reservation does not fit, so parallel
+  calls cannot overrun a budget (a read-then-reserve race let five calls through with $0.025 left). Reservations are
+  kept apart from `budget_entries` (append-only, one row written at settle), as `budget_reservations` and
+  `budget_entries` are in DATA_MODEL and ADR 0030. `budget_reservations` today names build columns only; the
+  Postgres adapter slice must widen it to brain, run and design scopes (open issue). The BUDGET and ESCALATE tests'
+  ledger assertions were changed to this shape in the review commit; their intent is unchanged.
+- **Extra refusal reasons** from review: `invalid_call` (bad `max_tokens`, `call_id`, roles or empty messages),
+  `schema_holds_name` (a schema is sent unmasked, so it may not hold a name) and `call_in_flight` (a `call_id` with an
+  open reservation is not sent twice). A provider error now settles at the reserved amount, not zero.
 - **`models.json` gains `local_model`** (the model name the OpenAI-compatible local endpoint serves; default
   `"default"`, edited by the operator), and the allowlist of model ids lives in
   `services/brain/config/model-allowlist.json` so that "changing a model id is a config change plus a router allowlist

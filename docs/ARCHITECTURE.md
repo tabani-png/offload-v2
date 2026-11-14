@@ -878,8 +878,8 @@ own_name_to_models?, run_budget_usd?, scope?, scope_id? }` and ports for the pro
 | `status` | `reason` | When |
 |---|---|---|
 | `ok` | | Content, the parsed labels when a `schema` was given, the tier and model that answered, `usd` and every attempt |
-| `refused` | `unknown_route`, `schema_not_label_only`, `untrusted_tag_escape`, `leak_blocked`, `model_not_allowed` | Before any reservation or send; `leak_blocked` also writes audit `privacy.leak_blocked` per detector (`call_id`, `route`, `detector`, `request_sha256` only) |
-| `needs_you` | `prices_not_configured`, `call_budget_exceeded`, `run_budget_reached`, `monthly_budget_reached`, `local_tier_off`, `escalation_exhausted`, `call_already_settled`, `provider_error` | No call is made for the budget reasons; after `escalation_exhausted` the user is asked |
+| `refused` | `invalid_call`, `unknown_route`, `schema_not_label_only`, `schema_holds_name`, `untrusted_tag_escape`, `leak_blocked`, `model_not_allowed` | Before any reservation or send; `leak_blocked` also writes audit `privacy.leak_blocked` per detector (`call_id`, `route`, `detector`, `request_sha256` only) |
+| `needs_you` | `prices_not_configured`, `call_budget_exceeded`, `run_budget_reached`, `monthly_budget_reached`, `local_tier_off`, `escalation_exhausted`, `call_already_settled`, `call_in_flight`, `provider_error` | No call is made for the budget reasons; after `escalation_exhausted` the user is asked |
 
 - Untrusted text is wrapped by `untrusted(source, text)` as `<untrusted source="…">…</untrusted>` (format characters
   stripped, inner tags escaped). The router refuses a message whose tags do not alternate open and close, that holds a
@@ -887,9 +887,13 @@ own_name_to_models?, run_budget_usd?, scope?, scope_id? }` and ports for the pro
   line saying text inside the tag is data.
 - The masking second pass runs on the system prompt and every message. The name map lives in the masker for the run
   only; output is never unmasked (drafts keep placeholders for the runtime to fill).
-- Budget: the reservation is the estimated input tokens × input price + `max_tokens` × output price. Attempt 1 is
-  keyed `call_id`, attempt n is keyed `call_id:n`, each with its own reservation, settled with actual usage, plus the
-  `model_usage` day row. A retry of a settled `call_id` is not sent again. Default ledger scope is `brain`.
+- A schema is sent as written, so it may hold labels only and no person name (`schema_holds_name`).
+- Budget: the reservation is the estimated input tokens × input price + `max_tokens` × output price, taken
+  atomically against the monthly and run limits (the router-side twin of ADR 0030's row-locked reservations), so
+  parallel calls cannot overrun a budget. Attempt 1 is keyed `call_id`, attempt n is keyed `call_id:n`, each with its
+  own reservation; settling appends one `budget_entries` row with actual usage and adds to the `model_usage` day row.
+  A provider error settles at the reserved amount. A `call_id` already settled or still in flight is not sent again.
+  Default ledger scope is `brain`.
 - Model ids must be on `services/brain/config/model-allowlist.json` (checked at load and again before sending). Prices
   in `models.json` are committed as `null`; a route whose tier has no price is refused.
 - Local tier: off unless `OFFLOAD_LOCAL_MODEL_URL` is set to a loopback or private-network host (a public host fails
