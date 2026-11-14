@@ -70,14 +70,37 @@ export class FakeBroker implements BrokerPort {
     this.tools.set(providerOrConnectionId, structuredClone(tools));
   }
 
-  private record(method: BrokerMethod, input: unknown): void {
+  private readonly failures = new Map<BrokerMethod, number>();
+  private readonly hooks = new Map<BrokerMethod, (input: unknown) => void | Promise<void>>();
+
+  /** Test switch: the next `times` calls of `method` are recorded and then reject with FakeBrokerError broker_failed. */
+  failNext(method: BrokerMethod, times = 1): void {
+    this.failures.set(method, (this.failures.get(method) ?? 0) + times);
+  }
+
+  /** Test switch: runs `hook` once, on the next call of `method`, after recording it and before answering. */
+  onNext(method: BrokerMethod, hook: (input: unknown) => void | Promise<void>): void {
+    this.hooks.set(method, hook);
+  }
+
+  private async record(method: BrokerMethod, input: unknown): Promise<void> {
     const inside = insideTransaction();
     this.calls.push({ method, input, insideTransaction: inside });
     if (inside) throw new BrokerInTransactionError(method);
+    const hook = this.hooks.get(method);
+    if (hook) {
+      this.hooks.delete(method);
+      await hook(input);
+    }
+    const left = this.failures.get(method) ?? 0;
+    if (left > 0) {
+      this.failures.set(method, left - 1);
+      throw new FakeBrokerError("broker_failed", `FakeBroker.${method} failed (test switch)`);
+    }
   }
 
   async oauthBegin(input: OAuthBeginInput): Promise<{ authorize_url: string }> {
-    this.record("oauthBegin", input);
+    await this.record("oauthBegin", input);
     const state = randomBytes(32).toString("base64url");
     this.pending.set(state, { tenant_id: input.tenant_id, connection_id: input.connection_id, provider: input.provider, scopes: [...input.scopes] });
     this.providers.set(input.connection_id, input.provider);
@@ -85,7 +108,7 @@ export class FakeBroker implements BrokerPort {
   }
 
   async oauthFinish(input: OAuthFinishInput): Promise<OAuthFinishResult> {
-    this.record("oauthFinish", input);
+    await this.record("oauthFinish", input);
     const p = this.pending.get(input.state);
     if (!p || p.tenant_id !== input.tenant_id) throw new FakeBrokerError("state_unknown", "unknown or used state");
     this.pending.delete(input.state);
@@ -99,13 +122,13 @@ export class FakeBroker implements BrokerPort {
   }
 
   async putApiKey(input: PutApiKeyInput): Promise<{ account_label: string; account_hash: string }> {
-    this.record("putApiKey", input);
+    await this.record("putApiKey", input);
     this.labels += 1;
     return { account_label: `api-key-account-${this.labels}`, account_hash: sha256Hex(`fake-key-account:${input.connection_id}`) };
   }
 
   async listTools(input: ListToolsInput): Promise<RawTool[]> {
-    this.record("listTools", input);
+    await this.record("listTools", input);
     const byId = this.tools.get(input.connection_id);
     if (byId) return structuredClone(byId);
     const provider = this.providers.get(input.connection_id);
@@ -114,6 +137,6 @@ export class FakeBroker implements BrokerPort {
   }
 
   async shred(input: { tenant_id: string; connection_id: string }): Promise<void> {
-    this.record("shred", input);
+    await this.record("shred", input);
   }
 }
