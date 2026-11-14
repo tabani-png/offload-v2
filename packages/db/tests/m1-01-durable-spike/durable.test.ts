@@ -149,8 +149,9 @@ test("DURABLE: workflow inputs and messages hold ids only", async () => {
 test("DURABLE: recv longer than 15 minutes is refused", async () => {
   expect(MAX_RECV_MS).toBe(900_000);
   await expect(rt.recv("approval", 900_001)).rejects.toThrow(/900000|15 minutes/);
-  // Exactly at the limit is allowed by the check (it only fails later because there is no workflow here).
-  await expect(rt.recv("approval", MAX_RECV_MS)).rejects.not.toThrow(/15 minutes/);
+  // Exactly at the limit passes the length check (it fails for another reason: there is no workflow here).
+  const atLimit = await rt.recv("approval", MAX_RECV_MS).then(() => "", (e: Error) => e.message);
+  expect(atLimit).not.toMatch(/15 minutes/);
 });
 
 test("DURABLE: a scheduled workflow fires on its cron in a fake clock", async () => {
