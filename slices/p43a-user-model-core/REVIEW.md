@@ -326,3 +326,165 @@ schemas or roles. Scope is unchanged; no test assertion was weakened.
    retry and to rebuild the window in the profile's timezone.
 6. **Still deferred (scope).** `docs/GLOSSARY.md` is outside both slices' `paths_in_scope`, and these rounds keep
    scope unchanged. The proposed wording in the round 1 response stands for a docs slice that owns the glossary.
+
+## Round 3
+
+Independent reviewer (Claude Code, Opus 5.5). It did not write this code. Reviewed at `4305e6e`. Read: AGENTS.md (review
+gate), CLAUDE.md, both SPECs, DESIGN.md, ADR 0003, 0013 and 0019, DATA_MODEL 1 and 4, API.md (profile, records,
+review), ARCHITECTURE 5 and 6, SECURITY_PRIVACY 13, MIGRATION 5.4, ONBOARDING 11.12, `git diff 8f6ff2d..HEAD`
+(54 files), every test file, and each round-2 commit (`b95c828`, `7842be1`, `64c7d7c`, `936ee9d`, `be23ccf`). Old code
+at `/workspace/offload-wsB` (`f9e2793`, read only) checked for `checkNarrative` (`brain/src/memory/week-record.ts:309`)
+and for any learning-pause handling (there is none in `brain/src/usermodel` or `memory`).
+
+### Runs (DATABASE_URL set, local Postgres 17)
+
+| Command | Result |
+|---|---|
+| `bash scripts/verify-all.sh` | `verify-all: green`. Full suite **144 pass, 0 fail**, 34 files, 2637 `expect()` calls. Both done slices PASS; slices lint ok (10 specs), doc links ok (70 files), copy ok, secrets ok, workflows ok, license boundary ok. |
+| `bash slices/p43a-user-model-core/verify.sh` | `p43a-user-model-core: PASS`. Slice suite **63 pass, 0 fail**, 7 files (`min_tests` 55). LEDGER 7, OBSERVE 2, DAY 6, LEAKS 2, WEEK 4, THEIL-SEN 2, MONTH 2, QUARTER 1, NARRATIVE 5, SCORE 8, PROPOSE 5, LONG-TERM 2, INVALIDATE 2, SUPERSEDE 2, REVISE 1, MERGE 1, PROFILE 5, PROMPTS 2, PRIVACY 1, REVIEW 3. Full suite 144/144. Scope checked (54 files). |
+| `bash slices/p43b-user-model-store-api/verify.sh` | `p43b-user-model-store-api: PASS`. Slice suite **31 pass, 0 fail**, 4 files (`min_tests` 20). PROFILE 5, API 12, PRIVACY 1, RLS 5, MERGE 1, INVALIDATE 2, STORE 5. Full suite 144/144. Scope checked (31 files). |
+
+No `skip`, `todo` or `.only`. The Postgres files use `describe.skipIf(!HAS_DB)`, and p43b's `verify.sh` has
+`NEEDS_POSTGRES=1`. After every run, mutation runs included: 0 leftover `p43b%` schemas and 0 `p43b%` roles.
+`git status` was clean after the last mutation.
+
+### 1. Tests fail without the code (mutation check)
+
+Each change was made alone with a scripted edit, the covering test files were run, and the file was restored with
+`git checkout -- <file>`.
+
+| # | Change (file:line) | Result |
+|---|---|---|
+| S1 | `writeWeekSentence` without `hasLink` (`src/records/narrative.ts:80`) | NARRATIVE link test fails (round-2 fix 1 is real) |
+| S2 | `hasLink` ignores host tokens (`src/user-model/names.ts:54`) | NARRATIVE link and PROFILE validation fail (fix 2) |
+| S3 | `hasLink` refuses every dotted token (no code suffixes) | PROFILE validation fails (the accepted `README.md` / `Node.js` edge is pinned) |
+| S4 | Body read back inside `runInTenant` (`src/http/handlers.ts:169-170`) | API "body is read before the tenant transaction opens" fails (fix 3) |
+| S5 | Declared `Content-Length` check removed (`handlers.ts:47`) | API 413 test fails (round-2 NIT 4 is now pinned) |
+| S6 | `retryable = true` (`src/store/job.ts:20`) | STORE timezone test fails (fix 5) |
+| S7 | `writeWeekNarrative` recheck without `hasLink` (`job.ts:107`), alone and together with S8 | **no test fails** (finding 3) |
+| S8 | `setWeekNarrative` without the `hasLink` refusal (`src/store/repository.ts:209`) | **no test fails** (finding 3) |
+| S9 | Future-week 404 removed from `GET /v1/records/weeks` (`handlers.ts:130`) | **no test fails** (finding 2) |
+| S10 | Future-week 404 removed from `GET /v1/review/week` (`handlers.ts:144`), alone and with S9 | **no test fails** (finding 2) |
+| S11 | `subject_key` pattern check removed (`src/review/answers.ts:41`) | REVIEW and API bad-answer tests fail |
+| S12 | Future-week answer accepted (`answers.ts:48`) | REVIEW and API bad-answer tests fail |
+| S13 | Unknown goal in an answer accepted (`answers.ts:49`) | REVIEW and API bad-answer tests fail |
+| S14 | `member_isolation` passes for any `app.member_scope` value (`sql/0001_user_model.sql:236`) | 3 RLS tests fail |
+| S15 | `FORCE ROW LEVEL SECURITY` dropped (`sql:230`) | RLS catalog test fails |
+| S16 | Repository `guard()` a no-op (`repository.ts:39`) | STORE leak test fails |
+| S17 | `<user_context>` keeps `<` and `>` (`src/understanding/context.ts:15`) | PROMPTS fails |
+| S18 | `tenant_isolation` without `WITH CHECK` (`sql:233`) | passes, as expected: Postgres uses `USING` as the check (equivalent mutation) |
+| S19 | UUID check removed (`src/store/tenant.ts:37`); profile lock removed (`handlers.ts:115`); state filter removed (`repository.ts:323`); `>` to `>=` at the 50% contradiction edge (`src/user-model/merge.ts:26`) | **no test fails** (finding 5) |
+
+### 2. Test changes after the red commits
+
+Test files changed only in the red commits `8c22dc8`, `adff86b`, `935f14e` (green, see round 1), `c69e88e`, `fd2454f`,
+`3a2edd6`, `b95c828` and `64c7d7c`. None changed after `64c7d7c`. Lines removed in round 2:
+- `profile.test.ts:95`: the accepted case changed its goal `"b"` to `"Update README.md for v2.0"`. Nothing that was
+  refused is now accepted. The new goal pins the false-positive edge, so this is not a weakening. A one-character
+  goal is no longer pinned as accepted, which is harmless.
+- `api.test.ts`: an unused type import was widened.
+- `store.test.ts`: `rejects.toThrow(/timezone/)` became `String(err)` matching `/timezone/` plus
+  `toMatchObject({ code, retryable: false })`. A resolved promise gives `"null"`, which fails, so this is equivalent
+  and stricter.
+
+**No assertion was weakened.** The mandatory list of MIGRATION 5.4 is present by name (listed in round 1). One
+clause is vacuous: "future week 404" in `API: GET /v1/review/week?w= …` and in the records-weeks test (finding 2).
+
+### 3. Correctness
+
+Round-2 changes match the docs: the body is read before `runInTenant` (ADR 0013, line 45), `timezone_mismatch` is
+non-retryable (DESIGN section 4), and the API.md wording for links matches the code except for finding 4. Tables,
+columns, keys, RLS policy text, status codes and the Figure shape are unchanged since round 2. They still match
+DATA_MODEL 4, ADR 0013 and API.md's closed error list. Bi-temporal rules are unchanged (`merge.ts:64,76`; `CHECK
+(invalid_at >= valid_at)`; one current version per key).
+
+### 4. Security and privacy
+
+Re-checked at `4305e6e`:
+- RLS runs as a `NOBYPASSRLS` non-owner role, with member and tenant walls on all 12 tables (S14, S15).
+- Every value is a bind parameter, and interpolated names pass `ident()`.
+- There is no `console.*`, `process.env` or `fetch(` in `src/`.
+- Goals reach a model only inside `<user_context>` (S17).
+- Review answers are pattern-checked, so no free text reaches `review_answers` (S11).
+- Observation ids appear only as evidence.
+
+Round-2 fixes 1 to 5 are real, and S1 to S6 show the tests catch them. Two gaps remain: the new storage-side link
+check (finding 3) and the code-suffix exception (finding 4). Finding 1 breaks ADR 0003 in user-visible text. It was
+carried over from the old `checkNarrative` (`f9e2793`, `brain/src/memory/week-record.ts:309`, digits only), and
+rounds 1 and 2 missed it.
+
+### 5. Scope
+
+All 54 changed files match `paths_in_scope`. There is nothing under `packages/`, `services/api`, `services/runtime`,
+`services/broker`, `services/builder`, `apps/`, `ee/`, `.github/` or `docs/adr/`. `bun.lock` and `package.json` are
+unchanged since `8f6ff2d`. NOTICE moves gum (MIT) and graphiti (Apache-2.0) from "Planned" to "included", naming the
+files that use their ideas.
+
+### Findings
+
+1. **MAJOR. A number written as a word passes the narrative check, so a model can show an invented number (ADR
+   0003).**
+   - *Cause:* `checkNarrative` only matches digits (`NUMBER_RE = /\d+(?:\.\d+)?/g`, `src/records/narrative.ts:12`).
+   - *Probe at `4305e6e`:* the record's total is 12 h. `writeWeekSentence(rec, undefined, async () => "You spent forty
+     hours this week, twice the usual.")` returns `source: "model"`.
+   - *Effect:* `writeWeekNarrative` rechecks with the same function and stores the sentence (`src/store/job.ts:107-108`).
+     `GET /v1/review/week` then shows it (`src/review/week-review.ts:43`).
+   - *Likelihood:* the prompt asks for "plain words" (`narrative.ts:50`), which invites spelled-out numbers. Task names
+     are model input, so prompt injection can also steer it.
+   - *Docs broken:* ADR 0003 ("any model text that contains a number is checked … a number not present in the record
+     … is refused"), AGENTS ground rules ("A model never produces a number a user sees"), and the SPEC NARRATIVE row.
+
+   *Fix:* make `checkNarrative` treat English number words as numbers: cardinals `zero` … `nineteen`, the tens,
+   `hundred`, `thousand`, `million`, `dozen`; and multiples and fractions such as `half`, `twice`, `double`, `triple`,
+   `thrice`. Either map them to values and check them against `known`, or refuse any sentence that holds one (a
+   refusal only costs the code sentence). Add NARRATIVE cases red first: `forty hours` against a 12 h record is
+   refused, `twice the usual` is refused, and a sentence without numbers still passes.
+2. **MINOR. The future-week 404 guards are untested; the mandatory test's "future week 404" clause passes
+   vacuously.**
+   - *Evidence:* `api.test.ts:47` and `:82` ask for `2026-W47`, which has no stored record, so the 404 comes from "no
+     record". Removing both guards (`handlers.ts:130`, `:144`; S9, S10) leaves 31/31 passing.
+
+   *Fix:* call a stored week (`W`) with `now` set before its Monday in the profile's timezone, and expect 404
+   `not_found` on both routes. Confirm it is red with the guard removed.
+3. **MINOR. Round-2 fix 1's storage-side check is untested.** The round-2 response says `setWeekNarrative` and
+   `writeWeekNarrative`'s recheck "also refuse `hasLink` text" (`repository.ts:209`, `job.ts:107`). Removing both
+   (S7, S8) leaves 31/31 passing. The recheck in `job.ts` cannot be reached today, because `writeWeekSentence`
+   refuses first. `setWeekNarrative` is an exported repository function and the last line before a member-visible
+   column.
+
+   *Fix:* add a STORE test: `setWeekNarrative(tx, W, "A steady week; see evil.example.")` throws `LeakError`, and
+   `week_records.narrative` is unchanged.
+4. **MINOR. Code suffixes that are real top-level domains let host names through.**
+   - *Cause:* `CODE_SUFFIXES` (`src/user-model/names.ts:43`) holds `sh`, `rs`, `md` and `py`, which are delegated
+     ccTLDs used by real sites.
+   - *Probes:* goals `"Grow signups on bun.sh"`, `"Ship docs.rs page"` and `"Promote evil.md"` are accepted. The
+     model sentence `"A steady week of 12 h; try evil.sh for tips."` returns `source: "model"` and would be stored,
+     because `setWeekNarrative` uses the same `hasLink`.
+   - *Docs:* API.md (lines 183-184) now says "any host name". The round-2 response names `acme.md` as a known edge,
+     but neither API.md nor the sentence path accounts for it. The sentence path is the injection route of round-2
+     finding 1.
+
+   *Fix:* use a strict variant with no suffix exception for model text (`writeWeekSentence`, the job recheck and
+   `setWeekNarrative`). For profile text, either drop `sh`, `rs`, `md` and `py` from the exception, or name the
+   exception in API.md. Add the probe cases red first.
+5. **NIT. Guards no test pins (S19):**
+   - the uuid check in `bunRunInTenant` (`tenant.ts:37`); Postgres would fail the `::uuid` cast anyway, as a 500;
+   - the profile advisory lock (`handlers.ts:115`);
+   - the state filter in `applyAnswerToOpportunity` (`repository.ts:323`); without it, a `never` answer would move a
+     `chosen` or `building` opportunity back to `never`;
+   - the exact 50% contradiction edge (`merge.ts:26`; the SPEC says "over 50%").
+
+   A test for the state filter is worth adding. The others are optional.
+6. **NIT. Other link shapes in profile text.** `"Grow signups on 203.0.113.9"` (an IP address) and full-width or
+   ideographic dots (`evil．com`, `evil。com`) are accepted. API.md says "no … link". The risk is low. Either refuse
+   them or narrow the API.md wording.
+7. **NIT. `learning_paused` is not checked by the job.** ONBOARDING 11.12 says records are not updated while learning
+   is paused. Uploads stop on the Mac, so only a window ingested before the pause is affected, and the old code had
+   no check either. *Fix:* skip in `runMemberUpdate` when `profile.learning_paused`, or tell the m5-05 durable step to
+   check it (DESIGN section 4).
+8. **NIT (carried).** Round-1 finding 8 (glossary: `never` vs `left_alone`; "Focus block", "Time share", "Revision
+   group" and "Track record" are missing) is still open. It is outside `paths_in_scope`.
+
+Finding 1 is MAJOR and blocks PASS. Fix it red test first, and fix findings 2 to 4 in the same round.
+
+VERDICT: CHANGES
