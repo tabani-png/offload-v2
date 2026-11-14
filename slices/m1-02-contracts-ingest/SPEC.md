@@ -12,7 +12,7 @@ parallel_group: M1-B
 owns: [packages/contracts/**, docs/API.md]
 verify: bash slices/m1-02-contracts-ingest/verify.sh
 min_tests: 22
-paths_in_scope: [packages/contracts/**, slices/m1-02-contracts-ingest/**, docs/API.md, package.json, bun.lock, NOTICE]
+paths_in_scope: [packages/contracts/**, slices/m1-02-contracts-ingest/**, docs/API.md, package.json, bun.lock, NOTICE, .github/workflows/ci.yml, scripts/check-workflows.ts, scripts/tests/workflows.test.ts]
 paths_out_of_scope: [ee/**, apps/**, services/**, packages/db/**, docs/adr/**]
 red_tests: [CONTRACT, JCS, KIND, PSEUDO]
 ---
@@ -127,3 +127,7 @@ need them), any service code.
 - zod-only rules (JSON Schema cannot express them): `text_hash` equality, the angle-token rule (`title`, `text`,
   `app_name`, `app_bundle_id`), the `Figure` id check. Listed in API.md section 3. `import_id` for imports is in both.
 - Review fixes: wide token regex with NFKC, ULIDs start with 0-7, `notice_version` and `detail_code` are code strings, `jcs` rejects sparse arrays.
+- CI harness fix added to `paths_in_scope` (`.github/workflows/ci.yml`, `scripts/check-workflows.ts`,
+  `scripts/tests/workflows.test.ts`): this is the first `done` slice, and CI's shallow checkout has no `BASE` commit, so
+  `check-slices.sh` failed with "BASE ... not found". The checkouts now use `fetch-depth: 0`, and the workflow linter
+  fails any job that runs slice checks without it.

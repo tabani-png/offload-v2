@@ -1,4 +1,5 @@
 // Parses every .github/workflows/*.yml with Bun's YAML parser and checks each has jobs with runs-on and steps.
+// Jobs that run slice checks (check-slices.sh, verify-all.sh, slices/*/verify.sh) must check out full history.
 // Tooling, not feature code. Usage: bun scripts/check-workflows.ts [root]
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -19,7 +20,15 @@ for (const f of files) {
   if (!jobs || typeof jobs !== "object" || !Object.keys(jobs).length) { problems.push(`${f}: no jobs`); continue; }
   for (const [name, job] of Object.entries<any>(jobs)) {
     if (!job?.["runs-on"]) problems.push(`${f}: job ${name} has no runs-on`);
-    if (!Array.isArray(job?.steps) || !job.steps.length) problems.push(`${f}: job ${name} has no steps`);
+    if (!Array.isArray(job?.steps) || !job.steps.length) { problems.push(`${f}: job ${name} has no steps`); continue; }
+    // Slice verify.sh diffs BASE..HEAD; a shallow checkout lacks BASE ("BASE <sha> not found").
+    const runsSlices = job.steps.some((s: any) =>
+      /check-slices\.sh|verify-all\.sh|slices\/[^\s]+\/verify\.sh/.test(String(s?.run ?? "")));
+    const fullHistory = job.steps.some((s: any) =>
+      String(s?.uses ?? "").startsWith("actions/checkout@") && String(s?.with?.["fetch-depth"]) === "0");
+    if (runsSlices && !fullHistory) {
+      problems.push(`${f}: job ${name} runs slice checks but its actions/checkout lacks fetch-depth: 0`);
+    }
   }
 }
 if (problems.length) {

@@ -39,6 +39,9 @@ jobs:
       DATABASE_URL: postgres://offload:offload-ci@localhost:5432/offload_test
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: slice verify.sh diffs BASE..HEAD, and a shallow clone has no BASE commit.
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
@@ -65,6 +68,9 @@ jobs:
       LC_ALL: en_US.UTF-8
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: slice verify.sh diffs BASE..HEAD, and a shallow clone has no BASE commit.
+          fetch-depth: 0
       - name: select toolchain and print it
         # Select the image's newest Xcode, not Command Line Tools: Swift Testing (`import Testing`) ships with Xcode
         # and is not reliably present in CLT, so `swift test` failed with "no such module 'Testing'" under CLT.
