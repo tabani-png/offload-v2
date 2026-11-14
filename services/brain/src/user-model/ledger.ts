@@ -67,7 +67,7 @@ export function resolveTaskKeys(prior: readonly LedgerEntry[], window: Understan
   const ledger: LedgerEntry[] = prior.map((e) => structuredClone(e)).sort((x, y) => (x.taskKey < y.taskKey ? -1 : 1));
   const keys = new Map<string, string>();
   const used = new Set<string>();
-  const tasks = [...window.tasks].sort((x, y) => y.instances.length - x.instances.length || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+  const tasks = window.tasks.filter((t) => t.instances.length > 0).sort((x, y) => y.instances.length - x.instances.length || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
   const claim = (t: WindowTask, e: LedgerEntry) => {
     const name = taskName(t.name, t.kind);
     const days = t.instances.map((i) => dayOf(i.start, window.timezone)).sort();

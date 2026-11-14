@@ -66,6 +66,12 @@ Slices: `p43a-user-model-core` (pure logic) and `p43b-user-model-store-api` (Pos
     twice moves it. v2 keeps sameness per day in the evidence and recomputes the weighted mean; merge also derives
     every rate from the evidence instead of trusting a stored `rate`.
 
+Found by the independent review (fixed, with tests): links without a scheme (`github.com/a/b`) passed the name
+scrubber; `checkNarrative` still accepted numbers from dates and arithmetic constants (it now knows only figure values,
+numeric fields and list lengths); a task with no instances broke the job; a bad `%` escape threw instead of a 400;
+`figure_index` lost a figure shared by two records; app names were not scrubbed; concurrent profile PATCHes now take a
+per-member advisory lock.
+
 ## 3. Sealed files → Postgres tables
 
 | Old file under `$OFFLOAD_HOME` | v2 table (DATA_MODEL 4, 6) |
@@ -129,3 +135,6 @@ them. Tests create a unique schema and unique roles per file and drop them after
 Numbers written as words are not caught by `checkNarrative`. Goal embeddings and task centroids need the local
 embedder (m5-01); until then `bestGoal` gets vectors from the caller. `competes` has no producer yet. Sheets vs docs on
 `docs.google.com` cannot be told apart. The figure-evidence route (`GET /v1/figures/{id}/evidence`) is not built here.
+Any alignment above 0 counts as advancing a goal (the formula sets no floor; real embeddings will need one, an owner
+call). Re-analysing a day with different instance ids leaves the old episode rows (no delete grant); the forget and
+retention paths (M7, m3-01) clean them.

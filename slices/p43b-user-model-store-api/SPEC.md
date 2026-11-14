@@ -2,7 +2,7 @@
 id: p43b-user-model-store-api
 title: User model storage in Postgres with tenant and member RLS, a repository, the member update job and framework-agnostic handlers for /v1/profile, /v1/records and /v1/review (port of old PR #43)
 milestone: M5
-status: in_progress
+status: done
 depends_on: [p43a-user-model-core]
 parallel_safe: false
 human_gated: false
@@ -81,5 +81,7 @@ that call the job (W1-C, m5-05). pgvector, forget and export (M7). `GET /v1/toda
 `bash slices/p43b-user-model-store-api/verify.sh` (needs `DATABASE_URL`).
 
 ## Scope changes
+- `figure_index` is keyed by `(tenant_id, member_id, figure_id, record_kind, record_key)`, not `figure_id` alone, so a
+  figure shared by two records survives re-indexing one of them; DATA_MODEL is corrected.
 - `paths_in_scope` also lists `slices/p43a-user-model-core/**`: both slices stack on one branch and the last commit
   sets both to `done`.

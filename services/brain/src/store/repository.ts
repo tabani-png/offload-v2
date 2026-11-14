@@ -43,13 +43,13 @@ async function rows(tx: Tx, q: string, params: unknown[] = []): Promise<Row[]> {
   return [...((await tx.unsafe(q, params)) as Row[])];
 }
 
-/** Re-indexes the figures of one record in figure_index. Two figures with the same content share an id (first wins). */
+/** Re-indexes the figures of one record in figure_index (one row per record holding the figure). */
 async function indexFigures(tx: Tx, kind: string, key: string, record: unknown): Promise<void> {
   const figs = collectFigures(record);
   await tx.unsafe(`DELETE FROM figure_index WHERE ${OWN} AND record_kind = $1 AND record_key = $2 AND NOT (figure_id = ANY($3::text[]))`, [kind, key, figs.map((f) => f.figure.id)]);
   for (const { pointer, figure } of figs) {
     await tx.unsafe(
-      `INSERT INTO figure_index (tenant_id, member_id, figure_id, record_kind, record_key, json_pointer) VALUES (${TID}, ${MID}, $1, $2, $3, $4) ON CONFLICT (tenant_id, member_id, figure_id) DO NOTHING`,
+      `INSERT INTO figure_index (tenant_id, member_id, figure_id, record_kind, record_key, json_pointer) VALUES (${TID}, ${MID}, $1, $2, $3, $4) ON CONFLICT (tenant_id, member_id, figure_id, record_kind, record_key) DO NOTHING`,
       [figure.id, kind, key, pointer],
     );
   }
@@ -73,6 +73,11 @@ export async function getProfile(tx: Tx): Promise<Profile> {
     review_slot: r["review_slot"], autonomy: r["autonomy"], own_name_to_models: r["own_name_to_models"], keyframes_to_cloud: r["keyframes_to_cloud"],
     learning_paused: r["learning_paused"], updated_at: iso(r["updated_at"]),
   };
+}
+
+/** Serialises profile edits of one member (read-modify-write in PATCH). */
+export async function lockProfile(tx: Tx): Promise<void> {
+  await tx.unsafe("SELECT pg_advisory_xact_lock(hashtextextended('profile:' || current_setting('app.member_id'), 0))");
 }
 
 export async function saveProfile(tx: Tx, r: Extract<PatchResult, { ok: true }>): Promise<Profile> {
@@ -328,6 +333,6 @@ export async function markSourcePurged(tx: Tx, day: string, at: string): Promise
 }
 
 export async function resolveFigure(tx: Tx, figureId: string): Promise<{ record_kind: string; record_key: string; json_pointer: string } | null> {
-  const [r] = await rows(tx, `SELECT record_kind, record_key, json_pointer FROM figure_index WHERE ${OWN} AND figure_id = $1`, [figureId]);
+  const [r] = await rows(tx, `SELECT record_kind, record_key, json_pointer FROM figure_index WHERE ${OWN} AND figure_id = $1 ORDER BY created_at, record_kind, record_key, json_pointer LIMIT 1`, [figureId]);
   return r === undefined ? null : { record_kind: r["record_kind"], record_key: r["record_key"], json_pointer: r["json_pointer"] };
 }

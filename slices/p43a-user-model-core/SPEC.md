@@ -2,7 +2,7 @@
 id: p43a-user-model-core
 title: User model core in services/brain - task ledger with stable task keys, day records and episodes, week, month and quarter records, propositions with bi-temporal merge, goal-weighted opportunity score, profile rules, review answers and the user_context block (port of old PR #43)
 milestone: M5
-status: in_progress
+status: done
 depends_on: []
 parallel_safe: false
 human_gated: false
@@ -97,4 +97,6 @@ router (m5-03). Entities, facts, `sequence` propositions, forget (M7). Contracts
 ## Scope changes
 - `paths_in_scope` also lists `slices/p43b-user-model-store-api/**`: both slices stack on one branch, and this
   slice's scope check runs from its `BASE` to `HEAD`, which includes p43b's slice folder.
+- One NARRATIVE assertion was wrong (it accepted a constant from an `arithmetic` string as a known number); the
+  review found it and the test now refuses it (ADR 0003).
 - `docs/MIGRATION.md` 5.4 is corrected: `usermodel/workflows.ts` is dropped, not ported (DESIGN.md section 6).

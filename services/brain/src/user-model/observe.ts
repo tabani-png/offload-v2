@@ -2,7 +2,7 @@
 // No title, text or observation id leaves this function: only keys, masked names, counts and minutes.
 import { r1, r2 } from "../records/figure.ts";
 import { dayOf } from "../records/dates.ts";
-import { taskName } from "./names.ts";
+import { safeName, taskName } from "./names.ts";
 import type { DayLabel, UnderstandingWindow } from "./ports.ts";
 import type { DayEvidence } from "./types.ts";
 
@@ -52,7 +52,7 @@ export function observeWindow(window: UnderstandingWindow, keys: ReadonlyMap<str
     for (const d of [...secs.keys()].sort()) perDay[d] = { instances: secs.get(d)!.instances, minutes: r2(secs.get(d)!.seconds / 60), sameness };
     const mine = t.instances.reduce((n, i) => n + i.activeSeconds, 0);
     out.push({
-      taskId: t.id, taskKey, taskKind: t.kind, name: taskName(t.name, t.kind), appName: t.appName, host: t.host, perDay,
+      taskId: t.id, taskKey, taskKind: t.kind, name: taskName(t.name, t.kind), appName: safeName(t.appName) || "an app", host: t.host, perDay,
       instances: t.instances.length,
       firstStart: Math.min(...t.instances.map((i) => i.start)),
       lastEnd: Math.max(...t.instances.map((i) => i.end)),

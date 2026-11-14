@@ -182,7 +182,8 @@ CREATE TABLE figure_index (
   record_key text NOT NULL,
   json_pointer text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (tenant_id, member_id, figure_id)
+  -- One row per record that holds the figure: identical figures in two records share an id.
+  PRIMARY KEY (tenant_id, member_id, figure_id, record_kind, record_key)
 );
 CREATE INDEX figure_index_record ON figure_index (tenant_id, member_id, record_kind, record_key);
 

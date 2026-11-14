@@ -4,6 +4,8 @@
 
 const URL_RE = /\b(?:https?:\/\/|www\.)\S+/gi;
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+/** A host with a path and no scheme: `github.com/acme/repo/pull`. A bare host is allowed C1 metadata. */
+const BARE_LINK_RE = /\b(?:[a-z0-9-]+\.)+[a-z]{2,}\/\S*/gi;
 const TOKEN_RE = /<[^<>]*>/g;
 const EDGE_RE = /^[\s:·,;#/|()[\]-]+|[\s:·,;#/|()[\]-]+$/g;
 export const MAX_NAME = 80;
@@ -13,6 +15,7 @@ export function safeName(s: string): string {
   return s
     .replace(/[\u0000-\u001f\u007f]/g, " ")
     .replace(URL_RE, " ")
+    .replace(BARE_LINK_RE, " ")
     .replace(EMAIL_RE, " ")
     .replace(TOKEN_RE, " ")
     .replace(/[<>@]/g, " ")
@@ -39,5 +42,5 @@ export function nameWords(name: string): string[] {
 /** True when the text holds an email address or a URL. */
 export function hasLeak(text: string): boolean {
   // A bare host (`www.notion.so`) is allowed C1 metadata; a URL with a scheme or a path is not.
-  return /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(text) || /\bhttps?:\/\//i.test(text) || /\bwww\.[^\s/"]+\/[^\s"]/i.test(text);
+  return /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(text) || /\bhttps?:\/\//i.test(text) || /\b(?:[a-z0-9-]+\.)+[a-z]{2,}\/[^\s"]/i.test(text);
 }

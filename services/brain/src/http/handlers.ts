@@ -50,6 +50,15 @@ async function readJson(req: Request): Promise<unknown> {
   }
 }
 
+/** A malformed escape decodes to a key no validator accepts, so it ends as 400 invalid_request inside the handler. */
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return "\u0000";
+  }
+}
+
 type Route =
   | { kind: "profile_get" }
   | { kind: "profile_patch" }
@@ -62,7 +71,7 @@ function route(req: Request): Route | null {
   const path = url.pathname;
   if (path === "/v1/profile") return req.method === "GET" ? { kind: "profile_get" } : req.method === "PATCH" ? { kind: "profile_patch" } : null;
   const m = /^\/v1\/records\/(days|weeks|months|quarters)\/([^/]+)$/.exec(path);
-  if (m !== null) return req.method === "GET" ? { kind: "record", record: m[1] as "days" | "weeks" | "months" | "quarters", key: decodeURIComponent(m[2]!) } : null;
+  if (m !== null) return req.method === "GET" ? { kind: "record", record: m[1] as "days" | "weeks" | "months" | "quarters", key: safeDecode(m[2]!) } : null;
   if (path === "/v1/review/week") return req.method === "GET" ? { kind: "review_week", week: url.searchParams.get("w") } : null;
   if (path === "/v1/review/answers") return req.method === "POST" ? { kind: "review_answer" } : null;
   return null;
@@ -80,6 +89,7 @@ async function handle(r: Route, req: Request, tx: Tx, now: number): Promise<Resp
       return json(200, await repo.getProfile(tx));
     case "profile_patch": {
       const body = await readJson(req);
+      await repo.lockProfile(tx);
       const result = applyProfilePatch(await repo.getProfile(tx), body, now);
       if (!result.ok) throw new HttpError("schema_invalid", result.message);
       return json(200, await repo.saveProfile(tx, result));
