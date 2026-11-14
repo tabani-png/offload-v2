@@ -109,6 +109,10 @@ ADR 0019 asks (exact scan, no HNSW).
 No FK to `tenants`, `members` or `workspaces` yet (those tables do not exist on `main`); the adopting migration adds
 them. Tests create a unique schema and unique roles per file and drop them after (the CI database is shared).
 
+For the durable step that calls `runMemberUpdate` (W1-C, m5-05): `TimezoneMismatchError` (`code: "timezone_mismatch"`,
+`retryable: false`) is not retryable. The same window fails on every retry; the step rebuilds the window in the
+profile's timezone (or gives up and records why). The handlers read the request body before `RunInTenant` opens.
+
 ## 5. Privacy and numbers
 
 - No window title, text snapshot, URL or email enters any R-model table: names go through `names.ts`; spans' titles are

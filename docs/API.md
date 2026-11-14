@@ -200,8 +200,8 @@ User model shapes (handlers in `services/brain/src/http/handlers.ts`, slices p43
   `autonomy`, `own_name_to_models`, `keyframes_to_cloud`; any other field (including `version`, `updated_at`,
   `learning_paused`) is 400 `schema_invalid`. `goals` is a list of strings (or `{ text }`), at most 3, each one line of
   at most 80 characters with no `<`, `>`, email address or link. The same text (case-insensitive) keeps its goal id; a
-  goal left out is archived. Goal, role and industry text may not hold a link, including a bare `www.` or host name
-  (`acme.com`). A body that is not JSON, or not sent as `application/json`, is 400 `invalid_request`; a body over
+  goal left out is archived. Goal, role and industry text may not hold a link, including a bare `www.` or any host
+  name (`acme.com`, `bit.ly`, `shop.example`); code file names such as `README.md` or `Node.js` are allowed. A body that is not JSON, or not sent as `application/json`, is 400 `invalid_request`; a body over
   64 KiB is 413 `too_large`. The same body rules apply to `POST /v1/review/answers`.
 - `DayRecord`, `WeekRecord`, `MonthRecord` and `QuarterRecord` carry every number as a `Figure`. A malformed date,
   week, month or quarter is 400 `invalid_request`; no record (or a future week in the member's timezone) is 404.
