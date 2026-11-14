@@ -53,6 +53,11 @@ describe("p45a hardening", () => {
     expect(b.receipt_hash).toBeNull();
     await expect(h.store.update(TENANT, r.build_id, { state: "ready" }, h.clock.now)).rejects.toBeInstanceOf(BuildEnded);
     expect(next.build_id).not.toBe(r.build_id);
+    // the old worker's spend belongs to Offload's failure, not to any build cap (ADR 0031)
+    const oldEntries = h.store.entries.filter((e) => e.build_id === r.build_id);
+    expect(oldEntries.length).toBeGreaterThan(0);
+    expect(oldEntries.every((e) => e.scope === "infra")).toBe(true);
+    expect(b.spent_usd4).toBe(0);
   });
 
   test("LOCK: an attempt beats the build's heartbeat before each try and before its shards", async () => {
