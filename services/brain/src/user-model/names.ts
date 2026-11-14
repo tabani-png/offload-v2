@@ -39,13 +39,20 @@ export function nameWords(name: string): string[] {
   return [...new Set(safeName(name).toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 3))].sort();
 }
 
-const LINKISH_TLDS = "com|net|org|io|ai|app|dev|co|so|me|us|uk|de|fr|eu|edu|gov|info|biz|xyz|tech|cloud";
-const HOST_TOKEN_RE = new RegExp(`\\b[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.(?:${LINKISH_TLDS})\\b`, "i");
+/** File and language suffixes: `README.md` or `Node.js` look like host names but are not links. */
+const CODE_SUFFIXES = new Set([
+  "js", "ts", "jsx", "tsx", "mjs", "cjs", "py", "rb", "go", "rs", "md", "sh", "cs", "cpp", "hpp", "swift", "kt", "java",
+  "json", "yaml", "yml", "toml", "txt", "csv", "pdf", "docx", "xlsx", "pptx", "html", "css", "sql", "vue", "php", "dart",
+]);
+/** A dotted token whose last label has 2 or more letters: `acme.com`, `bit.ly`, `shop.example`. */
+const HOST_TOKEN_RE = /\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.([a-z]{2,})\b/gi;
 
-/** Stricter than hasLeak, for text the user types (goals, role, industry): also refuses `www.` and host names such
- * as `acme.com`. A dotted word with no web suffix (`Node.js`) is fine. */
+/** Stricter than hasLeak, for text a person types or a model writes (goals, role, industry, the weekly sentence):
+ * also refuses `www.` and any host name, whatever its suffix. Code file names (`README.md`, `Node.js`) are fine. */
 export function hasLink(text: string): boolean {
-  return hasLeak(text) || /\bwww\./i.test(text) || HOST_TOKEN_RE.test(text);
+  if (hasLeak(text) || /\bwww\./i.test(text)) return true;
+  for (const m of text.matchAll(HOST_TOKEN_RE)) if (!CODE_SUFFIXES.has(m[1]!.toLowerCase())) return true;
+  return false;
 }
 
 /** True when the text holds an email address or a URL. */
