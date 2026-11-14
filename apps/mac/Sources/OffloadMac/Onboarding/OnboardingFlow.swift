@@ -243,3 +243,7 @@ public struct OnboardingFlow: Equatable, Sendable {
     }
   }
 }
+
+extension OnboardingFlow {
+  mutating func setReask(_ reask: ReaskState) { state.reask = reask }
+}

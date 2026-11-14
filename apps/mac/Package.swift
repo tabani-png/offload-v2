@@ -12,7 +12,9 @@ let package = Package(
     name: "OffloadMac",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "OffloadMac", targets: ["OffloadMac"])
+        .library(name: "OffloadMac", targets: ["OffloadMac"]),
+        // m3-04: the launchable app (menu bar item and main window). Logic and views stay in the OffloadMac library.
+        .executable(name: "Offload", targets: ["OffloadMacApp"]),
     ],
     targets: [
         // Generated wire types (from packages/contracts/schemas) and the RFC 8785 JCS canonicaliser.
@@ -52,6 +54,13 @@ let package = Package(
                 "OffloadUploader", "OffloadImport", "OffloadActuator",
             ],
             path: "Sources/OffloadMac",
+            swiftSettings: v6
+        ),
+        // m3-04: the @main SwiftUI App only.
+        .executableTarget(
+            name: "OffloadMacApp",
+            dependencies: ["OffloadMac"],
+            path: "Sources/OffloadMacApp",
             swiftSettings: v6
         ),
         .testTarget(
