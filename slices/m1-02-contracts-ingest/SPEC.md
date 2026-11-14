@@ -12,7 +12,7 @@ parallel_group: M1-B
 owns: [packages/contracts/**, docs/API.md]
 verify: bash slices/m1-02-contracts-ingest/verify.sh
 min_tests: 22
-paths_in_scope: [packages/contracts/**, slices/m1-02-contracts-ingest/**, docs/API.md, package.json, bun.lock, NOTICE, .github/workflows/ci.yml, scripts/check-workflows.ts, scripts/tests/workflows.test.ts]
+paths_in_scope: [packages/contracts/**, slices/m1-02-contracts-ingest/**, docs/API.md, package.json, bun.lock, NOTICE, .github/workflows/ci.yml, scripts/check-workflows.ts, scripts/tests/workflows.test.ts, scripts/lib/slice-changes.sh, scripts/tests/slice-changes.test.ts]
 paths_out_of_scope: [ee/**, apps/**, services/**, packages/db/**, docs/adr/**]
 red_tests: [CONTRACT, JCS, KIND, PSEUDO]
 ---
@@ -131,3 +131,6 @@ need them), any service code.
   `scripts/tests/workflows.test.ts`): this is the first `done` slice, and CI's shallow checkout has no `BASE` commit, so
   `check-slices.sh` failed with "BASE ... not found". The checkouts now use `fetch-depth: 0`, and the workflow linter
   fails any job that runs slice checks without it.
+- CI scope fix added to `paths_in_scope` (`scripts/lib/slice-changes.sh`, `scripts/tests/slice-changes.test.ts`): on
+  pull_request CI checks out GitHub's merge commit, so `BASE..HEAD` included files merged into `main` after `BASE`
+  (PR #3) and the scope check failed. CI now sets `SLICE_UPSTREAM`, and only commits not already on it are checked.

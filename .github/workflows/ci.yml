@@ -50,6 +50,10 @@ jobs:
       - run: bun test
       - run: bash scripts/check-license-boundary.sh
       - run: bash scripts/check-slices.sh
+        env:
+          # Scope-check only this change's own commits: on pull_request HEAD is GitHub's merge commit and HEAD^1 is
+          # the base branch tip; on push it is the previous tip. See scripts/lib/slice-changes.sh.
+          SLICE_UPSTREAM: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
       - run: bun scripts/check-doc-links.ts
       - run: bash scripts/check-copy.sh
       - run: bash scripts/check-secrets-hygiene.sh
@@ -124,6 +128,7 @@ jobs:
         continue-on-error: true
         env:
           REQUIRE_MAC: "1"
+          SLICE_UPSTREAM: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
         run: |
           if grep -q '^status: done' slices/m3-02-mac-capture-upload/SPEC.md; then
             bash slices/m3-02-mac-capture-upload/verify.sh

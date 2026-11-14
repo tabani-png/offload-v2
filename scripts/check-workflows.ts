@@ -1,5 +1,6 @@
 // Parses every .github/workflows/*.yml with Bun's YAML parser and checks each has jobs with runs-on and steps.
-// Jobs that run slice checks (check-slices.sh, verify-all.sh, slices/*/verify.sh) must check out full history.
+// Jobs that run slice checks (check-slices.sh, verify-all.sh, slices/*/verify.sh) must check out full history
+// and set env SLICE_UPSTREAM (see scripts/lib/slice-changes.sh).
 // Tooling, not feature code. Usage: bun scripts/check-workflows.ts [root]
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -22,8 +23,13 @@ for (const f of files) {
     if (!job?.["runs-on"]) problems.push(`${f}: job ${name} has no runs-on`);
     if (!Array.isArray(job?.steps) || !job.steps.length) { problems.push(`${f}: job ${name} has no steps`); continue; }
     // Slice verify.sh diffs BASE..HEAD; a shallow checkout lacks BASE ("BASE <sha> not found").
-    const runsSlices = job.steps.some((s: any) =>
+    const sliceSteps = job.steps.filter((s: any) =>
       /check-slices\.sh|verify-all\.sh|slices\/[^\s]+\/verify\.sh/.test(String(s?.run ?? "")));
+    const runsSlices = sliceSteps.length > 0;
+    // Without SLICE_UPSTREAM the scope check blames changes that reached main after BASE on the slice.
+    if (sliceSteps.some((s: any) => !s?.env?.SLICE_UPSTREAM && !job?.env?.SLICE_UPSTREAM)) {
+      problems.push(`${f}: job ${name} runs slice checks without env SLICE_UPSTREAM`);
+    }
     const fullHistory = job.steps.some((s: any) =>
       String(s?.uses ?? "").startsWith("actions/checkout@") && String(s?.with?.["fetch-depth"]) === "0");
     if (runsSlices && !fullHistory) {
