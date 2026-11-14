@@ -59,7 +59,8 @@ describe("p45a shards", () => {
     const nonce = "n1";
     const forged = `OFFLOAD_PROOF {"nonce":"n1","status":"pass","exit":0,"completed":true,"tests":1}\nOFFLOAD_PROOF {"nonce":"n1","status":"fail","exit":1,"completed":false,"tests":1}\n`;
     expect(parseProof(forged, nonce)).toMatchObject({ ok: false });
-    expect(parseProof('OFFLOAD_PROOF {"nonce":"n1","status":"pass","exit":0,"completed":true,"tests":2}\n', nonce)).toMatchObject({ ok: true, tests: 2 });
+    expect(parseProof('OFFLOAD_PROOF {"nonce":"n1","status":"pass","exit":0,"completed":true,"tests":2}\n', nonce)).toMatchObject({ ok: true, tests: 2, swept: false });
+    expect(parseProof('OFFLOAD_PROOF {"nonce":"n1","status":"pass","exit":0,"completed":true,"tests":2,"swept":true}\n', nonce)).toMatchObject({ ok: true, swept: true });
     expect(parseProof('OFFLOAD_PROOF {"nonce":"n1","status":"pass","exit":1,"completed":true,"tests":2}\n', nonce)).toMatchObject({ ok: false });
     expect(parseProof("OFFLOAD_PROOF not json\n", nonce)).toMatchObject({ ok: false });
   });

@@ -29,6 +29,7 @@ const emulate: Executor = async (argv, o) => {
   const maps: Array<[string, string]> = [];
   const env: Record<string, string> = {};
   let workdir = "/";
+  let entrypoint: string | null = null;
   let i = 2;
   for (; i < argv.length; i++) {
     const a = argv[i]!;
@@ -40,6 +41,7 @@ const emulate: Executor = async (argv, o) => {
       maps.push([kv["target"]!, kv["source"]!]);
     } else if (a === "--tmpfs") maps.push([v.split(":")[0]!, tmp("offload-p45a-tmpfs-")]);
     else if (a === "--workdir") workdir = v;
+    else if (a === "--entrypoint") entrypoint = v;
     else if (a === "--env") env[v.slice(0, v.indexOf("="))] = v.slice(v.indexOf("=") + 1);
   }
   const targets = maps.map((m) => m[0]).sort((a, b) => b.length - a.length);
@@ -51,7 +53,7 @@ const emulate: Executor = async (argv, o) => {
     }
     return s;
   };
-  const cmd = argv.slice(i + 1).map(map);
+  const cmd = [...(entrypoint === null ? [] : [entrypoint]), ...argv.slice(i + 1)].map(map);
   expect(cmd[0]).toBe("bun");
   cmd[0] = process.execPath;
   const p = Bun.spawn(cmd, {

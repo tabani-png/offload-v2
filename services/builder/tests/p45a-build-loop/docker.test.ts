@@ -58,8 +58,10 @@ describe("p45a docker provider", () => {
       "--mount", `type=bind,source=${dirs.work},target=/work`,
       "--mount", `type=bind,source=${dirs.check},target=/check,readonly`,
       "--workdir", "/check",
+      // the image's own entrypoint is never used: the harness must be PID 1 for its kill(-1) sweep
+      "--entrypoint", "bun",
       SPEC.image,
-      "bun", "/check/harness.ts",
+      "/check/harness.ts",
     ]);
     expect(name).toMatch(/^offload-sbx_[0-9a-f]+-\d+$/);
     expect(calls[0]!.stdin).toBe("nonce\n");
@@ -161,11 +163,13 @@ describe.skipIf(!dockerUp)("p45a docker provider (live)", () => {
     const image = process.env["OFFLOAD_SANDBOX_IMAGE"] ?? "oven/bun:1.4.4";
     const spec = { ...SPEC, image };
     const honest = 'import { expect, test } from "bun:test";\ntest("slug", () => { const r = Bun.spawnSync([process.execPath, "run", "slug.ts", "A B"]); expect(r.stdout.toString().trim()).toBe("a-b"); });\n';
-    const net = 'import { expect, test } from "bun:test";\ntest("no network", async () => { let ok = false; try { await fetch("http://1.1.1.1", { signal: AbortSignal.timeout(3000) }); ok = true; } catch {} expect(ok).toBe(false); });\n';
+    const net = 'import { expect, test } from "bun:test";\ntest("no network, no registry", async () => { for (const u of ["http://1.1.1.1", "https://registry.npmjs.org/left-pad"]) { let ok = false; try { await fetch(u, { signal: AbortSignal.timeout(3000) }); ok = true; } catch {} expect(ok).toBe(false); } });\n';
     const failing = 'import { expect, test } from "bun:test";\ntest("x", () => { expect(1).toBe(2); });\n';
     const art = [file("slug.ts", 'console.log((process.argv[2] ?? "").toLowerCase().split(" ").join("-"));\n')];
     const r = await runShards({ provider: p, spec, artifact: art, shards: [{ name: "frozen", check: checkSet("frozen", honest) }, { name: "held_out", check: checkSet("held_out", net) }], timeout_ms: 120_000 });
     expect(r.map((x) => x.passed)).toEqual([true, true]);
+    // the harness ran as PID 1 and swept every other process before reading the report
+    expect(r.map((x) => x.proof?.swept)).toEqual([true, true]);
     const f = await runShards({ provider: p, spec, artifact: art, shards: [{ name: "frozen", check: checkSet("frozen", failing) }], timeout_ms: 120_000 });
     expect(f[0]!.passed).toBe(false);
   }, 300_000);
