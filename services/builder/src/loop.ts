@@ -168,17 +168,19 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
     { name: "frozen", check: fix.check_set },
     { name: "held_out", check: fix.held_out },
   ];
+  // Model money settled under any scope (build or infra). ADR 0031: the approval is released only with none.
+  let spentAny = 0;
   const releaseIfUnspent = async () => {
-    const now = await d.store.get(i.tenant_id, i.build_id);
-    if ((now?.spent_usd4 ?? 0) === 0) await d.approvals.release({ tenant_id: i.tenant_id, approval_id: b.approval_id! }, d.now()).catch(() => undefined);
+    if (spentAny === 0) await d.approvals.release({ tenant_id: i.tenant_id, approval_id: b.approval_id! }, d.now()).catch(() => undefined);
   };
+  const infraNote = "Offload's side failed: the sandbox provider did not answer. Spend during the outage is not billed to the cap.";
 
   // 4. Teeth gate: each check must fail on an empty workspace, and leave it unchanged.
   await begin("teeth_gate");
   const teeth = await runShards({ provider: d.provider, spec: verifySpec, artifact: [], shards, timeout_ms: d.config.verify_wall_ms });
   if (teeth.some((t) => t.error === "infra")) {
     await releaseIfUnspent();
-    return void (await end("infra_failed", "Offload's side failed: the sandbox provider did not answer. Nothing was billed."));
+    return void (await end("infra_failed", infraNote));
   }
   const toothless = teeth.find((t) => t.passed);
   if (toothless !== undefined) return void (await end("failed", `Needs you: the ${shardWords(toothless.shard)} check passes on an empty workspace (no teeth).`));
@@ -195,6 +197,7 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
     if (!(await d.store.reserve({ tenant_id: i.tenant_id, build_id: b.id, attempt_id: id, call_id: `attempt:${id}`, kind: "model", usd4: cap, ceiling_usd4: ceiling }, d.now()))) return null;
     const row: AttemptRow = { tenant_id: i.tenant_id, id, build_id: b.id, ordinal, sandbox_provider: d.provider.name, sandbox_id: null, outcome: "error", spent_usd4: 0, tries: 0, turns: 0, frozen_pass: null, held_out_pass: null, check_groups: [], artifact_sha256: null, artifact_bytes: 0, artifact_files: [], note: "" };
     let res: AttemptResult | null = null;
+    let infra = false;
     let frozenOutput = "";
     let heldOutFailed = false;
     try {
@@ -229,6 +232,13 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
         // The only pass that counts: fresh verification sandboxes, one per shard, in parallel.
         await beat();
         const v: ShardResult[] = await runShards({ provider: d.provider, spec: verifySpec, artifact: res.artifact, shards, timeout_ms: d.config.verify_wall_ms });
+        if (v.some((x) => x.error === "infra")) {
+          // A provider outage is not a check result: no verdict, not billed to the cap, no fan-out (ADR 0031).
+          infra = true;
+          row.outcome = "error";
+          row.note = "Offload's side failed while checking this worker; the checks did not run.";
+          return { row, frozenOutput, heldOutFailed, infra };
+        }
         const f = v.find((x) => x.shard === "frozen")!;
         const h = v.find((x) => x.shard === "held_out")!;
         row.frozen_pass = f.passed;
@@ -245,14 +255,15 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
           row.note = `${res.outcome === "built" ? "" : `${res.note} `}Failed ${failed.join(" and ")} in a fresh sandbox.`.trim();
         }
       } else row.outcome = res.outcome === "cap" ? "cap" : "fail";
-      return { row, frozenOutput, heldOutFailed, infra: res.infra };
+      infra = res.infra;
+      return { row, frozenOutput, heldOutFailed, infra };
     } catch {
       row.outcome = "error";
       row.note = "This worker stopped with an error.";
       return { row, frozenOutput, heldOutFailed, infra: false };
     } finally {
       // Spend during a provider outage is recorded as infra and never billed to the cap (ADR 0031).
-      const infra = res?.infra === true;
+      spentAny += row.spent_usd4;
       await d.store.settle({ tenant_id: i.tenant_id, build_id: b.id, call_id: `attempt:${id}`, idempotency_key: `attempt:${id}`, scope: infra ? "infra" : "build", usd4: row.spent_usd4 }, d.now()).catch(() => undefined);
       await d.store.putAttempt(row).catch(() => undefined);
     }
@@ -267,7 +278,7 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
   if (r1.outcome === "tamper") return void (await end("tampered", "The frozen check changed during a try; the build stopped."));
   if (one.infra) {
     await releaseIfUnspent();
-    return void (await end("infra_failed", "Offload's side failed: the sandbox provider did not answer. Nothing was billed."));
+    return void (await end("infra_failed", infraNote));
   }
   const ran: Ran[] = [one];
   if (r1.outcome !== "pass") {
@@ -289,8 +300,9 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
   await begin("winner");
   const win = pickWinner(ran.map((x) => x.row));
   if (win === null) {
-    if (ran.length > 1 && ran.slice(1).every((x) => x.infra)) {
-      return void (await end("infra_failed", "Offload's side failed while the extra workers ran. The failed part was not billed."));
+    if (ran.some((x) => x.infra)) {
+      await releaseIfUnspent();
+      return void (await end("infra_failed", infraNote));
     }
     const why = ran.map((x) => `Worker ${x.row.ordinal}: ${x.row.note}`).join(" ");
     return void (await end("failed", `No build passed every check. ${why}`.trim()));

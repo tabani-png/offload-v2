@@ -13,6 +13,7 @@ import { checkEnv, MOUNT_PATH, safeRelPath, SandboxInfraError, SandboxSpecError,
 export type Executor = (argv: string[], o: { stdin?: string; timeout_ms: number }) => Promise<ExecResult>;
 
 const MAX_OUTPUT = 256 * 1024;
+const DOCKER_ERROR_EXITS: ReadonlySet<number> = new Set([125, 126, 127]);
 const MAX_FILE = 4 * 1024 * 1024;
 const MAX_FILES = 2_000;
 
@@ -162,7 +163,15 @@ export class DockerProvider implements SandboxProvider {
     const b = this.box(s);
     const name = `offload-${s.id}-${++b.runs}`;
     const timeout = Math.min(o.timeout_ms, b.spec.wall_ms);
-    const r = await this.executor(this.runArgv(s, name, o), { ...(o.stdin === undefined ? {} : { stdin: o.stdin }), timeout_ms: timeout });
+    let r: ExecResult;
+    try {
+      r = await this.executor(this.runArgv(s, name, o), { ...(o.stdin === undefined ? {} : { stdin: o.stdin }), timeout_ms: timeout });
+    } catch {
+      throw new SandboxInfraError("the docker CLI could not run");
+    }
+    // 125: docker itself failed (daemon, image, flags); 126/127: the command could not be invoked. None is a check
+    // result: they are Offload's side failing (ADR 0031), never a check failure billed to the cap.
+    if (!r.timed_out && r.exit !== null && DOCKER_ERROR_EXITS.has(r.exit)) throw new SandboxInfraError(`docker run failed (exit ${r.exit})`);
     if (r.timed_out) {
       // Killing the client does not stop the container: remove it.
       await this.executor([this.docker, "rm", "-f", name], { timeout_ms: 30_000 }).catch(() => undefined);
