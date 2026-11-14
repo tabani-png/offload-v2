@@ -130,5 +130,9 @@ HTTP routes, device auth, user-model tables (M5), routine tables (M2), the sched
   service work. m1-01's `packages/db/src/durable/tenant.ts` is removed and the durable runtime calls the new helper.
 - Added an AUDIT test for `verifyAuditChain` (edit, delete, fork), required by SECURITY_PRIVACY.md section 13 for this
   slice, and a MIGRATE test for `config.ts`.
+- Review fixes: the `SECURITY DEFINER` functions use `search_path = pg_catalog, public, pg_temp` rather than
+  `public` alone, because `public` alone leaves `pg_temp` searched first and a temp table could shadow a table. The
+  resolver test checks for that value. Resolvers also skip frozen and departed members. Seven more tests pin the
+  review findings (`review.test.ts`).
 - The chain writer is written fresh from ADR 0018: no old-repo code was copied, so OQ-12 relicensing is not needed
   for it and `NOTICE` is unchanged.

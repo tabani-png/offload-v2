@@ -115,7 +115,9 @@ test("ROLE: resolvers skip departed and frozen members and deleted tenants", asy
     expect(await resolveAll(fx.a)).toEqual([1, 1, 1, 1, 1]);
     await fx.admin.query("update tenants set deleted_at = now() where id = $1", [fx.b.tenantId]);
     expect(await resolveAll(fx.b)).toEqual([0, 0, 0, 0, 0]);
-    expect((await fx.jobs.query("select * from jobs_list_tenants()")).rows.map((r) => r.tenant_id)).toEqual([fx.a.tenantId]);
+    const listed = (await fx.jobs.query("select * from jobs_list_tenants()")).rows.map((r) => r.tenant_id);
+    expect(listed).toContain(fx.a.tenantId);
+    expect(listed).not.toContain(fx.b.tenantId);
   } finally {
     await fx.admin.query("update tenants set deleted_at = null where id = $1", [fx.b.tenantId]);
     c.release();

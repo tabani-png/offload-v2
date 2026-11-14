@@ -18,6 +18,8 @@ const SUBJECT_TYPE_RE = /^[a-z_]{1,64}$/;
 const DETAIL_KEY_RE = /^[a-z][a-z0-9_]{0,63}$/;
 /** Ids and hashes only: no whitespace, at most 128 characters. */
 const DETAIL_STRING_RE = /^\S{0,128}$/;
+/** Whole details object as JCS: ids and hashes fit; free text split into words does not. */
+const MAX_DETAILS_BYTES = 2048;
 
 export class AuditEventError extends Error {
   readonly code = "audit_event_invalid";
@@ -96,6 +98,7 @@ function validate(e: AuditEventInput): void {
   if (e.ruleId !== undefined && !ID_RE.test(e.ruleId)) throw new AuditEventError("audit rule_id must be an id");
   if (typeof e.details !== "object" || e.details === null || Array.isArray(e.details)) throw new AuditEventError("audit details must be an object");
   checkDetails(e.details, 0);
+  if (jcs(e.details).length > MAX_DETAILS_BYTES) throw new AuditEventError(`audit details over ${MAX_DETAILS_BYTES} bytes`);
 }
 
 /**
@@ -105,7 +108,7 @@ function validate(e: AuditEventInput): void {
  */
 export async function appendAudit(tx: Tx, input: AuditEventInput): Promise<AuditRow> {
   validate(input);
-  const tenantId = (await tx.query<{ t: string | null }>("select nullif(current_setting('app.tenant_id', true), '') as t")).rows[0]?.t;
+  const tenantId = (await tx.query<{ t: string | null }>("select nullif(current_setting('app.tenant_id', true), '')::uuid::text as t")).rows[0]?.t;
   if (!tenantId) throw new AuditEventError("appendAudit needs app.tenant_id (run it inside withTenant)");
   await tx.query("select pg_advisory_xact_lock(hashtextextended('audit:' || $1, 0))", [tenantId]);
   const head = (await tx.query<{ seq: string; hash: string }>(

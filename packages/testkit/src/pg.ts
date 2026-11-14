@@ -32,6 +32,7 @@ export function roleUrl(role: string, url: string = databaseUrl()): string {
 export async function freshDatabase(opts: { reset?: boolean } = {}): Promise<string[]> {
   const admin = new Pool({ connectionString: databaseUrl(), max: 1 });
   try {
+    await assertDisposableDatabase(admin);
     const c = await admin.connect();
     try {
       if (opts.reset ?? true) {
@@ -193,4 +194,16 @@ export async function seedTenantRows(fx: PgTenantFixture): Promise<void> {
  * Returns the remover. */
 export function onBeforeCommit(hook: (tx: Tx) => void | Promise<void>): () => void {
   return registerBeforeCommit(hook);
+}
+
+/**
+ * Refuses unless the database is disposable: its name ends in `test` (`offload_test` in CI), or an administrator
+ * marked it with `comment on database <name> is 'offload:disposable'`. freshDatabase drops schema public.
+ */
+export async function assertDisposableDatabase(admin: Pool): Promise<void> {
+  const r = (await admin.query(
+    "select current_database() as name, shobj_description(oid, 'pg_database') as note from pg_database where datname = current_database()",
+  )).rows[0] as { name: string; note: string | null };
+  if (/(^|_)test$/.test(r.name) || r.note === "offload:disposable") return;
+  throw new Error("refusing to reset a database that is not disposable: name it *_test or comment it 'offload:disposable'");
 }

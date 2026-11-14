@@ -4,7 +4,7 @@
 
 -- Tenant wall: ENABLE + FORCE RLS and policy tenant_isolation. `tenants` itself uses its `id` column.
 create function apply_tenant_rls(t regclass) returns void
-language plpgsql set search_path = public as $$
+language plpgsql set search_path = pg_catalog, public, pg_temp as $$
 declare
   col text := case when t = 'public.tenants'::regclass then 'id' else 'tenant_id' end;
 begin
@@ -20,7 +20,7 @@ end $$;
 -- Member wall (restrictive): C1, C2 and C6 tables. The table list of record is MEMBER_ISOLATED_TABLES in
 -- packages/db/src/tables.ts; a test checks that it equals the set of tables carrying this policy.
 create function apply_member_isolation(t regclass) returns void
-language plpgsql set search_path = public as $$
+language plpgsql set search_path = pg_catalog, public, pg_temp as $$
 begin
   if not exists (select 1 from pg_policy where polrelid = t and polname = 'member_isolation') then
     execute format(
@@ -29,21 +29,32 @@ begin
   end if;
 end $$;
 
--- Append-only set: refuses UPDATE, DELETE and TRUNCATE for every role except offload_retention. Grants narrow
--- offload_retention further (DELETE only). item_journal and friends join in M2 with this same function.
+-- Append-only set: refuses UPDATE, DELETE and TRUNCATE for every role except offload_retention, which may only
+-- DELETE (grants narrow it further): audit_events only from the oldest end and strictly below the latest anchor, and
+-- audit_anchors only when a newer anchor exists, so the chain head and the latest anchor always stay (ADR 0018).
+-- item_journal and friends join in M2 with this same function.
 create function refuse_mutation() returns trigger
-language plpgsql set search_path = public as $$
+language plpgsql set search_path = pg_catalog, public, pg_temp as $$
 begin
-  if current_user = 'offload_retention' then
-    if tg_level = 'STATEMENT' then return null; end if;
-    if tg_op = 'DELETE' then return old; end if;
-    return new;
+  if current_user = 'offload_retention' and tg_level = 'ROW' and tg_op = 'DELETE' then
+    if tg_table_name = 'audit_events' then
+      if old.seq < coalesce((select max(a.seq) from public.audit_anchors a where a.tenant_id = old.tenant_id), 0)
+         and not exists (select 1 from public.audit_events e where e.tenant_id = old.tenant_id and e.seq < old.seq) then
+        return old;
+      end if;
+    elsif tg_table_name = 'audit_anchors' then
+      if exists (select 1 from public.audit_anchors a where a.tenant_id = old.tenant_id and a.seq > old.seq) then
+        return old;
+      end if;
+    else
+      return old;
+    end if;
   end if;
   raise exception 'append_only: % on % is refused', tg_op, tg_table_name using errcode = '42501';
 end $$;
 
 create function apply_append_only(t regclass) returns void
-language plpgsql set search_path = public as $$
+language plpgsql set search_path = pg_catalog, public, pg_temp as $$
 begin
   execute format('create trigger append_only_rows before update or delete on %s for each row execute function refuse_mutation()', t);
   execute format('create trigger append_only_truncate before truncate on %s for each statement execute function refuse_mutation()', t);

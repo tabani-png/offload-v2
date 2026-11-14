@@ -89,7 +89,7 @@ create table observation_texts_default partition of observation_texts default;
 -- partition behind both walls at creation (a child partition does not inherit FORCE). Rows for that day already in
 -- the DEFAULT partition move into the new partition. Idempotent. Returns the names of the partitions it created.
 create function ensure_partitions(from_day date, days integer) returns setof text
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = pg_catalog, public, pg_temp as $$
 declare
   parent text;
   d date;
@@ -104,11 +104,11 @@ begin
       d := from_day + i;
       part := format('%s_p%s', parent, to_char(d, 'YYYYMMDD'));
       continue when to_regclass(format('public.%I', part)) is not null;
-      execute format('create table %I (like %I including defaults including constraints)', part, parent);
+      execute format('create table public.%I (like public.%I including defaults including constraints)', part, parent);
       execute format(
-        'with moved as (delete from %I where day >= %L and day < %L returning *) insert into %I select * from moved',
+        'with moved as (delete from public.%I where day >= %L and day < %L returning *) insert into public.%I select * from moved',
         parent || '_default', d, d + 1, part);
-      execute format('alter table %I attach partition %I for values from (%L) to (%L)', parent, part, d, d + 1);
+      execute format('alter table public.%I attach partition public.%I for values from (%L) to (%L)', parent, part, d, d + 1);
       perform apply_tenant_rls(format('public.%I', part)::regclass);
       perform apply_member_isolation(format('public.%I', part)::regclass);
       return next part;

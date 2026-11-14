@@ -92,14 +92,18 @@ async function run<T>(pool: Pool, setup: (c: PoolClient) => Promise<void>, fn: (
   }
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Lower case only: settings are compared as text in places (the audit lock key), so one tenant has one spelling. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const PRINCIPAL_RE = /^[A-Za-z0-9_:.-]{1,128}$/;
+const TENANT_ROLES: readonly TenantRole[] = ["owner", "admin", "member", "auditor", "service"];
 
 /** Runs `fn` in one transaction with app.tenant_id, app.principal_id, app.member_id, app.tenant_role and
  * app.member_scope set locally. No network I/O inside `fn`. */
 export async function withTenant<T>(pool: Pool, ctx: TenantContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
-  if (!UUID_RE.test(ctx.tenantId)) throw new TypeError("withTenant: tenantId must be a uuid");
-  if (ctx.memberId !== null && !UUID_RE.test(ctx.memberId)) throw new TypeError("withTenant: memberId must be a uuid or null");
-  if (!ctx.principalId) throw new TypeError("withTenant: principalId is required");
+  if (!UUID_RE.test(ctx.tenantId)) throw new TypeError("withTenant: tenantId must be a lower-case uuid");
+  if (ctx.memberId !== null && !UUID_RE.test(ctx.memberId)) throw new TypeError("withTenant: memberId must be a lower-case uuid or null");
+  if (!PRINCIPAL_RE.test(ctx.principalId)) throw new TypeError("withTenant: principalId must be an id");
+  if (!TENANT_ROLES.includes(ctx.tenantRole)) throw new TypeError("withTenant: unknown tenantRole");
   const scope: MemberScope = ctx.memberScope ?? "member";
   if (scope !== "member" && scope !== "tenant") throw new TypeError("withTenant: memberScope must be member or tenant");
   return run(
