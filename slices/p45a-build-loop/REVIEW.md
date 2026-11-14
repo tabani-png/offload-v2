@@ -193,3 +193,75 @@ exports only.
 against the reverted fix for finding 1). The MINORs can be fixed or recorded in DESIGN.md section 7 with an owner.
 
 VERDICT: CHANGES
+
+### Author response (round 1)
+
+Commits `18499c8..3505309`, red tests before every behaviour change. After them: p45a slice suite **110 tests (109
+pass, 1 skip `LIVE:`)**, up from 98; p45b **17** (unchanged); full suite **177 tests across 34 files, 176 pass, 1
+skip**; both `verify.sh` PASS; `scripts/verify-all.sh` green. Each mutation below was run on a copy in `/tmp`, never
+in the repo.
+
+1. **MAJOR, fixed (tests).** The payload now neuters every matcher, so a loaded worker module makes a failing check
+   really pass with an honest JUnit report. The control test shows that (exit 0, 1 test, 0 failures).
+   - **Path vectors** (`../work/evil.ts`, `../work/node_modules/helper[/index.js]`, worker code imported by mistake)
+     assert the guard's refusal message.
+   - **Bare, tsconfig-paths and package-imports specifiers from `/check`** assert they do not resolve: from outside the
+     workspace they cannot (layout protection).
+   - **A new direct guard test** covers the `onLoad` hook: a `node_modules` symlink, a tsconfig alias and an absolute
+     path into the workspace. Each has a no-guard control that passes.
+   - **Mutation results:**
+
+     | Mutation | Tests that now fail |
+     |---|---|
+     | 473cafb fix reverted (`cwd: WS`, no `--config`, no `--no-env-file`) | 4, including the bunfig and path tests |
+     | guard preload removed | 6 |
+     | `onLoad` registration deleted | 2 |
+
+     The `onLoad` deletion is the honest mutation: returning `undefined` from `onLoad` is itself a Bun error. DESIGN.md
+     section 7 calls `onLoad` defence in depth. (`18499c8`)
+2. **MAJOR, fixed.**
+   - A verification shard with `error: "infra"` makes the attempt an infra error: outcome `error`, spend settled with
+     scope `infra`, no fan-out, build `infra_failed`.
+   - Any infra attempt without a winner ends `infra_failed`.
+   - The approval is released only when no model money was settled under any scope (ADR 0031).
+   - The Docker provider maps a CLI that cannot run, and `docker run` exits 125 to 127, to `SandboxInfraError`.
+   - New tests:
+     - `INFRA:` an outage at verification after $0.50 of worker spend (state `infra_failed`, no `build` entries, one
+       `infra` entry of 5 000, one worker, approval not released);
+     - `INFRA:` an outage while the fan-out worker is verified (`build` 3 000 for worker 1, `infra` 4 000 for worker 2);
+     - `SANDBOX:` exit 125, 126, 127 and spawn failure are infra; exit 1 is a check result.
+   - (`e30bd85`, red `b2b03a2`)
+3. **MINOR, fixed.** Reported spend is settled as it is. Reaching the cap still ends the tries, and the reservation
+   refuses new work. New test: a worker reporting $1.00 against a $0.70 cap gets 1 try, outcome `cap`, ledger 10 000.
+   (`4723ddf`, red `6c91b60`)
+4. **MINOR, fixed (tests).**
+   - All five tables are checked for RLS enabled and forced.
+   - The store is run through a pool connected as a non-owner `NOBYPASSRLS` role, with SELECT, INSERT and UPDATE only.
+   - As that role:
+     - another tenant's rows (and rows with no tenant set) are invisible in all five tables;
+     - a cross-tenant update changes nothing;
+     - the lock race and stale recovery hold;
+     - three parallel reservations cannot pass the ceiling;
+     - deleting budget entries is refused.
+   - Fails with `FORCE` dropped on `builds` (1) and with RLS dropped on `worker_attempts` (2). (`164b8b9`)
+5. **MINOR, fixed (test).** A cheaper but larger passing attempt wins, plus direct `pickWinner` cases. Fails with size
+   and cost swapped. The rule itself stays an owner question (DESIGN.md section 6). (`29f25af`)
+6. **MINOR, recorded.** This stream may not edit ADRs or OPEN_QUESTIONS, so DESIGN.md section 6 lists held-out reuse
+   as an owner question: amend ADR 0029, or tighten `heldOutUsed` to "any build" (one query). (`3505309`)
+7. **MINOR, recorded.** DESIGN.md section 7 names the owner action: whoever writes m5-03's SPEC adds the four
+   `LOCAL:` tests and `redirect: "error"`. ROADMAP is outside this slice's scope. (`3505309`)
+8. **MINOR, partly fixed.**
+   - **Fixed:**
+     - the Docker argv pins `--entrypoint <argv[0]>`, so the harness is PID 1;
+     - `parseProof` reports `swept`;
+     - the `LIVE:` test also tries a package registry and asserts `swept: true`.
+   - **Not done, with reason:** the `LIVE:` test still has not run (no Docker on this box). Requiring `swept` for
+     verification shards would break the emulated guard tests (the emulator is not PID 1). Both are in DESIGN.md
+     section 7: run LIVE once on a Docker host before m2-08, then require `swept`.
+   - (`0e7a3ed`, red `e20687d`; `3505309`)
+9. **MINOR, fixed.** `RoutinePort.deploy` gets `idempotency_key = deploy:<build_id>`, the same on every retry. New
+   `SHIP:` test: a deploy that fails after the routine was created, then a retry; both calls carry the same key. DESIGN.md
+   section 4 says m2-09 must honour it. (`84785f0`, red `33a88f0`)
+10. **NIT, fixed.** The carried test is now `LOCK: two OKs of the same brief at once: exactly one 202, the other 409
+    already_running`. DESIGN.md section 4 says `budget_entries` must end up as one definition when `packages/db` lands
+    it. (`3505309`)
