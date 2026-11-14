@@ -121,7 +121,10 @@ describe.skipIf(!HAS_DB)("p43b storage rules", () => {
     });
     const fx = fixtureWeek(MONDAYS[0], { seed: SEED });
     expect(fx.window.timezone).toBe("UTC");
-    await expect(db.run(db.B1, (tx) => runMemberUpdate(tx, { window: fx.window, now: mondayNoonAfter(MONDAYS[0]), workspaceId: db.workspaceB, estimateFor }))).rejects.toThrow(/timezone/);
+    const err = await db.run(db.B1, (tx) => runMemberUpdate(tx, { window: fx.window, now: mondayNoonAfter(MONDAYS[0]), workspaceId: db.workspaceB, estimateFor })).then(() => null, (e: unknown) => e);
+    expect(String(err)).toMatch(/timezone/);
+    // Retrying the same window can never succeed: the caller must rebuild it in the profile's timezone.
+    expect(err).toMatchObject({ code: "timezone_mismatch", retryable: false });
     const n = await db.sql.unsafe(`SELECT count(*)::int AS n FROM ${db.schema}.day_records WHERE member_id = $1`, [db.B1.memberId]);
     expect(n[0].n).toBe(0);
     const ok = fixtureWeek(MONDAYS[0], { seed: SEED, timezone: "Asia/Karachi" });

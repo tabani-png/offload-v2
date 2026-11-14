@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { handleUserModelRequest, type UserModelAuth } from "../../src/http/handlers.ts";
 import { listOpportunities, listReviewAnswers } from "../../src/store/repository.ts";
 import { runMemberUpdate, writeWeekNarrative } from "../../src/store/job.ts";
-import type { TenantContext } from "../../src/store/tenant.ts";
+import type { RunInTenant, TenantContext, Tx } from "../../src/store/tenant.ts";
 import { fixtureWeek, MONDAYS, SEED } from "../fixtures/window.ts";
 import { estimateFor, HAS_DB, seedFourWeeks, testDb, type TestDb } from "./db.ts";
 
@@ -181,6 +181,49 @@ describe.skipIf(!HAS_DB)("p43b records and review routes", () => {
     const res = (await handleUserModelRequest(req, auth(db.A1), { runInTenant: db.run, now: () => NOW }))!;
     expect([res.status, ((await res.json()) as any).error.code]).toEqual([413, "too_large"]);
     expect(pulled).toBeLessThan(100);
+    // A declared Content-Length over the cap is refused before the body is read (the short body itself is valid JSON).
+    let read = 0;
+    const tiny = new ReadableStream<Uint8Array>({
+      pull(c) {
+        if (read >= 1) return c.close();
+        read += 1;
+        c.enqueue(new TextEncoder().encode("{}"));
+      },
+    }, { highWaterMark: 0 });
+    const declared = new Request("https://offload.test/v1/profile", { method: "PATCH", headers: { "content-type": "application/json", "content-length": "70000" }, body: tiny });
+    const r2 = (await handleUserModelRequest(declared, auth(db.A1), { runInTenant: db.run, now: () => NOW }))!;
+    expect([r2.status, ((await r2.json()) as any).error.code]).toEqual([413, "too_large"]);
+    expect(read).toBe(0);
+  });
+
+  test("API: the request body is read before the tenant transaction opens", async () => {
+    const opened: boolean[] = [];
+    let consumed = false;
+    const spy = (<T,>(ctx: TenantContext, fn: (tx: Tx) => Promise<T>): Promise<T> => {
+      opened.push(consumed);
+      return db.run(ctx, fn);
+    }) as RunInTenant;
+    let step = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        step += 1;
+        if (step === 1) return c.enqueue(new TextEncoder().encode(JSON.stringify({ autonomy: "draft" })));
+        consumed = true;
+        c.close();
+      },
+    }, { highWaterMark: 0 });
+    const req = new Request("https://offload.test/v1/profile", { method: "PATCH", headers: { "content-type": "application/json" }, body });
+    const res = (await handleUserModelRequest(req, auth(db.A1), { runInTenant: spy, now: () => NOW }))!;
+    expect(res.status).toBe(200);
+    expect(opened).toEqual([true]);
+    // A refused body never opens a transaction.
+    opened.length = 0;
+    const big = new Request("https://offload.test/v1/review/answers", { method: "POST", headers: { "content-type": "application/json" }, body: "x".repeat(70_000) });
+    const r2 = (await handleUserModelRequest(big, auth(db.A1), { runInTenant: spy, now: () => NOW }))!;
+    expect(r2.status).toBe(413);
+    const r3 = (await handleUserModelRequest(new Request("https://offload.test/v1/review/answers", { method: "POST", headers: { "content-type": "text/plain" }, body: "{}" }), auth(db.A1), { runInTenant: spy, now: () => NOW }))!;
+    expect(r3.status).toBe(400);
+    expect(opened).toEqual([]);
   });
 
   test("API: paths and methods it does not own return null", async () => {
