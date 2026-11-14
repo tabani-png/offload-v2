@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://offload.consultance.ai/schemas/capability.json",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+    },
+    "step_class": {
+      "type": "string",
+      "enum": [
+        "read",
+        "draft",
+        "commit"
+      ]
+    },
+    "argument_schema": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    },
+    "commit_arguments_allowlist": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      }
+    }
+  },
+  "required": [
+    "name",
+    "step_class",
+    "argument_schema"
+  ],
+  "additionalProperties": false,
+  "if": {
+    "properties": {
+      "step_class": {
+        "const": "commit"
+      }
+    },
+    "required": [
+      "step_class"
+    ]
+  },
+  "then": {
+    "properties": {
+      "commit_arguments_allowlist": true
+    },
+    "required": [
+      "commit_arguments_allowlist"
+    ]
+  }
+}

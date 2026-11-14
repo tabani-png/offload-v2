@@ -1,0 +1,96 @@
+[
+  {
+    "app": "Gmail",
+    "provider": "gmail",
+    "method": "google_internal",
+    "adapter": "openapi",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/gmail.compose",
+      "https://www.googleapis.com/auth/gmail.send"
+    ],
+    "capabilities": ["mail.search", "mail.read", "mail.draft", "mail.send"],
+    "s5_verified_at": null
+  },
+  {
+    "app": "Google Calendar",
+    "provider": "google_calendar",
+    "method": "google_internal",
+    "adapter": "openapi",
+    "scopes": ["https://www.googleapis.com/auth/calendar.events"],
+    "capabilities": ["calendar.events", "calendar.create_event"],
+    "s5_verified_at": null
+  },
+  {
+    "app": "Google Sheets",
+    "provider": "google_sheets",
+    "method": "google_internal",
+    "adapter": "openapi",
+    "scopes": ["https://www.googleapis.com/auth/spreadsheets"],
+    "capabilities": ["sheet.read", "sheet.append", "sheet.update"],
+    "s5_verified_at": null
+  },
+  {
+    "app": "Google Drive",
+    "provider": "google_drive",
+    "method": "google_internal",
+    "adapter": "openapi",
+    "scopes": ["https://www.googleapis.com/auth/drive.readonly"],
+    "capabilities": ["drive.files"],
+    "s5_verified_at": null
+  },
+  {
+    "app": "Slack",
+    "provider": "slack",
+    "method": "composio",
+    "adapter": "composio",
+    "scopes": ["channels:history", "chat:write"],
+    "capabilities": ["message.post", "channel.history"],
+    "s5_verified_at": null
+  },
+  {
+    "app": "Notion",
+    "provider": "notion",
+    "method": "mcp",
+    "adapter": "mcp",
+    "scopes": [],
+    "capabilities": ["page.read", "page.create"],
+    "s5_verified_at": null
+  },
+  {
+    "app": "Linear",
+    "provider": "linear",
+    "method": "mcp",
+    "adapter": "mcp",
+    "scopes": ["read", "issues:create"],
+    "capabilities": ["issue.list", "issue.create"],
+    "s5_verified_at": null
+  },
+  {
+    "app": "Stripe",
+    "provider": "stripe",
+    "method": "openapi",
+    "adapter": "openapi",
+    "scopes": [],
+    "capabilities": ["payouts.list", "balance.read"],
+    "s5_verified_at": null
+  },
+  {
+    "app": "QuickBooks",
+    "provider": "quickbooks",
+    "method": "composio",
+    "adapter": "composio",
+    "scopes": ["com.intuit.quickbooks.accounting"],
+    "capabilities": ["invoice.list", "invoice.create"],
+    "s5_verified_at": null
+  },
+  {
+    "app": "Xero",
+    "provider": "xero",
+    "method": "composio",
+    "adapter": "composio",
+    "scopes": ["accounting.transactions"],
+    "capabilities": ["invoice.list", "invoice.create"],
+    "s5_verified_at": null
+  }
+]

@@ -128,8 +128,8 @@ test("CONNECTION: an openapi api_key goes to the broker only and never into a ro
   let r: Awaited<ReturnType<typeof createConnection>>;
   try {
     for (const m of methods) (console as any)[m] = (...args: unknown[]) => lines.push(args.map(show).join(" "));
-    (process.stdout as any).write = (chunk: unknown, ...rest: unknown[]) => (lines.push(String(chunk)), true);
-    (process.stderr as any).write = (chunk: unknown, ...rest: unknown[]) => (lines.push(String(chunk)), true);
+    (process.stdout as any).write = (chunk: unknown) => (lines.push(String(chunk)), true);
+    (process.stderr as any).write = (chunk: unknown) => (lines.push(String(chunk)), true);
     r = await createConnection(h, s, { provider: "stripe", adapter: "openapi", api_key: canary }, { headers: { "idempotency-key": ulid() } });
   } finally {
     for (const [m, fn] of saved) (console as any)[m] = fn;

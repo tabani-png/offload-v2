@@ -148,3 +148,27 @@ test("COMPOSIO: the broker gets the member uuid as user_id, never an email", asy
   for (const p of await pinRows(h, tenantId, f.connectionId)) expect(p.tool_name.toUpperCase().startsWith("COMPOSIO_")).toBe(false);
   expect(callsOf(h.broker, "oauthBegin").every((c) => (c.input as any).composio?.user_id !== s.me.member.email)).toBe(true);
 });
+
+test("COMPOSIO: a Composio connection is always personal, so its user_id stays the creating member's uuid", async () => {
+  const s = await session(h, user("composio-ws"));
+  const before = h.broker.calls.length;
+  // The owner of a personal tenant may add workspace connections, but not through Composio: a workspace connection has
+  // no one member whose uuid could be the stable Composio user_id.
+  const ws = await createConnection(h, s, { provider: "slack", adapter: "composio", personal: false });
+  expect(ws.res.status).toBe(400);
+  expect(ws.body.error.code).toBe("invalid_request");
+  expect(h.broker.calls.length).toBe(before);
+  // A workspace connection through another method is still allowed for the owner.
+  const sheets = await createConnection(h, s, { provider: "google_sheets", adapter: "openapi", personal: false });
+  expect(sheets.res.status).toBe(201);
+});
+
+test("CONNECTION: POST refuses a workspace of another tenant", async () => {
+  const a = await session(h, user("ws-a"));
+  const b = await session(h, user("ws-b"));
+  const before = h.broker.calls.length;
+  const res = await createConnection(h, b, { provider: "google_sheets", adapter: "openapi", workspace_id: ids(a).workspaceId });
+  expect(res.res.status).toBe(400);
+  expect(res.body.error.code).toBe("invalid_request");
+  expect(h.broker.calls.length).toBe(before);
+});

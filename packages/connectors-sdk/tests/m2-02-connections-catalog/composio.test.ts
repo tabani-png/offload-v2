@@ -109,7 +109,7 @@ test("COMPOSIO: the broker gets the member uuid as user_id, never an email", asy
 });
 
 test("COMPOSIO: meta tools are filtered from tool lists and refused as pins", async () => {
-  expect([...COMPOSIO_META_TOOLS].sort()).toEqual([...EXPECTED_META_TOOLS].sort());
+  expect([...COMPOSIO_META_TOOLS].sort() as string[]).toEqual([...EXPECTED_META_TOOLS].sort());
   expect(isComposioMetaTool("SLACK_SEND_MESSAGE")).toBe(false);
   expect(isComposioMetaTool("composio_search_tools")).toBe(true);
 

@@ -18,6 +18,9 @@ import { random32, s256, safeEqual, sha256Hex } from "./auth/crypto.ts";
 import { deviceTokenIssuer } from "./auth/device-token.ts";
 import { OidcError, type OidcClient } from "./auth/oidc.ts";
 import { parseP256PublicJwk, verifyDeviceSignature } from "./auth/signature.ts";
+import type { BrokerPort } from "@offload/connectors-sdk";
+import type { CatalogEntry } from "@offload/contracts/src/connections/index.ts";
+import { mountConnections } from "./connections/routes.ts";
 import {
   LOGIN_COOKIE, LOGIN_TTL_MS, MAGIC_LINK_TTL_MS, SESSION_ABSOLUTE_MS, SESSION_COOKIE, clearCookie, decodeLoginState,
   encodeLoginState, hostCookie, idleTimeoutMs, isLoopbackRedirect, readCookie, safeReturnTo,
@@ -48,6 +51,10 @@ export interface AppDeps {
   clock?: Clock;
   /** Licensed features for GET /v1/me (core: none). */
   features?: () => string[];
+  /** Absent: POST /v1/connections, the connection callback and DELETE /v1/connections/{id} are 404. */
+  broker?: BrokerPort;
+  /** The connector catalog (default: the shipped launch catalog). */
+  catalog?: CatalogEntry[];
 }
 
 type Role = "owner" | "admin" | "member" | "auditor";
@@ -445,6 +452,8 @@ export function createApp(deps: AppDeps): Hono {
     });
     return c.body(null, 204);
   });
+
+  mountConnections(app, { pool, broker: deps.broker, authenticate, clock, publicBaseUrl: base, catalog: deps.catalog, jsonBody });
 
   return app;
 }

@@ -78,8 +78,8 @@ test("CAPABILITY: the shipped vocabulary loads and every commit capability has a
 
   for (const cap of CAPABILITIES) {
     expect(CapabilitySchema.parse(cap)).toEqual(cap);
-    expect(cap.argument_schema.type).toBe("object");
-    const props = Object.keys((cap.argument_schema.properties ?? {}) as Record<string, unknown>);
+    expect(cap.argument_schema["type"]).toBe("object");
+    const props = Object.keys((cap.argument_schema["properties"] ?? {}) as Record<string, unknown>);
     if (cap.step_class === "commit") {
       expect(cap.commit_arguments_allowlist?.length ?? 0).toBeGreaterThan(0);
       for (const arg of cap.commit_arguments_allowlist ?? []) expect(props).toContain(arg);
