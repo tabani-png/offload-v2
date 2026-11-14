@@ -3,7 +3,7 @@
 // fresh verification sandboxes, any fail = FAIL; fan-out on FAIL only; winner order; build cap.
 import { describe, expect, test } from "bun:test";
 import { buildConfig, ConfigError } from "../../src/config.ts";
-import { OkBuildError, okBuild, runBuild } from "../../src/loop.ts";
+import { OkBuildError, okBuild, pickWinner, runBuild } from "../../src/loop.ts";
 import { TDD_INSTRUCTIONS } from "../../src/attempt.ts";
 import { checkSet, FIX, harness, hashesOf, HELDOUT_CONTENT, MEMBER, T0, TENANT, text, type Verdict } from "./setup.ts";
 
@@ -130,6 +130,25 @@ describe("p45a OK, build", () => {
     const win = attempts.find((a) => a.id === build.winner_attempt_id)!;
     expect(win.ordinal).toBe(3);
     expect(win.artifact_bytes).toBeLessThan(attempts.find((a) => a.ordinal === 2)!.artifact_bytes);
+  });
+
+  test("FANOUT: among passing attempts the cheaper one wins even when its artifact is larger", async () => {
+    const h = harness(
+      [
+        { files: { "slug.ts": "// good first\n" } },
+        { spent_usd: 0.2, files: { "slug.ts": "// good\n" } },
+        { spent_usd: 0.1, files: { "slug.ts": "// good\n" + "x".repeat(800) } },
+      ],
+      { verdict: heldOutFailsFirst, config: { fanout_workers: 2 } },
+    );
+    const { build_id } = await h.okAndRun();
+    const { build, attempts } = await view(h, build_id);
+    const win = attempts.find((a) => a.id === build.winner_attempt_id)!;
+    expect(win.ordinal).toBe(3);
+    expect(win.artifact_bytes).toBeGreaterThan(attempts.find((a) => a.ordinal === 2)!.artifact_bytes);
+    const row = (o: number, spent: number, bytes: number) => ({ ...attempts[0]!, id: `a${o}`, ordinal: o, outcome: "pass" as const, frozen_pass: true, held_out_pass: true, spent_usd4: spent, artifact_bytes: bytes });
+    expect(pickWinner([row(2, 2000, 10), row(3, 1000, 900), { ...row(4, 500, 1), held_out_pass: false, outcome: "fail" as const }])!.ordinal).toBe(3);
+    expect(pickWinner([row(2, 1000, 10), row(3, 1000, 900)])!.ordinal).toBe(2);
   });
 
   test("FANOUT: a worker fail (not just a shard) fans out too; every worker gets its own approval claim", async () => {
