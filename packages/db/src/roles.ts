@@ -21,6 +21,10 @@ export const ROLES = {
  * tenant is known.
  */
 export async function bootstrapRoles(admin: ClientBase): Promise<void> {
+  const me = (await admin.query("select current_user as u")).rows[0].u as string;
+  if ((Object.values(ROLES) as string[]).includes(me)) {
+    throw new Error(`bootstrapRoles must run as an administrator, not as ${me}: it sets the attributes of that role`);
+  }
   const attrs: Record<string, string> = {
     [ROLES.migrator]: "login nosuperuser nocreatedb nocreaterole bypassrls",
     [ROLES.app]: "login nosuperuser nocreatedb nocreaterole nobypassrls",
