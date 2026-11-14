@@ -50,6 +50,11 @@ Conventions:
 | **Runtime** | `services/runtime`. The routine runtime: triggers, durable runs, gate, item journal, measurement. |
 | **Broker** | `services/broker`. The separate process that alone decrypts and uses connector credentials ([ADR 0034](adr/0034-credential-broker-and-key-providers.md)). |
 | **Key provider** | Where the broker's master key lives: `aws-kms`, `gcp-kms`, or `local` (a key file, for self-host). |
+| **Service token** | The secret `offload serve` presents on the broker's local socket (`OFFLOAD_BROKER_SERVICE_TOKEN_REF`). The broker refuses any request without it. |
+| **Model router** | The one egress for product model calls, in the brain: masking second pass, leak scan, budgets, escalation and usage logging ([ADR 0021](adr/0021-model-router-and-builders.md)). |
+| **Route** | A named kind of model call (`design`, `check_write`, `build`, `draft`, `classify`, …) mapped to a tier in `services/brain/config/models.json`. |
+| **Escalation** | Retrying a model call one tier up (Haiku, then Sonnet, then Opus) after a refusal, a cut-off or invalid output. Never down. |
+| **Label** | A value from a fixed enum that a model returns instead of a number; code maps it to a number ([ADR 0003](adr/0003-numbers-come-from-code.md)). |
 | **Durable runtime** | The Postgres-backed durable execution library behind the `DurableRuntime` port ([ADR 0009](adr/0009-durable-execution-on-postgres.md)). Workflows end at every human wait. |
 
 ## Tenancy and identity
