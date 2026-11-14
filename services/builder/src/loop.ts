@@ -139,6 +139,10 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
     await save({ state, ended_at: d.now() });
   };
 
+  // 0. Start once: queued -> building is a compare-and-set. A second start (a re-delivered or re-run workflow) loses
+  // here and returns without writing, so it can never claim the approval a second time and fail the live build.
+  if (!(await d.store.startBuild(i.tenant_id, i.build_id, d.now()))) return;
+
   // 1. The approval, claimed once by this workflow. Nothing runs before it.
   try {
     await d.approvals.claim({ tenant_id: i.tenant_id, approval_id: b.approval_id!, token: i.token, bound: b.bound_hashes, kind: "build", subject_id: b.id }, d.now());
@@ -148,7 +152,6 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
     await end("failed", note);
     return;
   }
-  await save({ state: "building", started_at: d.now() });
 
   // 2. The frozen inputs, re-checked against the approval and their own bytes.
   const fix = await d.fixes.frozen(i.tenant_id, b.fix_id);

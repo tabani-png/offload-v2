@@ -185,6 +185,11 @@ export class PgBuildStore implements BuildStore {
     await this.tx(tenant_id, (tx) => tx`UPDATE builds SET deployed_at = NULL WHERE tenant_id = ${tenant_id} AND id = ${id}`);
   }
 
+  async startBuild(tenant_id: string, id: string, now: number): Promise<boolean> {
+    const r = await this.tx(tenant_id, (tx) => tx`UPDATE builds SET state = 'building', started_at = ${new Date(now)}, heartbeat_at = ${new Date(now)} WHERE tenant_id = ${tenant_id} AND id = ${id} AND state = 'queued' AND approval_id IS NOT NULL RETURNING id`);
+    return r.length === 1;
+  }
+
   async heartbeat(tenant_id: string, id: string, now: number): Promise<void> {
     const r = await this.tx(tenant_id, (tx) => tx`UPDATE builds SET heartbeat_at = ${new Date(now)} WHERE tenant_id = ${tenant_id} AND id = ${id} AND state IN ${tx(LIVE)} RETURNING id`);
     if (r.length !== 1) throw new BuildEnded();

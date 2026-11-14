@@ -113,6 +113,8 @@ describe("p45a Postgres build store", () => {
 
   test("LOCK: (Postgres) starting a queued build is a compare-and-set: of two starts exactly one wins", async () => {
     const b = await store.insertQueued(newBuild("brief_start"), T0, STALE);
+    expect(await store.startBuild(TENANT, b.id, T0)).toBe(false); // no approval recorded yet
+    await store.update(TENANT, b.id, { approval_id: "0193a6f2-0000-7000-8000-0000000000a1" }, T0);
     const both = await Promise.all([1, 2].map(() => store.startBuild(TENANT, b.id, T0 + 1)));
     expect(both.sort()).toEqual([false, true]);
     expect((await store.get(TENANT, b.id))!).toMatchObject({ state: "building", started_at: T0 + 1 });

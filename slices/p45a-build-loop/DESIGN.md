@@ -89,7 +89,7 @@ destroyed in `finally`.
 |---|---|---|
 | `ApprovalPort` (`mint`, `claim`, `release`) | m2-06, `packages/policy` + `packages/db` `approvals` | exact-hash, single-use, 24 h TTL, `sha256(token)` at rest, constant-time compare; memory adapter |
 | `ModelPort` (`complete({ route, system, prompt })`) | W1-F model router (m1-05/m5-03) | route `check_write` for the held-out writer; tests use a fake |
-| `DurableRuntime` (`start(name, ids)`) | W1-C (m1-01/m1-03) | inline adapter; inputs are ids only. The approval token is handed over in process and never persisted: how a durable workflow gets the claim after a crash is m2-06's open point |
+| `DurableRuntime` (`start(name, ids)`) | W1-C (m1-01/m1-03) | inline adapter; inputs are ids only. The approval token is handed over in process and never persisted: how a durable workflow gets the claim after a crash is m2-06's open point. Starting is a compare-and-set (`startBuild`, queued to building); the durable adapter must not re-enter `runBuild` after the claim: a crashed build is recovered as stale (`infra_failed`) |
 | `FixStore` (frozen brief, check set, held-out, fixtures by fix id) | m2-05 (brain) | memory adapter in tests |
 | `WorkerPort` (`turn` of the Agent SDK worker) | m2-07 | fake in tests; the TDD instructions (superpowers, paraphrased) are passed in |
 | `RoutinePort` (`deploy`) | m2-09 (runtime) | returns `{ routine_id, version }`; gets `idempotency_key = deploy:<build_id>`, which m2-09 must honour (a retry after a timeout returns the first version) |

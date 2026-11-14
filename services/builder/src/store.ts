@@ -136,6 +136,8 @@ export interface BuildStore {
   markDeployed(tenant_id: string, id: string, now: number): Promise<boolean>;
   /** Clears deployed_at when the deploy failed before a routine existed, so it can be retried. */
   unmarkDeployed(tenant_id: string, id: string): Promise<void>;
+  /** queued -> building, once: true for the one caller that made the change (sets started_at and heartbeat_at). */
+  startBuild(tenant_id: string, id: string, now: number): Promise<boolean>;
   /** Moves heartbeat_at to now. Throws BuildEnded when the build is no longer live. */
   heartbeat(tenant_id: string, id: string, now: number): Promise<void>;
 }
@@ -223,6 +225,13 @@ export class MemoryBuildStore implements BuildStore {
   async unmarkDeployed(tenant_id: string, id: string): Promise<void> {
     const b = this.builds.get(this.key(tenant_id, id));
     if (b !== undefined) b.deployed_at = null;
+  }
+
+  async startBuild(tenant_id: string, id: string, now: number): Promise<boolean> {
+    const b = this.builds.get(this.key(tenant_id, id));
+    if (b === undefined || b.state !== "queued" || b.approval_id === null) return false;
+    Object.assign(b, { state: "building", started_at: now, heartbeat_at: now });
+    return true;
   }
 
   async heartbeat(tenant_id: string, id: string, now: number): Promise<void> {
