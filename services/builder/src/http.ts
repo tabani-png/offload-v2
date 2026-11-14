@@ -129,7 +129,7 @@ async function deploy(d: HttpDeps, ctx: { tenant_id: string; member_id: string }
   try {
     const a = await d.approvals.mint({ tenant_id: ctx.tenant_id, kind: "deploy", subject_id: id, bound: want, approver_kind: "person", approver_member_id: ctx.member_id }, d.now());
     await d.approvals.claim({ tenant_id: ctx.tenant_id, approval_id: a.approval_id, token: a.token, bound: want, kind: "deploy", subject_id: id }, d.now());
-    const r = await d.routines.deploy({ tenant_id: ctx.tenant_id, member_id: ctx.member_id, build_id: id, ...want });
+    const r = await d.routines.deploy({ tenant_id: ctx.tenant_id, member_id: ctx.member_id, build_id: id, ...want, idempotency_key: `deploy:${id}` });
     return json(201, r);
   } catch (e) {
     // No routine was created: the build may be deployed again (a new deploy approval is minted then).
