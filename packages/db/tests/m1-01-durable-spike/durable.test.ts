@@ -107,7 +107,8 @@ function killScenario() {
     const workflowId = randomUUID();
     const script = join(import.meta.dir, "child-workflow.ts");
     const env = { ...process.env };
-    const first = Bun.spawn(["bun", script, "start", wd, workflowId], { env, stdout: "ignore", stderr: "ignore" });
+    // process.execPath, not "bun": on PATH `bun` can be a shell shim, and SIGKILL would then miss the workflow process.
+    const first = Bun.spawn([process.execPath, script, "start", wd, workflowId], { env, stdout: "ignore", stderr: "ignore" });
     const checkpointed = async () =>
       (await pool.query("select 1 from durable.operation_outputs where workflow_uuid = $1 and function_name = 'step-one'", [workflowId])).rowCount === 1;
     await waitFor("step one checkpoint row", async () => (await checkpointed()) || null);
@@ -115,7 +116,7 @@ function killScenario() {
     const killedExit = await first.exited;
     const killedAlive = alive(Number(await Bun.file(join(wd, "start.pid")).text()));
     await Bun.write(join(wd, "release"), "go");
-    const second = Bun.spawn(["bun", script, "resume", wd, workflowId], { env, stdout: "ignore", stderr: "ignore" });
+    const second = Bun.spawn([process.execPath, script, "resume", wd, workflowId], { env, stdout: "ignore", stderr: "ignore" });
     expect(await second.exited).toBe(0);
     scenarioDir = wd;
     return { workflowId, checkpointBeforeKill: true, killedExit, killedAlive };
