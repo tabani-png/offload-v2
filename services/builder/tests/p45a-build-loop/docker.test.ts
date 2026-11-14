@@ -128,6 +128,21 @@ describe("p45a docker provider", () => {
     expect(await p.snapshot(sb, "work")).not.toBe(before);
   });
 
+  test("SANDBOX: the workspace snapshot sees an empty folder or a symlink a check created (teeth gate)", async () => {
+    const { p } = fake();
+    const sb = await p.create(SPEC);
+    const dirs = p.paths(sb);
+    const s0 = await p.snapshot(sb, "work");
+    mkdirSync(join(dirs.work, "made-by-check"));
+    const s1 = await p.snapshot(sb, "work");
+    expect(s1).not.toBe(s0);
+    symlinkSync("/etc/hostname", join(dirs.work, "link-by-check"));
+    const s2 = await p.snapshot(sb, "work");
+    expect(s2).not.toBe(s1);
+    // and the artifact itself still never carries the symlink or the empty folder
+    expect((await p.getFiles(sb, "work")).map((f) => f.path)).toEqual([]);
+  });
+
   test("SANDBOX: destroy removes the sandbox's temp folders and its containers; list finds sandboxes by tag", async () => {
     const { p, calls } = fake((argv) => (argv[1] === "ps" ? { exit: 0, stdout: "c0ffee\nbeef01\n" } : { exit: 0 }));
     const sb = await p.create(SPEC);
