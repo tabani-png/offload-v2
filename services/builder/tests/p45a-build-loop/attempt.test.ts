@@ -25,6 +25,16 @@ describe("p45a attempt", () => {
     expect(h.worker.turns[1]!.feedback).toContain("1 fail");
   });
 
+  test("BUDGET: a worker that reports more than its cap is settled at what it reported, and gets no further try", async () => {
+    // The model egress proxy (m2-08) enforces the cap; the ledger records real money, never a clipped figure (ADR 0030).
+    const h = harness([{ files: { "slug.ts": "// bad\n" }, spent_usd: 1 }], { config: { tries_per_attempt: 3, fanout_workers: 1 } });
+    const { build_id } = await h.okAndRun();
+    const attempts = await h.store.attempts(TENANT, build_id);
+    expect(attempts[0]).toMatchObject({ ordinal: 1, outcome: "cap", tries: 1, spent_usd4: 10_000 });
+    expect(h.store.entries.find((e) => e.idempotency_key === `attempt:${attempts[0]!.id}`)!.usd4).toBe(10_000);
+    expect((await h.store.get(TENANT, build_id))!.spent_usd4).toBe(attempts.reduce((t, a) => t + a.spent_usd4, 0));
+  });
+
   test("TAMPER: a check file changed during an attempt ends the build as tampered", async () => {
     const h = harness([{ tamper: true }], { config: { fanout_workers: 3 } });
     const { build_id } = await h.okAndRun();
