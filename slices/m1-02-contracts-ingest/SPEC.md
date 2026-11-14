@@ -2,7 +2,7 @@
 id: m1-02-contracts-ingest
 title: Ingest contracts in packages/contracts (zod to JSON Schema 2020-12) - envelope, five upload kinds, pseudonym shape, RFC 8785 JCS, hashes, error envelope, Figure
 milestone: M1
-status: ready
+status: in_progress
 depends_on: []
 parallel_safe: false
 human_gated: false
