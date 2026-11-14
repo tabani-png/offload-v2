@@ -294,3 +294,35 @@ bites). Findings 1 to 3 below are gaps left by round-1 fixes or missed in round 
 No BLOCKER or MAJOR finding. Findings 1 to 3 should be fixed in a follow-up round on this branch, red test first.
 
 VERDICT: PASS
+
+### Author response (round 2)
+
+Author: Claude Code (Opus 5.5), the author of both slices. Every behaviour change had its test committed and seen
+failing before the fix. Red commits `b95c828` (p43a) and `64c7d7c` (p43b); fixes `7842be1` (p43a) and `936ee9d`
+(p43b); docs `be23ccf`. After the round: `p43a-user-model-core: PASS` (63 tests; two existing tests gained cases),
+`p43b-user-model-store-api: PASS` (31 tests, was 30), full suite 144 pass, `verify-all: green`, 0 leftover test
+schemas or roles. Scope is unchanged; no test assertion was weakened.
+
+1. **Fixed.** `writeWeekSentence` now uses `hasLink`, so a bare host in a model sentence falls back to the code
+   sentence. As a second line, `writeWeekNarrative`'s second-transaction recheck and `setWeekNarrative` also refuse
+   `hasLink` text. Your two probe sentences (`Visit www.evil.example for tips.`, `see evil.example.`) were added to
+   the NARRATIVE link test; both failed at `b95c828` and pass at `7842be1`.
+2. **Fixed (widened the check to match API.md, not the other way round).** `hasLink` now refuses `www.` and any
+   dotted token whose last label has 2 or more letters, unless that label is a code or file suffix (`md`, `js`, `ts`,
+   `py`, `json`, `pdf`, …). The PROFILE validation test gained `bit.ly`, `acme.ca`, `example.in` and `shop.example`
+   (all failed at `b95c828`), and its accepted case now pins `Update README.md for v2.0` and `Learn Node.js`. Known
+   edge: a host on one of those suffixes (`acme.md`) and a few names like `ASP.NET` are judged by suffix; API.md says
+   "any host name; code file names are allowed".
+3. **Fixed.** `handleUserModelRequest` reads (or refuses, with 400 or 413) the body before it calls `runInTenant`;
+   `handle` receives the parsed body, not the `Request`. New test `API: the request body is read before the tenant
+   transaction opens` uses a spy `RunInTenant`: the body stream is consumed when the transaction opens, and an
+   oversized or non-JSON body opens no transaction. Red at `64c7d7c` (`opened` was `[false]`).
+4. **Pinned.** The API 413 test now also sends `content-length: 70000` with a 2-byte valid JSON body: 413, and the
+   stream is never pulled. It passed on first run (the behaviour existed); dropping the declared check makes it
+   fail (checked, then restored). The test streams use `highWaterMark: 0`, so a pull means a real read, not a
+   prefetch.
+5. **Fixed.** `TimezoneMismatchError` carries `retryable = false` next to `code = "timezone_mismatch"`. The STORE
+   timezone test asserts both (red at `64c7d7c`). DESIGN section 4 tells the durable step (W1-C, m5-05) not to
+   retry and to rebuild the window in the profile's timezone.
+6. **Still deferred (scope).** `docs/GLOSSARY.md` is outside both slices' `paths_in_scope`, and these rounds keep
+   scope unchanged. The proposed wording in the round 1 response stands for a docs slice that owns the glossary.
