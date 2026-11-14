@@ -1,0 +1,143 @@
+import Foundation
+
+/// The onboarding window's model: runs the pure flow, saves after every action, then runs its effects against the
+/// injected services in order (local exclusions before the server call, consent before the uploader).
+@MainActor
+public final class OnboardingModel: ObservableObject {
+  @Published public private(set) var flow: OnboardingFlow
+  /// One line under the screen's buttons (sign-in waiting or failed, connect result, import not ready).
+  @Published public private(set) var notice: String?
+  @Published public private(set) var connectMessage: String?
+  @Published public private(set) var signInWait: SignInWait?
+  /// Set while screen 3 is open.
+  @Published public private(set) var lastTen: LastTenMinutesState?
+
+  public let services: OnboardingServices
+  private let store: OnboardingStore
+  /// Called by "Open today" on screen 13.
+  public var onOpenToday: (() -> Void)?
+
+  public init(store: OnboardingStore, services: OnboardingServices) {
+    self.store = store
+    self.services = services
+    let saved = store.load() ?? OnboardingState()
+    self.flow = OnboardingFlow(state: saved)
+    services.neverWatch.add(saved.neverWatch)
+  }
+
+  public var state: OnboardingState { flow.state }
+
+  /// `--onboarding-screen <n>`.
+  public func jump(to screen: OnboardingScreen) {
+    flow.jump(to: screen)
+    store.save(flow.state)
+  }
+
+  public func perform(_ action: OnboardingAction) async {
+    let before = flow.screen
+    let effects = flow.perform(action, now: Date())
+    store.save(flow.state)
+    if flow.screen != before { notice = nil; connectMessage = nil }
+    await run(effects)
+  }
+
+  private func run(_ effects: [OnboardingEffect]) async {
+    var consentFailed = false
+    for effect in effects {
+      switch effect {
+      case .startCapture:
+        services.capture.start()
+      case .startUploader:
+        // Never start sending without a recorded consent.
+        if !consentFailed { services.uploader.start() }
+      case .pauseUploader:
+        services.uploader.pause()
+      case .recordConsent(let version):
+        do {
+          try await services.consent.recordUploadConsent(noticeVersion: version)
+        } catch {
+          consentFailed = true
+          await perform(.reconsentNeeded)
+        }
+      case .patchProfile(let update):
+        try? await services.profile.patch(update)
+      case .applyExclusionsLocally(let entries):
+        services.neverWatch.add(entries)
+      case .removeExclusionLocally(let entry):
+        services.neverWatch.remove(entry)
+      case .uploadExclusions(let entries):
+        try? await services.exclusions.upload(entries)
+      case .setLoginItem(let on):
+        services.loginItem.setEnabled(on)
+      case .relaunch:
+        services.relauncher.relaunch()
+      case .showSampleWeek:
+        services.sampleWeek.show()
+      case .startRecordingsImport:
+        // Recordings import lands in m3-05.
+        notice = OnboardingCopy.recordingsNotReady
+      case .openToday:
+        onOpenToday?()
+      }
+    }
+  }
+
+  // MARK: Screen 3
+
+  public func openLastTen(now: Date = Date()) {
+    if lastTen == nil { lastTen = LastTenMinutesState(openedAt: now) }
+  }
+
+  /// Takes a fresh local now summary; true when the pointer should fly now.
+  @discardableResult
+  public func receive(_ summary: LocalNowSummary) -> Bool {
+    var s = lastTen ?? LastTenMinutesState(openedAt: Date())
+    let flies = s.received(summary)
+    lastTen = s
+    return flies
+  }
+
+  // MARK: Screen 4
+
+  public func signIn() async {
+    signInWait = SignInWait(startedAt: Date())
+    notice = nil
+    let result = await services.account.signIn()
+    signInWait = nil
+    switch result {
+    case .signedIn: notice = nil
+    case .cancelled: notice = OnboardingCopy.signInCancelled
+    case .offline: notice = OnboardingCopy.signInOffline
+    case .unavailable: notice = OnboardingCopy.signInUnavailable
+    }
+    await perform(.signInResult(result))
+  }
+
+  public func cancelSignIn() { signInWait = nil }
+
+  // MARK: Screen 9
+
+  /// Applies the typed Never watch entries; names that are not installed apps are reported, not guessed.
+  public func applyNeverWatchText(resolve: (String) -> String?) async {
+    let r = NeverWatch.exclusions(from: flow.state.neverWatchText, resolve: resolve)
+    notice = r.unresolved.isEmpty ? nil : OnboardingCopy.neverWatchNotFound(r.unresolved)
+    if !r.exclusions.isEmpty { await perform(.neverWatch(add: r.exclusions)) }
+    if r.unresolved.isEmpty { await perform(.neverWatchText("")) }
+  }
+
+  // MARK: Screen 10
+
+  public func connect(appID: String) async {
+    let result = await services.connections.connect(appID: appID)
+    switch result {
+    case .connected(let account):
+      connectMessage = nil
+      await perform(.connected(ConnectedApp(id: appID, account: account)))
+    case .cancelled: connectMessage = OnboardingCopy.connectCancelled
+    case .scopeDenied: connectMessage = OnboardingCopy.connectScopeDenied
+    case .timedOut: connectMessage = OnboardingCopy.connectTimedOut
+    case .offline: connectMessage = OnboardingCopy.connectOffline
+    case .unavailable: connectMessage = OnboardingCopy.connectUnavailable
+    }
+  }
+}
