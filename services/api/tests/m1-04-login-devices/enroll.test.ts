@@ -123,3 +123,24 @@ test("ENROLL: an enrollment code works once and expires after 10 minutes", async
   expect(late.body.error.code).toBe("invalid_request");
   expect((await h.fx.admin.query("select count(*)::int as n from devices where name in ('Again', 'Late')")).rows[0].n).toBe(0);
 });
+
+test("ENROLL: a cross-site authorize shows a confirm page and issues no code", async () => {
+  const pkce = (await import("@offload/testkit")).pkcePair();
+  const q = new URLSearchParams({ code_challenge: pkce.challenge, code_challenge_method: "S256", redirect_uri: LOOPBACK, state: "x-site" });
+  const before = (await h.fx.admin.query("select count(*)::int as n from device_enrollment_codes")).rows[0].n;
+  for (const site of ["cross-site", "same-site", undefined]) {
+    const headers: Record<string, string> = site ? { "sec-fetch-site": site } : {};
+    const r = await h.req(`/v1/devices/authorize?${q}`, { cookie, headers });
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toContain("text/html");
+    expect(r.headers.get("x-frame-options")).toBe("DENY");
+    expect(r.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    const html = await r.text();
+    expect(html).toContain(`/v1/devices/authorize?${q}`.replace(/&/g, "&amp;"));
+    expect(html).not.toContain("127.0.0.1:53123/callback?code");
+  }
+  expect((await h.fx.admin.query("select count(*)::int as n from device_enrollment_codes")).rows[0].n).toBe(before);
+  // Confirming from the page is a same-origin navigation: the code is issued.
+  const ok = await h.req(`/v1/devices/authorize?${q}`, { cookie, headers: { "sec-fetch-site": "same-origin" } });
+  expect(ok.status).toBe(302);
+});

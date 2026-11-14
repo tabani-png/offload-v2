@@ -106,7 +106,8 @@ export async function session(h: Harness, user: { subject: string; email: string
 export async function authorize(h: Harness, cookie: string, redirectUri = LOOPBACK) {
   const pkce = pkcePair();
   const q = new URLSearchParams({ code_challenge: pkce.challenge, code_challenge_method: "S256", redirect_uri: redirectUri, state: "st-123" });
-  const res = await h.req(`/v1/devices/authorize?${q}`, { cookie });
+  // The Mac opens the URL in the browser: a user-initiated navigation (Sec-Fetch-Site: none).
+  const res = await h.req(`/v1/devices/authorize?${q}`, { cookie, headers: { "sec-fetch-site": "none" } });
   const loc = res.headers.get("location");
   const code = loc ? new URL(loc).searchParams.get("code") ?? undefined : undefined;
   return { res, code, pkce };

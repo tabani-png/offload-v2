@@ -134,3 +134,15 @@ test("TOKEN: Offload-Signature parses keyid and sig, and a signed body must be J
   expect(isCanonicalBody('{"a": 1}')).toBe(false);
   expect(isCanonicalBody("{not json")).toBe(false);
 });
+
+test("TOKEN: a device with 20 open nonces gets 429 rate_limited", async () => {
+  const fresh = await session(h, user("nonce-cap"));
+  const e = await enroll(h, fresh.cookie);
+  for (let i = 0; i < 20; i++) expect((await challenge(h, e.deviceId, "device")).res.status).toBe(200);
+  const over = await challenge(h, e.deviceId, "member");
+  expect(over.res.status).toBe(429);
+  expect(over.body.error.code).toBe("rate_limited");
+  expect(over.res.headers.get("retry-after")).toBe("120");
+  h.clock.advance(2 * 60_000 + 1000); // they expire
+  expect((await challenge(h, e.deviceId, "device")).res.status).toBe(200);
+});

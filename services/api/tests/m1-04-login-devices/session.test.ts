@@ -145,3 +145,27 @@ test("SESSION: a magic link works once and expires after 15 minutes", async () =
   expect(expired.status).toBe(401);
   expect(((await expired.json()) as any).error.code).toBe("token_expired");
 });
+
+test("SESSION: logout needs X-CSRF-Token and revokes the session", async () => {
+  const s = await session(h, user("logout"));
+  const forced = await h.req("/auth/logout", { method: "POST", cookie: s.cookie });
+  expect(forced.status).toBe(403);
+  expect((await me(h, { cookie: s.cookie })).status).toBe(200);
+  const out = await h.req("/auth/logout", { method: "POST", cookie: s.cookie, csrf: s.csrf });
+  expect(out.status).toBe(204);
+  expect(out.headers.getSetCookie().some((c) => c.startsWith("__Host-offload_session=;") && c.includes("Max-Age=0"))).toBe(true);
+  const after = await me(h, { cookie: s.cookie });
+  expect(after.status).toBe(401);
+  expect(after.body.error.code).toBe("unauthenticated");
+});
+
+test("SESSION: a body over 16 KB is 413 and a magic link request must be JSON", async () => {
+  const big = await h.req("/auth/magic-link", { method: "POST", json: { email: `${"a".repeat(20_000)}@example.test` } });
+  expect(big.status).toBe(413);
+  expect(((await big.json()) as any).error.code).toBe("too_large");
+  const sent = h.mailer.sent.length;
+  const form = await h.req("/auth/magic-link", { method: "POST", headers: { "content-type": "text/plain" }, body: JSON.stringify({ email: "x@example.test" }) });
+  expect(form.status).toBe(400);
+  expect(((await form.json()) as any).error.code).toBe("invalid_request");
+  expect(h.mailer.sent.length).toBe(sent);
+});
