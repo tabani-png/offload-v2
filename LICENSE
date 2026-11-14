@@ -4,7 +4,7 @@ Copyright (c) 2026 Muhammad Ali Tabani / consultance.ai. All rights reserved
 until the owner picks a license.
 
 The license for everything outside the ee/ directory has not been chosen yet.
-This is an owner decision, tracked as OQ-01 in docs/OPEN_QUESTIONS.md.
+This is an owner decision, tracked as OQ-11 in docs/OPEN_QUESTIONS.md.
 
 Recommended default: Apache License 2.0 for all code outside ee/ (the "core"),
 chosen for its explicit patent grant. Code under ee/ is covered by ee/LICENSE.

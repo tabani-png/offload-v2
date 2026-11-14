@@ -1,6 +1,6 @@
 # Local development and the smallest self-host footprint: Postgres 17 with pgvector.
 # Object storage uses the local-disk adapter in dev (OFFLOAD_OBJECT_STORE_URL empty).
-# Services are not listed yet: there is no feature code. See docs/ARCHITECTURE.md#14-deployment.
+# Services are not listed yet: there is no feature code. See docs/ARCHITECTURE.md#15-deployment.
 name: offload
 services:
   postgres:

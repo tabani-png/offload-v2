@@ -57,6 +57,10 @@
       "name": "@offload/policy",
       "version": "0.0.0",
     },
+    "packages/routine-sdk": {
+      "name": "@offload/routine-sdk",
+      "version": "0.0.0",
+    },
     "packages/testkit": {
       "name": "@offload/testkit",
       "version": "0.0.0",
@@ -67,6 +71,10 @@
     },
     "services/brain": {
       "name": "@offload/brain",
+      "version": "0.0.0",
+    },
+    "services/broker": {
+      "name": "@offload/broker",
       "version": "0.0.0",
     },
     "services/builder": {
@@ -91,6 +99,8 @@
 
     "@offload/brain": ["@offload/brain@workspace:services/brain"],
 
+    "@offload/broker": ["@offload/broker@workspace:services/broker"],
+
     "@offload/builder": ["@offload/builder@workspace:services/builder"],
 
     "@offload/connectors-sdk": ["@offload/connectors-sdk@workspace:packages/connectors-sdk"],
@@ -106,6 +116,8 @@
     "@offload/masking": ["@offload/masking@workspace:packages/masking"],
 
     "@offload/policy": ["@offload/policy@workspace:packages/policy"],
+
+    "@offload/routine-sdk": ["@offload/routine-sdk@workspace:packages/routine-sdk"],
 
     "@offload/runtime": ["@offload/runtime@workspace:services/runtime"],
 

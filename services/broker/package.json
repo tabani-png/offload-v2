@@ -1,0 +1,14 @@
+{
+  "name": "@offload/broker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Credential broker: the only process with decrypt rights. Re-checks gate token and item hash before any commit and the declared read set before any read.",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p ."
+  }
+}

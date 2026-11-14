@@ -5,7 +5,7 @@ Copyright (c) 2026 Muhammad Ali Tabani / consultance.ai. All rights reserved.
 Everything under this ee/ directory is Offload Enterprise code. It is not
 covered by the root LICENSE.
 
-Recommended default (OQ-01 in docs/OPEN_QUESTIONS.md): a commercial license in
+Recommended default (OQ-11 in docs/OPEN_QUESTIONS.md): a commercial license in
 the style of the Langfuse Enterprise License. The source is visible and may be
 read and modified for development and testing. Production use requires a valid
 Offload Enterprise license key (OFFLOAD_EE_LICENSE_KEY) and a subscription
