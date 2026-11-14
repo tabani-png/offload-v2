@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://offload.consultance.ai/schemas/error-envelope.json",
+  "type": "object",
+  "properties": {
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "invalid_request",
+            "unknown_kind",
+            "schema_invalid",
+            "clock_skew",
+            "unauthenticated",
+            "token_expired",
+            "forbidden",
+            "policy_denied",
+            "feature_not_licensed",
+            "hash_mismatch",
+            "consent_missing",
+            "not_found",
+            "already_running",
+            "approval_used",
+            "approval_expired",
+            "idempotency_conflict",
+            "seq_replay",
+            "nonce_used",
+            "last_owner",
+            "state_conflict",
+            "stale_notice",
+            "too_large",
+            "leak_detected",
+            "teeth_gate_failed",
+            "budget_exceeded",
+            "recipient_not_allowed",
+            "rate_limited",
+            "server_error"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^req_[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "request_id"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "error"
+  ],
+  "additionalProperties": false
+}

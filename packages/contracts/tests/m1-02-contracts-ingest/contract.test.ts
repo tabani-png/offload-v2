@@ -5,6 +5,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import {
   ErrorEnvelopeSchema,
   ERROR_CODES,
+  ERROR_CODES_BY_STATUS,
   FigureSchema,
   IngestEnvelopeSchema,
   IngestReceiptSchema,
@@ -213,10 +214,20 @@ test("CONTRACT: Figure id is fig_ plus 16 hex of the JCS hash", () => {
 test("CONTRACT: error envelope codes are the closed list in API.md", () => {
   const api = readFileSync(join(import.meta.dir, "../../../../docs/API.md"), "utf8");
   const section = api.slice(api.indexOf("### Error envelope"), api.indexOf("### Figure"));
-  const fromDoc = [...section.matchAll(/`([a-z_]+)`/g)].map((m) => m[1]!).filter((c) => !["rule_id", "policy_denied_"].includes(c));
-  const docCodes = [...new Set(fromDoc)].filter((c) => c !== "rule_id");
-  expect([...ERROR_CODES].sort()).toEqual([...docCodes].sort());
-  for (const c of ["clock_skew", "nonce_used", "recipient_not_allowed"]) expect(ERROR_CODES).toContain(c);
+  const rows = section.split("\n").filter((l) => /^\| (\d{3}|5xx) \|/.test(l));
+  expect(rows.length).toBe(9);
+  const codesIn = (l: string) => [...l.matchAll(/`([a-z_]+)`/g)].map((m) => m[1]!).filter((c) => c !== "rule_id");
+  const docCodes = rows.flatMap(codesIn);
+  const known: string[] = [...ERROR_CODES];
+  expect(known.sort()).toEqual([...docCodes].sort());
+  // each status row in the doc matches ERROR_CODES_BY_STATUS
+  for (const l of rows) {
+    const status = l.startsWith("| 5xx") ? 500 : Number(/^\| (\d{3})/.exec(l)![1]);
+    const codes = codesIn(l);
+    const listed: string[] = [...ERROR_CODES_BY_STATUS[status as keyof typeof ERROR_CODES_BY_STATUS]];
+    expect(listed).toEqual(codes);
+  }
+  for (const c of ["clock_skew", "nonce_used", "recipient_not_allowed"]) expect(known).toContain(c);
   const requestId = "req_01JCZ3X5Q8M2N4P6R8T0V1W2Y3";
   const base = { error: { code: "clock_skew", message: "sent_at is more than 10 minutes off", request_id: requestId } };
   expect(bothAccept("error-envelope", ErrorEnvelopeSchema, base)).toEqual({ zod: true, json: true });
@@ -235,7 +246,8 @@ test("CONTRACT: error envelope codes are the closed list in API.md", () => {
 });
 
 test("CONTRACT: receipt rejection codes are the closed list including not_enabled", () => {
-  expect([...RECEIPT_REJECTION_CODES].sort()).toEqual(
+  const rejections: string[] = [...RECEIPT_REJECTION_CODES];
+  expect(rejections.sort()).toEqual(
     ["consent_missing", "excluded", "leak_detected", "not_enabled", "rate_limited", "schema_invalid", "server_error", "too_old", "unknown_kind"],
   );
   const ok = { accepted: [ULID_A], rejected: [{ id: "01JCZ3X5Q8M2N4P6R8T0V1W2Y4", code: "not_enabled" }] };
