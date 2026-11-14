@@ -69,6 +69,8 @@ describe.skipIf(!HAS_DB)("p43b records and review routes", () => {
     expect((await call("/v1/records/days/2026-01-01"))!.status).toBe(404);
     expect((await call("/v1/records/days/2026-02-30"))!.status).toBe(400);
     expect((await call("/v1/records/days/yesterday"))!.status).toBe(400);
+    const bad = (await call("/v1/records/days/%E0"))!;
+    expect([bad.status, bad.body.error.code]).toEqual([400, "invalid_request"]);
   });
 
   test("API: GET /v1/records/weeks, months and quarters answer stored records; future 404; malformed 400", async () => {

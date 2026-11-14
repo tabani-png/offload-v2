@@ -1,7 +1,7 @@
 // Week records, month and quarter rollups, Theil-Sen and the narrative check (carried from old s36 weeks.test.ts).
 import { describe, expect, test } from "bun:test";
 import { isIsoWeek, isoWeekOf, weekDays, weekIndex } from "../../src/records/dates.ts";
-import { figure } from "../../src/records/figure.ts";
+import { collectFigures, figure } from "../../src/records/figure.ts";
 import { checkNarrative, weekSentence, writeWeekSentence } from "../../src/records/narrative.ts";
 import { buildRollup, theilSen } from "../../src/records/rollup.ts";
 import { buildWeekRecord, type WeekRecord } from "../../src/records/week-record.ts";
@@ -132,7 +132,19 @@ describe("p43a rollups", () => {
     expect(checkNarrative("It took 9 hours.", rec).ok).toBe(false);
     expect(checkNarrative("It took 7 hours.", rec).ok).toBe(false);
     expect(checkNarrative("It took 5 hours.", rec).ok).toBe(false);
-    expect(checkNarrative("It took 1,200 minutes over 3 days.", rec).ok).toBe(true);
+    expect(checkNarrative("It took 1,200 minutes.", rec).ok).toBe(true);
+    // A constant inside the arithmetic text is not a figure.
+    expect(checkNarrative("It took 1,200 minutes over 3 days.", rec).ok).toBe(false);
+  });
+
+  test("NARRATIVE: dates, week numbers and constants in the arithmetic are not known numbers", () => {
+    const r = week(WEEKS[3]);
+    expect(checkNarrative(`You worked ${r.hours.total.value} h.`, r).ok).toBe(true);
+    const values = new Set(collectFigures(r).map((f) => f.figure.value));
+    for (const n of [60, 45, 2026, 100, 25]) {
+      if (values.has(n)) continue;
+      expect({ n, ok: checkNarrative(`You had ${n} calls.`, r).ok }).toEqual({ n, ok: false });
+    }
   });
 
   test("NARRATIVE: a refused model sentence is replaced by the code sentence", async () => {

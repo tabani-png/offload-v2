@@ -83,4 +83,11 @@ describe("p43a task ledger", () => {
     const r2 = resolveTaskKeys(r1.ledger, only(w1.window, [b]));
     expect(r2.keys.get("t_b")).not.toBe(r1.keys.get("t_a")!);
   });
+
+  test("LEDGER: a task with no instances gets no key and no ledger entry", () => {
+    const t: WindowTask = { ...taskOf(w1, "report"), id: "t_empty", signature: "sig-empty", instances: [] };
+    const r = resolveTaskKeys([], only(w1.window, [t]));
+    expect(r.keys.has("t_empty")).toBe(false);
+    expect(r.ledger).toEqual([]);
+  });
 });

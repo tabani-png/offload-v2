@@ -100,4 +100,14 @@ describe.skipIf(!HAS_DB)("p43b storage rules", () => {
     const eps = await db.sql.unsafe(`SELECT count(*)::int AS n FROM ${db.schema}.episodes WHERE member_id = $1 AND day = '2026-10-13' AND source_purged_at IS NULL`, [db.A1.memberId]);
     expect(eps[0].n).toBe(0);
   });
+
+  test("STORE: a figure shared by two records still resolves after one of them is re-indexed", async () => {
+    const sat = (await db.run(db.A1, (tx) => getDayRecord(tx, "2026-10-17")))!;
+    const sun = (await db.run(db.A1, (tx) => getDayRecord(tx, "2026-10-18")))!;
+    const id = sat.totals.meeting_minutes.id;
+    expect(sun.totals.meeting_minutes.id).toBe(id);
+    await db.run(db.A1, (tx) => markSourcePurged(tx, "2026-10-17", "2026-12-15T00:00:00.000Z"));
+    const hit = await db.run(db.A1, (tx) => resolveFigure(tx, id));
+    expect(hit).toEqual({ record_kind: "day", record_key: "2026-10-18", json_pointer: "/totals/meeting_minutes" });
+  });
 });

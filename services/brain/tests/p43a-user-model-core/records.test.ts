@@ -6,6 +6,7 @@ import { dayOf } from "../../src/records/dates.ts";
 import { collectFigures, type Figure } from "../../src/records/figure.ts";
 import { jcs } from "../../src/records/jcs.ts";
 import { resolveTaskKeys } from "../../src/user-model/ledger.ts";
+import { hasLeak, safeName } from "../../src/user-model/names.ts";
 import { observeWindow } from "../../src/user-model/observe.ts";
 import type { UnderstandingWindow } from "../../src/user-model/ports.ts";
 import { fixtureWeek, mondayNoonAfter, MONDAYS } from "../fixtures/window.ts";
@@ -147,5 +148,16 @@ describe("p43a day records", () => {
       expect(n.length).toBeGreaterThan(0);
     }
     expect(names).toContain("Reply to about invoice");
+  });
+
+  test("LEAKS: links without a scheme are stripped and refused; app names are scrubbed too", () => {
+    const raw = "Review github.com/acme/secret-repo/pull and docs.google.com/document/d/abcXYZ";
+    expect(hasLeak(raw)).toBe(true);
+    expect(safeName(raw)).toBe("Review and");
+    expect(hasLeak("Work in www.notion.so")).toBe(false);
+    const t = w.tasks[0]!;
+    const leaky: UnderstandingWindow = { ...w, tasks: [{ ...t, appName: "Mail dana@fund.example" }] };
+    const o = observeWindow(leaky, resolveTaskKeys([], leaky).keys)[0]!;
+    expect(hasLeak(o.appName)).toBe(false);
   });
 });
