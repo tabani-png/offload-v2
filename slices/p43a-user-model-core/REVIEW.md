@@ -151,3 +151,47 @@ contract.
 No BLOCKER or MAJOR finding. The MINOR items can be fixed in a follow-up round on this branch.
 
 VERDICT: PASS
+
+### Author response (round 1)
+
+Author: Claude Code (Opus 5.5), the author of both slices. Every behaviour change below had its test committed and seen
+failing before the fix. Red commits `fd2454f` (p43a) and `3a2edd6` (p43b); fixes `b1dbd47` (p43a) and `81f67c2`
+(p43b); docs `4b18a06`. After the round: `p43a-user-model-core: PASS` (63 tests, was 61), `p43b-user-model-store-api:
+PASS` (30 tests, was 26), full suite 143 pass, `verify-all: green`, 0 leftover test schemas or roles. Scope is
+unchanged.
+
+1. **Fixed.** `writeWeekSentence` falls back to the code sentence when the model sentence holds a link or an email
+   (`hasLeak`), so `writeWeekNarrative` never reaches the repository guard with one. New test `NARRATIVE: a model
+   sentence with a link or an email address falls back to the code sentence` (scheme link, email, `www.` link with a
+   path; each passes `checkNarrative` on its own, so the test isolates the new rule). Red at `fd2454f`.
+2. **Fixed.** New `hasLink` in `names.ts`: `hasLeak` plus `www.` and host names ending in a common web suffix
+   (`acme.com`); profile `line()` uses it for goals, role and industry. `Node.js` stays allowed (no web suffix). The
+   PROFILE validation test gained `www.example.com` and `acme.com` cases and a `Learn Node.js` goal in the accepted
+   case. Red at `fd2454f`. API.md states the rule.
+3. **Fixed (kept the old check).** `readJson` requires `application/json` (parameters and case allowed) on `PATCH
+   /v1/profile` and `POST /v1/review/answers`, else 400 `invalid_request`. New test `API: writes need a JSON content
+   type`; the privacy file's setup now sends the header. Red at `3a2edd6`. API.md updated.
+4. **Fixed.** `runMemberUpdate` throws `TimezoneMismatchError` before any read-modify-write when the window's timezone
+   differs from `profiles.timezone`. New test `STORE: the job refuses a window whose timezone is not the profile's, and
+   stores nothing` (then runs the same week in the profile's zone and stores it). Red at `3a2edd6`. DATA_MODEL,
+   `ports.ts` and DESIGN say so.
+5. **Fixed (docs).** DATA_MODEL: a day's episodes are read through `day_records.episode_ids`, never by `episodes.day`
+   alone; orphans stay until forget. DESIGN section 7: the retention sentence was wrong and is corrected. `ports.ts`:
+   `WindowInstance.id` (and span ids) must be unique for the member, because episodes are upserted by `ep_` + id.
+   No behaviour change, so no test.
+6. **Accepted.** This file is the review record; `status: done` stands on this round's PASS (definition of done item
+   7). The narrative test added in `935f14e` was not seen red then; your mutation M12 shows it fails without the code.
+   Every test in this round went red first, in its own commit.
+7. **Fixed.** `readJson` refuses a declared `Content-Length` over 64 KiB, then reads the body as a stream and cancels
+   it past the cap. New test `API: an oversized body is 413 too_large and is not read to the end` (a 100 KiB stream;
+   before the fix all 100 chunks were read). Red at `3a2edd6`. `services/api` should still cap at the edge.
+8. **Deferred (scope).** `docs/GLOSSARY.md` is outside both slices' `paths_in_scope`, and this round keeps scope
+   unchanged. The code follows DATA_MODEL, the table of record: `never` → state `never`, `leave_alone` → `left_alone`.
+   Proposed glossary fix for a docs slice that owns it: "Left alone" is set by `leave_alone`; `never` has its own
+   state; add "Focus block", "Time share", "Revision group" and "Track record".
+9. **Fixed.** Focus blocks now join spans only across gaps **under** 2 minutes, as ARCHITECTURE 5 says
+   (`day-record.ts`); the SPEC contract and the figure's arithmetic text say "under". New test `DAY: a focus block joins
+   spans of one task only across gaps under 2 minutes` (119 s joins, 120 s splits). Red at `fd2454f`.
+10. **Done (coverage).** New test `RLS: in every table, a copy of member A1's row cannot be inserted by member A2 or by
+    tenant B` loops over `MEMBER_ISOLATED_TABLES` with `jsonb_populate_record`. It passed on first run, as expected:
+    it adds coverage, not a behaviour change.
