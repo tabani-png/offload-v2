@@ -51,7 +51,7 @@ describe("p45b measured saving", () => {
 
   test("MEASURE: only weeks that have ended are measured, each once, at its own end", async () => {
     const asked: number[] = [];
-    const m = (s: number, e: number) => (asked.push(e), { minutes: 40, days_stored: 7 });
+    const m = (_s: number, e: number) => (asked.push(e), { minutes: 40, days_stored: 7 });
     let o = await measureAll(ship(), T0 + 6 * DAY_MS, m);
     expect(asked).toEqual([]);
     o = await measureAll(o, T0 + 7 * DAY_MS + 3_600_000, m);
