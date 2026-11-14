@@ -490,3 +490,70 @@ DESIGN.md section 7). Findings 5 to 8 are optional. The round 1 owner actions st
 `LOCAL:` tests for m5-03, and the winner order.
 
 VERDICT: CHANGES
+
+### Author response (round 2)
+
+Commits `4733412..db02790`; behaviour changes had a red test committed first. After them:
+- p45a slice suite **116 tests (115 pass, 1 skip `LIVE:`)**, up from 110;
+- p45b **17** (unchanged);
+- full suite **183 tests across 34 files, 182 pass, 1 skip**;
+- both `verify.sh` PASS; `scripts/verify-all.sh` green.
+
+Mutations were run on copies in `/tmp`, never in the repo.
+
+1. **BLOCKER, fixed by option (a).**
+   - The red-commit assertion is restored word for word: `HELDOUT: (Postgres) a held-out hash used by a build of the
+     brief is remembered` expects `true` straight after `insertQueued`.
+   - The ADR 0029 rule is back: any build of the brief bound to a held-out hash uses it.
+   - The check lives in `insertQueued`, in the lock's transaction:
+     - after the live-build check, so a running build still answers `409 already_running`;
+     - before any stale recovery, so a refusal (`HeldOutUsed`, mapped to `409 state_conflict`) recovers nothing.
+   - The separate pre-check in `okBuild` is gone, and `heldOutUsed` drops the worker-attempt condition.
+   - New tests:
+     - `HELDOUT:` after stale recovery the same hash is refused and the stale build is left queued, then a fresh
+       held-out recovers it (memory);
+     - the same, against Postgres.
+   - Fixture changes, not weakened assertions:
+     - three tests that start a second build of a brief now bring a fresh held-out check, as ADR 0029 requires (two
+       stale-recovery tests and the failed-mint test);
+     - the Postgres `newBuild` fixture gives every build its own held-out hash.
+   - SPEC Scope changes, DESIGN section 6, API.md and DATA_MODEL.md now state the ADR rule.
+   - (`3606861`, red `4733412`)
+2. **MINOR, fixed.**
+   - `BuildStore.startBuild` is a compare-and-set from `queued` to `building` (Postgres also requires a recorded
+     approval). `runBuild` calls it before claiming; the loser returns without claiming or writing.
+   - New tests: `LOCK:` two concurrent `runBuild` calls (ready, one worker turn, one teeth gate), and a Postgres race on
+     `startBuild`.
+   - The Postgres test gained a "no approval yet means no start" assertion in the green commit (stronger).
+   - DESIGN section 4 says the durable adapter must not re-enter `runBuild` after the claim.
+   - (`3cd80ce`, red `ee46496`)
+3. **MINOR, recorded.**
+   - The retry endpoint, the automatic retries and `infra_retries` are in SPEC "Out of scope" and DESIGN section 7,
+     with owner m2-08. `release()` only marks the approval for that endpoint.
+   - Under the restored rule (finding 1), a new build after any `infra_failed` needs a new held-out check, even with no
+     worker turn. That matches ADR 0029 and is stated in DESIGN sections 6 and 7. Retrying the same build (m2-08)
+     keeps its check. (`db02790`)
+4. **MINOR, fixed and recorded.**
+   - `docker run` gets `--pull never`, pinned by the exact-argv test (`01166bd`, red `c8917f0`).
+   - The digest pin (and then refusing non-digest images in config) is recorded in SPEC "Out of scope" and DESIGN
+     section 7, with owners spike S4 and m2-08. (`db02790`)
+5. **NIT, fixed.**
+   - `runAttempt` maps `BuildEnded` to infra, and so does the build loop when the beat before verification throws it.
+   - The stale-orchestrator test now asserts the old build's entries are all `infra` and its `spent_usd` is 0.
+   - (`7c17864`, red `2be55dd`)
+6. **NIT, fixed (test).**
+   - New test: a path into the workspace is refused at resolution. The refusal comes from the `onResolve` throw site.
+     It fails with `onResolve` removed; `onLoad` keeps its own test.
+   - Probing also showed that JSON and text imports from `/work` pass both hooks. That is data, not code, and is now
+     stated in DESIGN section 7.
+   - (`01915f8`)
+7. **NIT, fixed (test).** The cross-tenant `UPDATE … RETURNING` must return no row, and the build read back as its
+   own tenant is still `ready`. (`0db4c7b`)
+8. **NIT, fixed.**
+   - The Docker provider's `snapshot` lists folders (empty ones too), symlinks with their target and other entries, as
+     well as files.
+   - New `SANDBOX:` test: an empty folder or a symlink created by a check changes the snapshot, and the artifact still
+     carries neither.
+   - (`5149710`, red `c0c3dd7`)
+
+Still open owner actions (unchanged): the `LIVE:` Docker run, the `LOCAL:` tests for m5-03, and the winner order.
