@@ -62,22 +62,48 @@ enum M304Clock {
 @MainActor final class FakeAccount: AccountService {
   var result: SignInResult = .signedIn
   private(set) var calls = 0
+  private(set) var reopens = 0
   func signIn() async -> SignInResult { calls += 1; return result }
+  func reopenPage() { reopens += 1 }
 }
 
+struct FakeServiceError: Error {}
+
 @MainActor final class FakeConsent: ConsentService {
+  var fails = false
   private(set) var recorded: [String] = []
-  func recordUploadConsent(noticeVersion: String) async throws { recorded.append(noticeVersion) }
+  func recordUploadConsent(noticeVersion: String) async throws {
+    if fails { throw FakeServiceError() }
+    recorded.append(noticeVersion)
+  }
 }
 
 @MainActor final class FakeUploader: Uploader {
   private(set) var starts = 0
+  private(set) var pauses = 0
   func start() { starts += 1 }
+  func pause() { pauses += 1 }
 }
 
 @MainActor final class FakeCapture: CaptureControl {
   private(set) var starts = 0
+  var isRunning: Bool { starts > 0 }
   func start() { starts += 1 }
+}
+
+/// Records the file operations of "Move and reopen" in order.
+@MainActor final class FakeFileOps: AppFileOps {
+  var existing: Set<String> = []
+  var copyFails = false
+  private(set) var log: [String] = []
+  func exists(_ url: URL) -> Bool { existing.contains(url.path) }
+  func trash(_ url: URL) throws { log.append("trash \(url.path)"); existing.remove(url.path) }
+  func copy(_ from: URL, to: URL) throws {
+    if copyFails { throw FakeServiceError() }
+    log.append("copy \(from.path) \(to.path)")
+    existing.insert(to.path)
+  }
+  func openAndQuit(_ url: URL) { log.append("open \(url.path)") }
 }
 
 @MainActor final class FakeProfile: ProfileService {
@@ -144,6 +170,14 @@ enum M304Clock {
   }
 
   func model() -> OnboardingModel { OnboardingModel(store: store, services: services) }
+
+  /// The app model over the same fakes and store; never touches NSApp, TCC or a window.
+  func app(options: LaunchOptions = LaunchOptions(), currentNoticeVersion: String? = nil,
+           probe: FakePermissionProbe = FakePermissionProbe()) -> AppModel {
+    AppModel(options: options, bundlePath: "/Applications/Offload.app", bufferReadable: true, store: store,
+             services: services, probe: probe, events: NoLocalEvents(), sampleWeek: SampleWeekFlag(),
+             currentNoticeVersion: currentNoticeVersion)
+  }
 }
 
 // MARK: - Flow helpers
