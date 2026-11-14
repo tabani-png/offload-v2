@@ -265,7 +265,7 @@ extension M304 {
     #expect(OnboardingCopy.doneBody(state: s)
             == "It learns your week as it happens. Your first review lands Monday at 9:30 AM, built around your hours.")
     #expect(OnboardingCopy.doneHeadline == "You're set. Keep working.")
-    #expect(OnboardingCopy.menuBarPointer == "Pause, or tell it not to watch an app, from here.")
+    #expect(OnboardingCopy.menuBarPointer == "Tell it not to watch an app, from here.")
   }
 
   @Test("ONBOARDING: Open Offload when I log in is on by default and is applied on Open today")
