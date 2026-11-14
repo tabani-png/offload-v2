@@ -35,11 +35,11 @@ export function fakeClock(startMs: number): { now(): number; set(ms: number): vo
   return { now: () => t, set: (ms) => void (t = ms), advance: (ms) => void (t += ms) };
 }
 
-/** Same user name swapped into a postgres URL; the URL itself is never printed. */
-export function withUser(url: string, user: string): string {
+/** Same URL with another user (and password) into a postgres URL; the URL itself is never printed. */
+export function withUser(url: string, user: string, password = ""): string {
   const u = new URL(url);
   u.username = user;
-  u.password = "";
+  u.password = password;
   return u.toString();
 }
 

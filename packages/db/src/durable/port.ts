@@ -48,7 +48,7 @@ export interface DurableRuntime {
   send(workflowId: string, topic: string, msg: DurableMessage): Promise<void>;
   cancel(workflowId: string): Promise<void>;
   list(filter: { name?: string; state?: WorkflowState }): Promise<WorkflowInfo[]>;
-  /** 5-field cron, UTC. Re-declare on every boot; a tick starts workflow `name` once, even across restarts. */
+  /** 5-field cron, UTC. Re-declare on every boot. At most once per tick (deterministic ids), but ticks due while the process was down are not replayed. */
   schedule(cron: string, name: string): Promise<void>;
   purgeTenant(tenantId: string): Promise<{ workflowsDeleted: number }>;
   /**
@@ -90,7 +90,10 @@ export function assertIdsOnly(value: unknown, path = "value", depth = 0): void {
     return;
   }
   if (typeof value === "object") {
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) assertIdsOnly(v, `${path}.${k}`, depth + 1);
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      assertIdsOnly(k, `${path} key`, depth + 1); // keys are serialised too
+      assertIdsOnly(v, `${path}.${k.slice(0, 16)}`, depth + 1);
+    }
     return;
   }
   throw new Error(`${path}: ${typeof value} is not allowed in durable state`);

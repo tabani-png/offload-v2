@@ -91,7 +91,14 @@ export async function createDurableRuntime(opts: DurableCreateOptions): Promise<
       if (!DBOS.isWithinWorkflow()) throw new Error("step() must be called inside a workflow");
       return DBOS.runStep(
         async () => {
-          const out = await fn();
+          let out: Awaited<ReturnType<typeof fn>>;
+          try {
+            out = await fn();
+          } catch (err) {
+            // DBOS stores error text in schema durable, so only the step name and error class are kept.
+            console.error(`durable: step "${name}" failed (${err instanceof Error ? err.name : "non-error"})`);
+            throw new Error(`step "${name}" failed`);
+          }
           assertIdsOnly(out, `step "${name}" output`); // content never reaches schema durable
           return out;
         },
@@ -167,25 +174,39 @@ export async function createDurableRuntime(opts: DurableCreateOptions): Promise<
     const wf = DBOS.registerWorkflow(
       async (input: DurableInput) => {
         assertDurableInput(input);
-        await tenantContext.run({ tenantId: input.tenant_id }, () => body(runtime, input));
+        try {
+          await tenantContext.run({ tenantId: input.tenant_id }, () => body(runtime, input));
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "";
+          // Our own errors carry no content; anything else is reduced to its class before DBOS stores it.
+          if (/^(step ".{0,64}" (failed|output)|.{0,64}: (string|number|nested))/.test(msg)) throw err;
+          console.error(`durable: workflow "${name}" failed (${err instanceof Error ? err.name : "non-error"})`);
+          throw new Error(`workflow "${name}" failed`);
+        }
       },
       { name },
     );
     registered.set(name, wf as unknown as (input: DurableInput) => Promise<void>);
   }
 
-  if (opts.migratorUrl) {
-    const applicationRole = roleOf(opts.databaseUrl);
-    await DBOS.migrate(opts.migratorUrl, { schemaName: DURABLE_SCHEMA, ...(applicationRole ? { applicationRole } : {}) });
+  try {
+    if (opts.migratorUrl) {
+      const applicationRole = roleOf(opts.databaseUrl);
+      await DBOS.migrate(opts.migratorUrl, { schemaName: DURABLE_SCHEMA, ...(applicationRole ? { applicationRole } : {}) });
+    }
+    DBOS.setConfig({
+      name: APP_NAME,
+      systemDatabaseUrl: opts.databaseUrl,
+      systemDatabaseSchemaName: DURABLE_SCHEMA,
+      runMigrations: !opts.migratorUrl,
+      logLevel: "error",
+    });
+    await DBOS.launch();
+  } catch (err) {
+    await DBOS.shutdown({ deregister: true }).catch(() => {});
+    await pool.end().catch(() => {});
+    throw err;
   }
-  DBOS.setConfig({
-    name: APP_NAME,
-    systemDatabaseUrl: opts.databaseUrl,
-    systemDatabaseSchemaName: DURABLE_SCHEMA,
-    runMigrations: !opts.migratorUrl,
-    logLevel: "error",
-  });
-  await DBOS.launch();
 
   async function pollSchedules(): Promise<void> {
     if (polling || closed) return;
@@ -194,16 +215,21 @@ export async function createDurableRuntime(opts: DurableCreateOptions): Promise<
       const nowMinute = Math.floor(clock.now() / 60_000);
       for (const s of schedules.values()) {
         const from = Math.max(s.lastMinute + 1, nowMinute - MAX_CATCH_UP_MINUTES + 1);
-        for (let m = from; m <= nowMinute; m++) {
-          if (!cronMatches(s.spec, m * 60_000)) continue;
-          // Deterministic id: the same tick never starts twice, even from two processes or after a restart.
-          await runtime.startWorkflow(
-            s.name,
-            { tenant_id: SYSTEM_TENANT, scheduled_for: new Date(m * 60_000).toISOString() },
-            { workflowId: `sched:${s.name}:${m * 60_000}` },
-          );
+        try {
+          for (let m = from; m <= nowMinute; m++) {
+            if (!cronMatches(s.spec, m * 60_000)) continue;
+            // Deterministic id (name, cron, minute): a tick never starts twice, across processes or restarts.
+            await runtime.startWorkflow(
+              s.name,
+              { tenant_id: SYSTEM_TENANT, scheduled_for: new Date(m * 60_000).toISOString() },
+              { workflowId: `sched:${s.name}:${s.cron.replace(/\s+/g, "_")}:${m * 60_000}` },
+            );
+          }
+          s.lastMinute = Math.max(s.lastMinute, nowMinute);
+        } catch (err) {
+          // Retried on the next poll; one bad schedule does not stall the others.
+          console.error(`durable: schedule "${s.name}" tick failed (${err instanceof Error ? err.name : "non-error"})`);
         }
-        s.lastMinute = Math.max(s.lastMinute, nowMinute);
       }
     } finally {
       polling = false;

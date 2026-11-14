@@ -53,8 +53,11 @@ Slice `m1-01-durable-spike`, run 2026-11-14.
     is a process-wide singleton, so one runtime per process; `shutdown()` deregisters so tests can create another.
   - **Schedules use our own tick loop, not DBOS's scheduler**, because DBOS schedules read the real clock and the
     port must run under a fake one. A tick starts workflow `name` with the deterministic id `sched:<name>:<minute ms>`
-    and input `{ tenant_id: "system", scheduled_for }`, so a tick never starts twice across restarts or processes.
-    Schedules are held in memory: the caller declares them on every boot. A clock jump replays at most 1440 minutes.
+    and input `{ tenant_id: "system", scheduled_for }`, so a tick never starts twice across restarts or processes (at most once: ticks due while every process was down
+    are not replayed). Schedules are held in memory: the caller declares them on every boot. A clock jump replays at most 1440 minutes.
+  - Error text from steps and workflow bodies is reduced to the step or workflow name before DBOS stores it, and object
+    keys are checked like values, so no content reaches `durable` through errors or keys.
+  - `purgeTenant` lists then deletes; callers must stop new starts for the tenant first.
   - Step outputs go through `assertIdsOnly` as well as inputs and messages; a step that returns text fails the
     workflow instead of writing the text into `durable`.
   - `sleep` is DBOS's durable sleep on real time. `recv` takes a timeout up to `MAX_RECV_MS` (900 000 ms).

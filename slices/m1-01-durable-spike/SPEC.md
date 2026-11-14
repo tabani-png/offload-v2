@@ -91,6 +91,7 @@ Additions to the port beyond the SPEC's listing, all additive:
 - `DurableRuntime.create` also takes `workflows` (bodies by name; DBOS needs them registered before launch) and
   `migratorUrl` (runs migrations as `offload_migrator`, which owns schema `durable`).
 - `startWorkflow(name, input, { workflowId? })`, `withTenant(fn)` and `shutdown()` on the runtime.
+- Dev dependency `@types/pg` 8.23.1 (types for the `pg` driver).
 - A ninth test, "DURABLE: schema durable is owned by offload_migrator" (skips only if the role cannot be created).
 - Step outputs are checked with `assertIdsOnly`, not just inputs and messages.
 Outcome and the reasons for the schedule tick loop are in ADR 0009 "Spike result".

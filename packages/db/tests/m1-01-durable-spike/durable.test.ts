@@ -28,9 +28,13 @@ const workflows: Record<string, WorkflowFn> = {
   "leaky": async (rt) => {
     await rt.step("leak-content", async () => CANARY);
   },
+  "waiter-msg": async (rt) => {
+    await rt.step("wait-start", async () => void bump(join(dir, "waiter-msg.count")));
+    await rt.recv("approval", 30_000);
+  },
   "sleeper": async (rt) => {
     await rt.step("before", async () => void bump(join(dir, "sleeper-before.count")));
-    await rt.sleep(60_000);
+    await rt.sleep(1_500);
     await rt.step("after", async () => void bump(join(dir, "sleeper-after.count")));
   },
   "tick-wf": async (rt) => {
@@ -53,7 +57,9 @@ beforeAll(async () => {
   try {
     await pool.query("do $$ begin if not exists (select 1 from pg_roles where rolname = 'offload_migrator') then create role offload_migrator login; end if; end $$");
     await pool.query("select format('grant create on database %I to offload_migrator', current_database()) as q").then((r) => pool.query(r.rows[0].q));
-    migratorUrl = withUser(databaseUrl(), "offload_migrator");
+    const password = randomUUID(); // throwaway, never printed; works with trust and with password auth
+    await pool.query(`alter role offload_migrator login password '${password}'`);
+    migratorUrl = withUser(databaseUrl(), "offload_migrator", password);
     migratorOwned = true;
   } catch {
     migratorUrl = undefined; // no CREATE ROLE privilege: the ownership assertion is skipped below
@@ -94,14 +100,13 @@ function killScenario() {
     const checkpointed = async () =>
       (await pool.query("select 1 from durable.operation_outputs where workflow_uuid = $1 and function_name = 'step-one'", [workflowId])).rowCount === 1;
     await waitFor("step one checkpoint row", async () => (await checkpointed()) || null);
-    const checkpointBeforeKill = true;
-    first.kill("SIGKILL");
+      first.kill("SIGKILL");
     const killedExit = await first.exited;
     await Bun.write(join(wd, "release"), "go");
     const second = Bun.spawn(["bun", script, "resume", wd, workflowId], { env, stdout: "ignore", stderr: "ignore" });
     expect(await second.exited).toBe(0);
     scenarioDir = wd;
-    return { workflowId, checkpointBeforeKill, killedExit };
+    return { workflowId, checkpointBeforeKill: true, killedExit };
   })();
   return scenario;
 }
@@ -134,7 +139,11 @@ test("DURABLE: workflow inputs and messages hold ids only", async () => {
   expect(() => assertIdsOnly({ tenant_id: TENANT_A, x: "two words" })).toThrow();
   expect(() => assertIdsOnly({ tenant_id: TENANT_A, run_id: randomUUID(), hash: canaryHash, kind: "approve" })).not.toThrow();
   await expect(rt.startWorkflow("ids-only", { tenant_id: TENANT_A, title: CANARY })).rejects.toThrow();
-  await expect(rt.send(randomUUID(), "approval", { note: CANARY })).rejects.toThrow();
+  await expect(rt.startWorkflow("ids-only", { tenant_id: TENANT_A, [CANARY]: true })).rejects.toThrow(/key|whitespace|64/);
+  const live = await rt.startWorkflow("waiter-msg", { tenant_id: TENANT_A });
+  await waitFor("waiter-msg started", async () => count(join(dir, "waiter-msg.count")) === 1 || null);
+  await expect(rt.send(live.workflowId, "approval", { note: CANARY })).rejects.toThrow(/whitespace|64/);
+  await rt.cancel(live.workflowId);
   const ok = await rt.startWorkflow("ids-only", { tenant_id: TENANT_A });
   await waitFor("ids-only success", async () => (await stateOf(ok.workflowId)) === "success" || null);
   // A step that returns content fails instead of writing it into schema durable.
@@ -175,7 +184,7 @@ test("DURABLE: cancel stops a sleeping workflow before its next step", async () 
   await waitFor("sleeper before-step", async () => count(join(dir, "sleeper-before.count")) === 1 || null);
   await rt.cancel(workflowId);
   await waitFor("sleeper cancelled", async () => (await stateOf(workflowId)) === "cancelled" || null);
-  await new Promise((r) => setTimeout(r, 300));
+  await new Promise((r) => setTimeout(r, 2_500)); // well past the 1.5 s sleep
   expect(count(join(dir, "sleeper-after.count"))).toBe(0);
   expect((await rt.list({ name: "sleeper", state: "cancelled" })).map((w) => w.workflowId)).toContain(workflowId);
 });
@@ -193,6 +202,8 @@ test("DURABLE: purgeTenant removes every durable row of that tenant and no other
         await pool.query(
           `select (select count(*) from durable.workflow_status where workflow_uuid = $1)
                 + (select count(*) from durable.operation_outputs where workflow_uuid = $1)
+                + (select count(*) from durable.workflow_input where workflow_uuid = $1)
+                + (select count(*) from durable.workflow_output where workflow_uuid = $1)
                 + (select count(*) from durable.notifications where destination_uuid = $1) as n`,
           [id],
         )
