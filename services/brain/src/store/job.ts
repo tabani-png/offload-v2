@@ -8,6 +8,7 @@ import { checkNarrative, writeWeekSentence } from "../records/narrative.ts";
 import { buildRollup } from "../records/rollup.ts";
 import { BASELINE_WEEKS, buildWeekRecord, type WeekTask } from "../records/week-record.ts";
 import type { CompleteText, UnderstandingWindow } from "../user-model/ports.ts";
+import { hasLink } from "../user-model/names.ts";
 import { updateMemberModel } from "../user-model/update.ts";
 import * as repo from "./repository.ts";
 import type { RunInTenant, TenantContext, Tx } from "./tenant.ts";
@@ -15,6 +16,8 @@ import type { RunInTenant, TenantContext, Tx } from "./tenant.ts";
 /** The window was built in another timezone than the member's profile (DATA_MODEL section 1: days are profile days). */
 export class TimezoneMismatchError extends Error {
   readonly code = "timezone_mismatch";
+  /** Retrying the same window can never succeed: the caller rebuilds it in the profile's timezone. */
+  readonly retryable = false;
 }
 
 export interface MemberUpdateInput {
@@ -101,7 +104,7 @@ export async function writeWeekNarrative(run: RunInTenant, ctx: TenantContext, i
   if (source === "code") return "code";
   return run(ctx, async (tx) => {
     const week = await repo.getWeekRecord(tx, isoWeek);
-    if (week === null || !checkNarrative(sentence, week).ok) return "code" as const;
+    if (week === null || hasLink(sentence) || !checkNarrative(sentence, week).ok) return "code" as const;
     await repo.setWeekNarrative(tx, isoWeek, sentence);
     return "model" as const;
   });

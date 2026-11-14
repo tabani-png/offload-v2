@@ -107,12 +107,11 @@ async function currentWeek(tx: Tx, now: number): Promise<string> {
   return isoWeekOf(dayOf(now, p.timezone));
 }
 
-async function handle(r: Route, req: Request, tx: Tx, now: number): Promise<Response> {
+async function handle(r: Route, body: unknown, tx: Tx, now: number): Promise<Response> {
   switch (r.kind) {
     case "profile_get":
       return json(200, await repo.getProfile(tx));
     case "profile_patch": {
-      const body = await readJson(req);
       await repo.lockProfile(tx);
       const result = applyProfilePatch(await repo.getProfile(tx), body, now);
       if (!result.ok) throw new HttpError("schema_invalid", result.message);
@@ -149,7 +148,6 @@ async function handle(r: Route, req: Request, tx: Tx, now: number): Promise<Resp
       return json(200, buildWeekReview({ week, goals: (await repo.getProfile(tx)).goals, opportunities: await repo.listOpportunities(tx, w), answers }));
     }
     case "review_answer": {
-      const body = await readJson(req);
       const profile = await repo.getProfile(tx);
       const parsed = parseReviewAnswer(body, { activeGoalIds: profile.goals.map((g) => g.id), currentWeek: isoWeekOf(dayOf(now, profile.timezone)), now });
       if (!parsed.ok) throw new HttpError(parsed.code, parsed.message);
@@ -166,7 +164,10 @@ export async function handleUserModelRequest(req: Request, auth: UserModelAuth, 
   const rid = (deps.requestId ?? newRequestId)();
   const fail = (code: ErrorCode, message: string) => json(STATUS[code], { error: { code, message, request_id: rid } });
   try {
-    return await deps.runInTenant({ tenantId: auth.tenantId, memberId: auth.memberId, principalId: auth.principalId, tenantRole: auth.tenantRole }, (tx) => handle(r, req, tx, deps.now()));
+    // The body is read (or refused) before the transaction opens: a slow client must not hold a pooled connection
+    // with an open transaction (ADR 0013: no I/O inside withTenant).
+    const body = r.kind === "profile_patch" || r.kind === "review_answer" ? await readJson(req) : undefined;
+    return await deps.runInTenant({ tenantId: auth.tenantId, memberId: auth.memberId, principalId: auth.principalId, tenantRole: auth.tenantRole }, (tx) => handle(r, body, tx, deps.now()));
   } catch (err) {
     if (err instanceof HttpError) return fail(err.code, err.message);
     if (err instanceof repo.LeakError) return fail("leak_detected", "that text holds an email address or a link and cannot be stored");
