@@ -13,6 +13,8 @@ on:
   push:
     branches: [w1/h-shell-onboarding]
   pull_request:
+    # macOS runner minutes are scarce (OQ-25): pull requests build only when the app or this workflow changed.
+    paths: ["apps/mac/**", ".github/workflows/mac-artifact.yml"]
   workflow_dispatch:
 permissions:
   contents: read
