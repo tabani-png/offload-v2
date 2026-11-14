@@ -218,3 +218,10 @@ export async function claimNonce(tx: Tx, deviceId: string, nonce: string, now: D
   );
   return (r.rowCount ?? 0) === 1;
 }
+
+/** Unused, unexpired nonces of a device (the challenge endpoint caps them). */
+export async function countOpenNonces(tx: Tx, deviceId: string, now: Date): Promise<number> {
+  return (await tx.query<{ n: number }>(
+    "select count(*)::int as n from device_nonces where device_id = $1 and used_at is null and expires_at > $2", [deviceId, now],
+  )).rows[0]!.n;
+}

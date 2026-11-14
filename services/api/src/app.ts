@@ -1,11 +1,12 @@
 import { Hono, type Context } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import type { Pool } from "pg";
 import {
   DeviceChallengeRequestSchema, DeviceEnrollRequestSchema, DeviceTokenRequestSchema, MagicLinkRequestSchema, token32,
   type MeResponse,
 } from "@offload/contracts";
 import {
-  appendAudit, claimEnrollmentCode, claimMagicLink, claimNonce, createPersonalTenant, emailHash, getDevice, getNonce,
+  appendAudit, claimEnrollmentCode, countOpenNonces, claimMagicLink, claimNonce, createPersonalTenant, emailHash, getDevice, getNonce,
   insertDevice, insertEnrollmentCode, insertMagicLink, insertNonce, insertSession, issueCsrfOnce, listDevices, loadMe,
   memberRole, resolveDevice, resolveEnrollmentCode, resolveIdentity, resolveSession, revokeDevice, revokeSession,
   touchSession, uuidv7, withTenant, withTransaction, type TenantContext, type Tx,
@@ -65,6 +66,10 @@ const MAX_BODY_BYTES = 16 * 1024;
 const CHALLENGE_TTL_MS = 2 * 60_000;
 const ENROLLMENT_CODE_TTL_MS = 10 * 60_000;
 const STATE_RE = /^[\x21-\x7e]{1,512}$/;
+/** Open (unused, unexpired) nonces one device may hold; more is 429 rate_limited. */
+const MAX_OPEN_NONCES = 20;
+
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`).replace(/&#38;/g, "&amp;");
 
 /** The csrf hash a session holds until GET /v1/me issues the real token: nobody knows a preimage of it. */
 const unissuedCsrf = (tokenSha256: string) => sha256Hex(`offload:csrf-unissued:${tokenSha256}`);
@@ -80,12 +85,17 @@ export function createApp(deps: AppDeps): Hono {
 
   app.onError((err, c) => errorResponse(c, toApiError(err)));
   app.notFound((c) => errorResponse(c, new ApiError(404, "not_found", "no such route")));
+  // Refuses large bodies before reading them (Content-Length, then while streaming).
+  app.use("*", bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => errorResponse(c, new ApiError(413, "too_large", "body too large")) }));
 
   /** A member's role, read inside the tenant (null when the member is gone, frozen or departed). */
   const roleOf = (tenantId: string, memberId: string) =>
     withTenant(pool, memberCtx(tenantId, memberId, "member"), (tx) => memberRole(tx, memberId));
 
   async function jsonBody(c: Context): Promise<unknown> {
+    // JSON only: a cross-site form or text/plain POST cannot reach these routes.
+    const type = (c.req.header("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+    if (type !== "application/json") throw invalidRequest("content-type must be application/json");
     const text = await c.req.text();
     if (Buffer.byteLength(text) > MAX_BODY_BYTES) throw new ApiError(413, "too_large", "body too large");
     try {
@@ -218,7 +228,15 @@ export function createApp(deps: AppDeps): Hono {
     if (raw && token32.safeParse(raw).success) {
       const tokenSha256 = sha256Hex(raw);
       const s = await resolveSession(pool, tokenSha256);
-      if (s) await withTenant(pool, memberCtx(s.tenantId, s.memberId, s.tenantRole), (tx) => revokeSession(tx, tokenSha256, clock.now()));
+      if (s) {
+        // A live session logs out only with its CSRF token (no forced logout from another site).
+        await withTenant(pool, memberCtx(s.tenantId, s.memberId, s.tenantRole), async (tx) => {
+          const row = (await tx.query<{ csrf_sha256: string }>("select csrf_sha256 from sessions where token_sha256 = $1", [tokenSha256])).rows[0];
+          const header = c.req.header("x-csrf-token");
+          if (!row || !header || !safeEqual(sha256Hex(header), row.csrf_sha256)) throw new ApiError(403, "forbidden", "missing or wrong X-CSRF-Token");
+          await revokeSession(tx, tokenSha256, clock.now());
+        });
+      }
     }
     c.header("set-cookie", clearCookie(SESSION_COOKIE), { append: true });
     return c.body(null, 204);
@@ -298,6 +316,22 @@ export function createApp(deps: AppDeps): Hono {
     if (!/^[A-Za-z0-9_-]{43}$/.test(challenge)) throw invalidRequest("code_challenge must be an S256 challenge");
     if (!isLoopbackRedirect(redirectUri)) throw invalidRequest("redirect_uri must be http://127.0.0.1:<port>/callback");
     if (!STATE_RE.test(state)) throw invalidRequest("state is required");
+    // Only a navigation the person made (the Mac opening the browser: Sec-Fetch-Site none) or one from our own page
+    // issues a code. Anything else, including a redirect chain from another site, gets a page to confirm first, so a
+    // hostile page cannot enroll a key for a local listener without the person seeing it.
+    const site = c.req.header("sec-fetch-site");
+    if (site !== "none" && site !== "same-origin") {
+      const here = new URL(c.req.url);
+      const href = escapeHtml(here.pathname + here.search);
+      c.header("x-frame-options", "DENY");
+      c.header("content-security-policy", "default-src 'none'; frame-ancestors 'none'; form-action 'none'");
+      c.header("cache-control", "no-store");
+      return c.html(
+        `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Connect this Mac</title></head><body>` +
+        `<h1>Connect this Mac to your account?</h1><p>Only continue if you just started this on your Mac.</p>` +
+        `<p><a href="${href}">Connect this Mac</a></p></body></html>`,
+      );
+    }
     const code = random32();
     await withTenant(pool, memberCtx(p.tenantId, p.memberId, p.tenantRole), (tx) =>
       insertEnrollmentCode(tx, {
@@ -354,7 +388,14 @@ export function createApp(deps: AppDeps): Hono {
     const d = await liveDevice(body.data.device_id);
     const nonce = random32();
     const expiresAt = new Date(clock.now().getTime() + CHALLENGE_TTL_MS);
-    await withTenant(pool, d.ctx, (tx) => insertNonce(tx, { tenantId: d.tenantId, deviceId: body.data.device_id, nonce, audience: body.data.audience, expiresAt }));
+    await withTenant(pool, d.ctx, async (tx) => {
+      if ((await countOpenNonces(tx, body.data.device_id, clock.now())) >= MAX_OPEN_NONCES) {
+        const err = new ApiError(429, "rate_limited", "too many open challenges");
+        err.retryAfterSeconds = CHALLENGE_TTL_MS / 1000;
+        throw err;
+      }
+      await insertNonce(tx, { tenantId: d.tenantId, deviceId: body.data.device_id, nonce, audience: body.data.audience, expiresAt });
+    });
     return c.json({ nonce, expires_at: expiresAt.toISOString() });
   });
 

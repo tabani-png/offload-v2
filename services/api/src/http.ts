@@ -4,7 +4,9 @@ import { ulid } from "@offload/db";
 
 /** An error the API answers with the error envelope (docs/API.md "Error envelope"). Messages never hold values. */
 export class ApiError extends Error {
-  constructor(readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 500, readonly code: ErrorCode, message: string) {
+  /** For 429 rate_limited: the Retry-After value. */
+  retryAfterSeconds?: number;
+  constructor(readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500, readonly code: ErrorCode, message: string) {
     super(message);
     this.name = "ApiError";
   }
@@ -19,6 +21,7 @@ export function requestId(): string {
 }
 
 export function errorResponse(c: Context, err: ApiError): Response {
+  if (err.status === 429) c.header("retry-after", String(err.retryAfterSeconds ?? 60));
   return c.json({ error: { code: err.code, message: err.message, request_id: requestId() } }, err.status);
 }
 
