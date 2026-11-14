@@ -1,7 +1,15 @@
 /**
  * @offload/db
- * Postgres 17 migrations, RLS policies, tenancy helpers (withTenant) and the outbox.
- *
- * m1-01 adds the durable runtime port (src/durable). Migrations and RLS arrive with m1-03.
+ * Postgres 17 migrations, RLS, roles, withTenant, the audit chain writer and the durable runtime port.
+ * m1-01 added the durable port (src/durable); m1-03 added tenancy, RLS and the audit chain.
  */
 export * from "./durable/index.ts";
+export * from "./config.ts";
+export * from "./ids.ts";
+export * from "./tables.ts";
+export * from "./roles.ts";
+export * from "./migrate.ts";
+export * from "./tenancy.ts";
+export * from "./partitions.ts";
+export * from "./audit.ts";
+export * from "./tenants.ts";

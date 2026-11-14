@@ -2,7 +2,7 @@
   "name": "@offload/testkit",
   "version": "0.0.0",
   "private": true,
-  "description": "Test helpers: PGlite tenant fixtures, golden-file helpers, fake model router, fake sandbox.",
+  "description": "Test helpers: real-Postgres tenant fixtures, commit fault injection, golden-file helpers, fake model router, fake sandbox.",
   "license": "MIT",
   "type": "module",
   "main": "src/index.ts",
@@ -10,5 +10,13 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@offload/contracts": "workspace:*",
+    "@offload/db": "workspace:*",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1"
   }
 }

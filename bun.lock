@@ -49,9 +49,11 @@
       "version": "0.0.0",
       "dependencies": {
         "@dbos-inc/dbos-sdk": "5.5.0",
+        "@offload/contracts": "workspace:*",
         "pg": "8.23.1",
       },
       "devDependencies": {
+        "@offload/testkit": "workspace:*",
         "@types/pg": "8.23.1",
       },
     },
@@ -78,6 +80,14 @@
     "packages/testkit": {
       "name": "@offload/testkit",
       "version": "0.0.0",
+      "dependencies": {
+        "@offload/contracts": "workspace:*",
+        "@offload/db": "workspace:*",
+        "pg": "8.23.1",
+      },
+      "devDependencies": {
+        "@types/pg": "8.23.1",
+      },
     },
     "services/api": {
       "name": "@offload/api",

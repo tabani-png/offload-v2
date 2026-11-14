@@ -1,9 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { DBOS } from "@dbos-inc/dbos-sdk";
-import { Pool, type PoolClient } from "pg";
+import { Pool } from "pg";
 import { cronMatches, parseCron, type CronSpec } from "./cron.ts";
-import { withTenant } from "./tenant.ts";
+import { withTenant, type Tx } from "../tenancy.ts";
 import {
   DURABLE_SCHEMA,
   MAX_RECV_MS,
@@ -155,10 +155,11 @@ export async function createDurableRuntime(opts: DurableCreateOptions): Promise<
       return { workflowsDeleted: ids.length };
     },
 
-    async withTenant<T>(fn: (client: PoolClient) => Promise<T>) {
+    async withTenant<T>(fn: (tx: Tx) => Promise<T>) {
       const ctx = tenantContext.getStore();
       if (!ctx) throw new Error("withTenant() must be called inside a workflow");
-      return withTenant(pool, ctx.tenantId, fn);
+      // A workflow is a service principal with no member: member-isolated tables show no rows to it.
+      return withTenant(pool, { tenantId: ctx.tenantId, principalId: "durable", memberId: null, tenantRole: "service" }, fn);
     },
 
     async shutdown() {

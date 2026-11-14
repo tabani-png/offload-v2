@@ -53,9 +53,9 @@ export interface DurableRuntime {
   purgeTenant(tenantId: string): Promise<{ workflowsDeleted: number }>;
   /**
    * Run `fn` in a transaction with `app.tenant_id` set to this workflow's `tenant_id` (set_config, transaction-local).
-   * Workflow code only. No network I/O inside `fn`. m1-03 replaces the helper behind it.
+   * Workflow code only. No network I/O inside `fn`. Backed by withTenant (src/tenancy.ts, m1-03).
    */
-  withTenant<T>(fn: (client: import("pg").PoolClient) => Promise<T>): Promise<T>;
+  withTenant<T>(fn: (tx: import("../tenancy.ts").Tx) => Promise<T>): Promise<T>;
   shutdown(): Promise<void>;
 }
 

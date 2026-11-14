@@ -152,11 +152,12 @@ test("AUDIT: verifyAuditChain detects edit, delete and fork", async () => {
 
   const edited = await make();
   await tamper("update audit_events set details = '{\"i\": 9}' where tenant_id = $1 and seq = 3", [edited.tenantId]);
-  expect(await verify(edited)).toEqual({ ok: false, checked: 3, first_bad_seq: 3 });
+  // tenant.created plus three: four rows.
+  expect(await verify(edited)).toEqual({ ok: false, checked: 4, first_bad_seq: 3 });
 
   const deleted = await make();
   await tamper("delete from audit_events where tenant_id = $1 and seq = 2", [deleted.tenantId]);
-  expect(await verify(deleted)).toEqual({ ok: false, checked: 2, first_bad_seq: 3 });
+  expect(await verify(deleted)).toEqual({ ok: false, checked: 3, first_bad_seq: 3 });
 
   // Fork: a second row on the same prev_hash is refused by UNIQUE (tenant_id, prev_hash) ...
   const forked = await make();

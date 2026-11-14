@@ -13,9 +13,11 @@
   },
   "dependencies": {
     "@dbos-inc/dbos-sdk": "5.5.0",
-    "pg": "8.23.1"
+    "pg": "8.23.1",
+    "@offload/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@types/pg": "8.23.1"
+    "@types/pg": "8.23.1",
+    "@offload/testkit": "workspace:*"
   }
 }
