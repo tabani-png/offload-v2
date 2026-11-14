@@ -183,14 +183,13 @@ describe("p45a Postgres build store", () => {
     expect(await count(null)).toEqual(Object.fromEntries(TABLES.map((t) => [t, 0])));
     const own = await count(TENANT);
     for (const t of TABLES) expect([t, own[t]! > 0]).toEqual([t, true]);
-    // writing another tenant's row is refused by the policy's WITH CHECK
-    await expect(
-      appSql.begin(async (tx) => {
-        await tx`SELECT set_config('app.tenant_id', ${OTHER_TENANT}, true)`;
-        await tx`UPDATE builds SET state = 'failed' WHERE id = ${b.id}`;
-        return tx`SELECT count(*)::int AS n FROM builds WHERE id = ${b.id} AND state = 'failed'`;
-      }),
-    ).resolves.toEqual([{ n: 0 }]);
+    // another tenant cannot change the row: the update matches nothing, read back as its own tenant it is unchanged
+    const updated = await appSql.begin(async (tx) => {
+      await tx`SELECT set_config('app.tenant_id', ${OTHER_TENANT}, true)`;
+      return tx`UPDATE builds SET state = 'failed' WHERE id = ${b.id} RETURNING id`;
+    });
+    expect(updated).toHaveLength(0);
+    expect((await app.get(TENANT, b.id))!.state).toBe("ready");
   });
 
   test("LOCK: (Postgres, as the non-owner role) the lock race and stale recovery hold under RLS", async () => {
