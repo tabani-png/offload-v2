@@ -92,8 +92,8 @@ destroyed in `finally`.
 | `DurableRuntime` (`start(name, ids)`) | W1-C (m1-01/m1-03) | inline adapter; inputs are ids only. The approval token is handed over in process and never persisted: how a durable workflow gets the claim after a crash is m2-06's open point |
 | `FixStore` (frozen brief, check set, held-out, fixtures by fix id) | m2-05 (brain) | memory adapter in tests |
 | `WorkerPort` (`turn` of the Agent SDK worker) | m2-07 | fake in tests; the TDD instructions (superpowers, paraphrased) are passed in |
-| `RoutinePort` (`deploy`) | m2-09 (runtime) | returns `{ routine_id, version }` |
-| `BuildStore` | builder; SQL in `services/builder/sql/` | memory + Postgres (`Bun.sql`); `packages/db` adopts the SQL with FKs to `tenants` later |
+| `RoutinePort` (`deploy`) | m2-09 (runtime) | returns `{ routine_id, version }`; gets `idempotency_key = deploy:<build_id>`, which m2-09 must honour (a retry after a timeout returns the first version) |
+| `BuildStore` | builder; SQL in `services/builder/sql/` | memory + Postgres (`Bun.sql`); `packages/db` adopts the SQL with FKs to `tenants` later. `budget_entries` here is the shared ledger of DATA_MODEL section 8 (scopes `design`, `run`, `brain` too): when `packages/db` lands it, keep ONE definition and drop this one |
 Hashes: `artifact_sha256`, `receipt_hash` and `definition_hash` use a local canonical JSON (sorted keys, ES number
 form, RFC 8785 for our value types) until `packages/contracts` exports JCS (W1-E). Receipt signing is m2-07.
 
@@ -118,6 +118,11 @@ form, RFC 8785 for our value types) until `packages/contracts` exports JCS (W1-E
 - **Winner order.** MIGRATION 5.6 (followed here): all shards pass, then cost, then smaller artifact (bytes).
   ADR 0029 and the M6 `WINNER:` test say smallest diff. Owner to reconcile; the rule is one function (`pickWinner`).
 - **Fan-out.** `fanout_workers` from config: default 1 (M2), at most 3 (M6). Old tests that fanned out to 3 set it.
+- **Held-out reuse** (owner question: amend ADR 0029). Here a held-out check counts as used once a build bound to it
+  started a worker (its attempt row exists). A teeth-failed or stale queued build lets the next build reuse it, since
+  no builder saw anything. ADR 0029 and DATA_MODEL `held_out_checks` say every build of a brief gets a fresh one.
+  This stream may not edit ADRs; the owner (or m2-05, which writes held-out checks) should amend ADR 0029 or
+  tighten this to "any build", which is one query (`heldOutUsed`).
 - **Money** is integer ten-thousandths of a dollar (`numeric(10,4)`): cap 40000, checks reserve 3000, attempt cap 7000.
 - Verifier, repair turn, replay fixtures, receipt signing, egress proxy and reaper stay with m2-07/m2-08.
 
@@ -133,5 +138,13 @@ deploy that can be retried, and p45b's unrounded threshold and stored raw minute
   only `SETUID`/`SETGID`, keep the report in a root-only folder, and run `bun test` as 65534. Spike it on real Docker.
 - **Approvals are in memory** (`MemoryApprovals`): a restart loses them. The Postgres adapter is m2-06.
 - **Durable handoff of the build token**: the inline runner holds it in process (section 4).
+- **`LOCAL:` hand-off to m5-03** (owner action: whoever writes m5-03's SPEC). ROADMAP's m5-03 row does not list the
+  four `LOCAL:` tests of section 5 or the `redirect: "error"` rule yet, and ROADMAP is outside this slice's scope.
+- **Network and registry isolation are proven only by the `LIVE:` Docker test**, which has not run here; the argv test
+  pins `--network none` and `--entrypoint`. Run it once on a Docker host before m2-08 relies on it (it now also tries
+  a registry and checks that the harness swept as PID 1). `parseProof` reports `swept` but does not require it yet:
+  the emulated container in the guard tests is not PID 1. Require it for verification shards when the LIVE run passes.
+- **The guard's `onLoad` hook** is defence in depth: v2's layout keeps bare, alias and package-imports specifiers
+  from resolving into `/work` at all. A direct guard test (symlink, tsconfig alias, absolute path) covers it.
 - Not ported here: verifier and repair turn, replay fixtures, receipt signing, egress proxy, reaper, E2B, artifact
   object storage, the artifact capability scan (m2-07, m2-08). The `LIVE:` Docker test has not run on this box.

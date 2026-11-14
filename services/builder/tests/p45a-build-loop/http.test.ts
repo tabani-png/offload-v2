@@ -64,7 +64,7 @@ describe("p45a /v1 builds", () => {
     expect((await a.call("GET", "/v1/routines")).status).toBe(0);
   });
 
-  test("GATE: two concurrent OK, build requests start one build; the other gets 409 already_running", async () => {
+  test("LOCK: two OKs of the same brief at once: exactly one 202, the other 409 already_running", async () => {
     const a = api([{ delayMs: 20 }]);
     const rs = await Promise.all([1, 2].map(() => a.call("POST", `/v1/fixes/${FIX}/build-approvals`, hashesOf(a.fix))));
     expect(rs.map((r) => r.status).sort()).toEqual([202, 409]);
