@@ -12,6 +12,11 @@ import { updateMemberModel } from "../user-model/update.ts";
 import * as repo from "./repository.ts";
 import type { RunInTenant, TenantContext, Tx } from "./tenant.ts";
 
+/** The window was built in another timezone than the member's profile (DATA_MODEL section 1: days are profile days). */
+export class TimezoneMismatchError extends Error {
+  readonly code = "timezone_mismatch";
+}
+
 export interface MemberUpdateInput {
   window: UnderstandingWindow;
   now: number;
@@ -33,6 +38,9 @@ export interface MemberUpdateResult {
 export async function runMemberUpdate(tx: Tx, input: MemberUpdateInput): Promise<MemberUpdateResult> {
   const { now } = input;
   const profile = await repo.getProfile(tx);
+  if (input.window.timezone !== profile.timezone) {
+    throw new TimezoneMismatchError(`the window's timezone ${input.window.timezone} is not the profile's timezone ${profile.timezone}`);
+  }
   const state = { ledger: await repo.loadLedger(tx), propositions: await repo.loadPropositions(tx), analysedDays: await repo.listAnalysedDays(tx) };
   const u = updateMemberModel(input.window, state, now);
   await repo.saveLedger(tx, u.ledger);

@@ -39,11 +39,35 @@ class HttpError extends Error {
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": JSON_TYPE, "cache-control": "no-store" } });
 
+/** Reads a JSON body of at most MAX_BODY_BYTES. Writes must say `application/json` (the old jsonBody rule, kept as
+ * defence in depth behind CSRF in services/api). The body is read as a stream and abandoned past the cap. */
 async function readJson(req: Request): Promise<unknown> {
-  const text = await req.text();
-  if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) throw new HttpError("too_large", "the body is too large");
+  if (!/^application\/json\s*(?:;.*)?$/i.test(req.headers.get("content-type") ?? "")) throw new HttpError("invalid_request", "send the body as application/json");
+  const declared = Number(req.headers.get("content-length") ?? "0");
+  if (declared > MAX_BODY_BYTES) throw new HttpError("too_large", "the body is too large");
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  if (req.body !== null) {
+    const reader = req.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_BODY_BYTES) {
+        await reader.cancel();
+        throw new HttpError("too_large", "the body is too large");
+      }
+      chunks.push(value);
+    }
+  }
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    bytes.set(c, at);
+    at += c.byteLength;
+  }
   try {
-    return JSON.parse(text);
+    return JSON.parse(new TextDecoder().decode(bytes));
   } catch {
     // Not JSON at all: a request error, not a schema error.
     throw new HttpError("invalid_request", "the body is not JSON");
