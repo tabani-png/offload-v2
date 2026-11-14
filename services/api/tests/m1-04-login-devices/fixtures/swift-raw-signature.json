@@ -1,0 +1,12 @@
+{
+  "note": "P-256 / SHA-256 over the UTF-8 of message. signature_raw is the 64-byte r||s (Swift P256.Signing.ECDSASignature.rawRepresentation), signature_der the same signature DER-encoded (derRepresentation). Generated with WebCrypto, which emits the same P1363 encoding; regenerate on a Mac with CryptoKit to confirm.",
+  "public_jwk": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "nluJJOJoMg7arkw_qsqw21tIig6j8kBi21CpNSEHPp0",
+    "y": "xmevmozD05YRSq-pXF1gj2fn9CAhACdHHRWfGFN99w0"
+  },
+  "message": "Fz3c0yq1wYb8Xr2b1u7oE7nqzT5mJk9hV4dPa6LsQe0",
+  "signature_raw": "KDZhNAh31H58C8a5YFWeqL18f-B9WjnSXDOY8W9xRdyX-VvX5kyLCqAuBJZoYO8Vi6cC1ExTfBaMWOrbuw5PQw",
+  "signature_der": "MEUCICg2YTQId9R-fAvGuWBVnqi9fH_gfVo50lwzmPFvcUXcAiEAl_lb1-ZMiwqgLgSWaGDvFYunAtRMU3wWjFjq27sOT0M"
+}
