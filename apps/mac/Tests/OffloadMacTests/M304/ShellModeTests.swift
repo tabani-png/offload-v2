@@ -123,14 +123,22 @@ extension M304 {
 
   @Test("REASK: at most one notification per missing permission, and again only after a grant was lost")
   func oneNotification() {
+    // #expect cannot call a mutating method on a local (its expansion captures the value immutably), so each answer
+    // is taken first and checked after.
     var r = ReaskState()
-    #expect(r.notify(.accessibility))
-    #expect(!r.notify(.accessibility))
-    #expect(r.notify(.screenRecording))
-    #expect(!r.notify(.screenRecording))
+    let firstAccessibility = r.notify(.accessibility)
+    let secondAccessibility = r.notify(.accessibility)
+    let firstScreen = r.notify(.screenRecording)
+    let secondScreen = r.notify(.screenRecording)
+    #expect(firstAccessibility)
+    #expect(!secondAccessibility)
+    #expect(firstScreen)
+    #expect(!secondScreen)
     r.grantLost(.accessibility)
-    #expect(r.notify(.accessibility))
-    #expect(!r.notify(.accessibility))
+    let afterLoss = r.notify(.accessibility)
+    let afterLossAgain = r.notify(.accessibility)
+    #expect(afterLoss)
+    #expect(!afterLossAgain)
   }
 
   @Test("REASK: a dismissed banner stays dismissed for 30 days")
@@ -147,10 +155,8 @@ extension M304 {
   @Test("REASK: Dormant reminders stop after the second, and no modal re-asks after setup")
   func dormantAndModal() {
     var r = ReaskState()
-    #expect(r.dormantReminder())
-    #expect(r.dormantReminder())
-    #expect(!r.dormantReminder())
-    #expect(!r.dormantReminder())
+    let reminders = (0..<4).map { _ in r.dormantReminder() }
+    #expect(reminders == [true, true, false, false])
     #expect(ReaskPolicy.mayShowModal(setupCompleted: false))
     #expect(!ReaskPolicy.mayShowModal(setupCompleted: true))
     #expect(ReaskPolicy.bannerQuietDays == 30)
