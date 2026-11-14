@@ -21,6 +21,8 @@ export class UnknownLabelError extends Error {
 }
 
 const TEXT_MARK = "x-offload-text";
+/** Allow-list of schema keywords: anything else (prefixItems, if/then, dependentSchemas, const, …) is refused. */
+const ALLOWED_KEYWORDS = new Set(["type", "properties", "required", "additionalProperties", "items", "enum", "description", "title", "minItems", "maxItems", TEXT_MARK]);
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -30,8 +32,8 @@ function check(node: unknown, path: string): void {
   if (!isObj(node)) throw new LabelSchemaError(`${path}: schema must be an object`);
   const type = node["type"];
   if (typeof type !== "string") throw new LabelSchemaError(`${path}: needs exactly one type`);
-  for (const k of ["anyOf", "oneOf", "allOf", "not", "$ref", "patternProperties"]) {
-    if (k in node) throw new LabelSchemaError(`${path}: ${k} is not allowed`);
+  for (const k of Object.keys(node)) {
+    if (!ALLOWED_KEYWORDS.has(k)) throw new LabelSchemaError(`${path}: keyword ${k} is not allowed`);
   }
   switch (type) {
     case "object": {

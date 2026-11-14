@@ -18,7 +18,7 @@ export function localOpenAICompatible(url: string, model: string): ModelProvider
         messages: [{ role: "system", content: req.system }, ...req.messages.map((m) => ({ role: m.role, content: m.content }))],
       };
       if (req.schema !== undefined) body["response_format"] = { type: "json_schema", json_schema: { name: "output", schema: req.schema } };
-      const res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const res = await fetch(endpoint, { method: "POST", redirect: "error", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) throw new ProviderHttpError(res.status);
       const msg = (await res.json()) as {
         choices?: Array<{ finish_reason?: unknown; message?: { content?: unknown } }>;

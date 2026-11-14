@@ -74,18 +74,20 @@ export class RunMaskers {
   private readonly runs = new Map<string, NameMasker>();
   constructor(private readonly maxRuns = 1000) {}
 
+  /** One masker per run and own-name setting: a call with a different own name never reuses a masker without it. */
   forRun(run_id: string, opts: { ownName?: string; ownNameToModels?: "mask" | "keep" }): NameMasker {
-    let m = this.runs.get(run_id);
+    const key = JSON.stringify([run_id, opts.ownName ?? null, opts.ownNameToModels ?? "mask"]);
+    let m = this.runs.get(key);
     if (!m) {
       if (this.runs.size >= this.maxRuns) this.runs.delete(this.runs.keys().next().value as string);
       m = createNameMasker(opts);
-      this.runs.set(run_id, m);
+      this.runs.set(key, m);
     }
     return m;
   }
 
   end(run_id: string): void {
-    this.runs.delete(run_id);
+    for (const key of [...this.runs.keys()]) if ((JSON.parse(key) as unknown[])[0] === run_id) this.runs.delete(key);
   }
 }
 
@@ -95,6 +97,32 @@ function monthStartUtc(d: Date): Date {
 
 function priced(t: TierConfig): t is TierConfig & { usd_per_mtok_in: number; usd_per_mtok_out: number } {
   return t.usd_per_mtok_in !== null && t.usd_per_mtok_out !== null;
+}
+
+const CALL_ID_RE = /^[A-Za-z0-9_.-]{1,100}$/;
+/** Upper bound for max_tokens on any tier (128K output). */
+export const MAX_OUTPUT_TOKENS = 128_000;
+
+function validCall(call: RouteCall): boolean {
+  if (call.call_id !== undefined && !CALL_ID_RE.test(call.call_id)) return false;
+  if (!Number.isInteger(call.max_tokens) || call.max_tokens < 1 || call.max_tokens > MAX_OUTPUT_TOKENS) return false;
+  if (typeof call.system !== "string" || !Array.isArray(call.messages) || call.messages.length === 0) return false;
+  if (!call.messages.every((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")) return false;
+  if (call.run_budget_usd !== undefined && !(Number.isFinite(call.run_budget_usd) && call.run_budget_usd >= 0)) return false;
+  return true;
+}
+
+/** Every property name and string value in a schema, for the name check. */
+function schemaStrings(node: unknown, out: string[] = []): string[] {
+  if (typeof node === "string") out.push(node);
+  else if (Array.isArray(node)) for (const v of node) schemaStrings(v, out);
+  else if (typeof node === "object" && node !== null) {
+    for (const [k, v] of Object.entries(node)) {
+      out.push(k);
+      schemaStrings(v, out);
+    }
+  }
+  return out;
 }
 
 function outcomeOf(stop_reason: string, content: string, schema: JsonSchema | undefined): { outcome: AttemptOutcome; output?: unknown } {
@@ -135,6 +163,8 @@ export async function route(call: RouteCall, deps: RouterDeps): Promise<RouteRes
     return { status: "needs_you", call_id, route: call.route, reason, attempts };
   };
 
+  if (!validCall(call)) return refused("invalid_call");
+
   // Route → tier.
   const paidTier: PaidTier | undefined = Object.hasOwn(config.routes, call.route) ? config.routes[call.route] : undefined;
   const localServes = config.local_routes.includes(call.route) && !NEVER_LOCAL_ROUTES.includes(call.route);
@@ -150,15 +180,23 @@ export async function route(call: RouteCall, deps: RouterDeps): Promise<RouteRes
     }
   }
 
+  // Masking options for this call (used for the schema check and the masking pass).
+  const maskerOpts: { ownName?: string; ownNameToModels?: "mask" | "keep" } = {};
+  if (call.own_name !== undefined) maskerOpts.ownName = call.own_name;
+  if (call.own_name_to_models !== undefined) maskerOpts.ownNameToModels = call.own_name_to_models;
+
+  // A schema is sent as written, so it must hold no person name: masking its labels would change what code maps.
+  if (call.schema !== undefined) {
+    const probe = createNameMasker({ ...maskerOpts, ownNameToModels: "mask" });
+    if (schemaStrings(call.schema).some((str) => probe.mask(str) !== str)) return refused("schema_holds_name");
+  }
+
   // 1. Untrusted wrapping: no tag may escape.
   if (!untrustedTagsBalanced(call.system) || !call.messages.every((m) => untrustedTagsBalanced(m.content))) {
     return refused("untrusted_tag_escape");
   }
 
   // 2. Masking second pass.
-  const maskerOpts: { ownName?: string; ownNameToModels?: "mask" | "keep" } = {};
-  if (call.own_name !== undefined) maskerOpts.ownName = call.own_name;
-  if (call.own_name_to_models !== undefined) maskerOpts.ownNameToModels = call.own_name_to_models;
   const masker = call.run_id !== undefined && deps.maskers ? deps.maskers.forRun(call.run_id, maskerOpts) : createNameMasker(maskerOpts);
   const system = `${masker.mask(call.system)}\n\n${UNTRUSTED_SYSTEM_NOTE}`;
   const messages: ModelMessage[] = call.messages.map((m) => ({ role: m.role, content: masker.mask(m.content) }));
@@ -236,16 +274,19 @@ export async function route(call: RouteCall, deps: RouterDeps): Promise<RouteRes
       route: call.route,
       usd: reserveUsd,
       at: clock.now(),
+      limits: { month_start: monthStart, monthly_budget_usd: budget, run_budget_usd: call.run_budget_usd ?? null },
     });
-    if (reservation.state === "settled") return needsYou("call_already_settled", tier);
+    if (reservation.state === "over_budget") return needsYou(reservation.limit === "run" ? "run_budget_reached" : "monthly_budget_reached", tier);
+    if (reservation.state !== "new") return needsYou(reservation.state === "settled" ? "call_already_settled" : "call_in_flight", tier);
 
     // 5. Send. stop_reason is checked first (in the adapter and in outcomeOf).
     let resp;
     try {
       resp = await provider.send(req);
     } catch {
-      await ledger.settle(reservation.reservation_id, { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, usd: 0, at: clock.now() });
-      attempts.push({ attempt, tier, model, stop_reason: null, outcome: "provider_error", usd: 0 });
+      // The provider may have billed before failing: settle at the worst case, never at zero.
+      await ledger.settle(reservation.reservation_id, { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, usd: reserveUsd, at: clock.now() });
+      attempts.push({ attempt, tier, model, stop_reason: null, outcome: "provider_error", usd: reserveUsd });
       return needsYou("provider_error", tier);
     }
     const u = resp.usage;

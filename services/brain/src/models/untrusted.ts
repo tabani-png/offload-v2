@@ -18,7 +18,7 @@ const CANONICAL_CLOSE = "</untrusted>";
 /** Wraps untrusted text: Unicode format characters stripped, any untrusted tag inside escaped. */
 export function untrusted(source: string, text: string): string {
   if (!SOURCE_RE.test(source)) throw new Error("untrusted source must match ^[a-z][a-z0-9_]{0,31}$");
-  const body = text.replace(FORMAT_CHARS_RE, "").replace(/<(\s*\/?\s*untrusted)/gi, "&lt;$1");
+  const body = text.normalize("NFKC").replace(FORMAT_CHARS_RE, "").replace(/<(\s*\/?\s*untrusted)/gi, "&lt;$1");
   return `<untrusted source="${source}">${body}${CANONICAL_CLOSE}`;
 }
 
@@ -28,6 +28,10 @@ export function untrusted(source: string, text: string): string {
  * Format characters are removed before looking for tags, so `</untr​usted>` counts as a tag.
  */
 export function untrustedTagsBalanced(text: string): boolean {
+  // Compatibility look-alikes (full-width < / >) must not hide a tag: untrusted() writes NFKC text, so any extra tag
+  // that appears only after NFKC normalisation was never wrapped.
+  const count = (t: string) => [...t.replace(FORMAT_CHARS_RE, "").matchAll(TAG_LIKE_RE)].length;
+  if (count(text.normalize("NFKC")) !== count(text)) return false;
   let open = false;
   let blockStart = 0;
   // Positions are taken on the original text so the format-character check sees the block as sent.

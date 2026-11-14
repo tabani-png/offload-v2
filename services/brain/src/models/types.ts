@@ -53,7 +53,11 @@ export interface BudgetLedger {
   /** Spend since `month_start` (UTC calendar month), open reservations at their reserved amount. */
   spentThisMonth(tenant_id: string, month_start: Date): Promise<number>;
   spentThisRun(run_id: string): Promise<number>;
-  /** Idempotent on (tenant_id, idempotency_key): an existing entry is returned with its state, never duplicated. */
+  /**
+   * Reserves `usd` against the limits in one atomic step (a row lock in Postgres, ADR 0030). Idempotent on
+   * (tenant_id, idempotency_key): an existing reservation returns its state and nothing new is written. A paid
+   * reservation that would pass the monthly budget, or the run budget when one is given, returns `over_budget`.
+   */
   reserve(input: {
     tenant_id: string;
     idempotency_key: string;
@@ -64,8 +68,13 @@ export interface BudgetLedger {
     route: string;
     usd: number;
     at: Date;
-  }): Promise<{ reservation_id: string; state: "new" | "open" | "settled" }>;
-  /** Settles a reservation with actual usage and adds to the `model_usage` day row. */
+    limits: { month_start: Date; monthly_budget_usd: number; run_budget_usd: number | null };
+  }): Promise<
+    | { state: "new"; reservation_id: string }
+    | { state: "open" | "settled" }
+    | { state: "over_budget"; limit: "monthly" | "run" }
+  >;
+  /** Settles a reservation: appends one `budget_entries` row with actual usage and adds to the `model_usage` day row. */
   settle(
     reservation_id: string,
     actual: { input_tokens: number; output_tokens: number; cache_read_tokens: number; usd: number; at: Date },
@@ -99,6 +108,7 @@ export type NeedsYouReason =
   | "call_budget_exceeded"
   | "escalation_exhausted"
   | "call_already_settled"
+  | "call_in_flight"
   | "local_tier_off"
   | "provider_error";
 
@@ -107,6 +117,8 @@ export type RefusedReason =
   | "leak_blocked"
   | "untrusted_tag_escape"
   | "schema_not_label_only"
+  | "schema_holds_name"
+  | "invalid_call"
   | "unknown_route";
 
 export type AttemptOutcome = "ok" | "refusal" | "cut_off" | "invalid_output" | "provider_error";

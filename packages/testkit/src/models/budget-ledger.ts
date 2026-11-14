@@ -1,20 +1,26 @@
 /**
- * InMemoryBudgetLedger (m5-03): the router's BudgetLedger port in memory. Append-only entries keyed by
- * (tenant_id, idempotency_key) like `budget_entries`, plus `model_usage` day rows. An open reservation counts at its
- * reserved amount; a settled entry counts at its actual amount. Structurally matches
- * services/brain/src/models/types.ts `BudgetLedger`. The Postgres adapter is a later slice.
+ * InMemoryBudgetLedger (m5-03): the router's BudgetLedger port in memory, shaped like the tables it stands for:
+ * - `reservations` like `budget_reservations` (reserved_usd, settled_at), one per idempotency key;
+ * - `entries` like `budget_entries`: append-only, one row written when a reservation settles, never updated;
+ * - `usage` like `model_usage` day rows.
+ * `reserve` checks the monthly and run limits and records the reservation in one synchronous step, the in-memory
+ * equivalent of the row lock in ADR 0030, so parallel calls cannot overrun a budget.
+ * Spend = settled entries + open reservations. Structurally matches services/brain/src/models/types.ts `BudgetLedger`.
  */
+
+type Scope = "brain" | "run" | "design";
 
 export interface LedgerReserveInput {
   tenant_id: string;
   idempotency_key: string;
-  scope: "brain" | "run" | "design";
+  scope: Scope;
   scope_id: string | null;
   run_id: string | null;
   model: string;
   route: string;
   usd: number;
   at: Date;
+  limits: { month_start: Date; monthly_budget_usd: number; run_budget_usd: number | null };
 }
 
 export interface LedgerSettleInput {
@@ -25,17 +31,29 @@ export interface LedgerSettleInput {
   at: Date;
 }
 
-export interface LedgerEntry {
+export interface LedgerReservation {
   id: string;
   tenant_id: string;
   idempotency_key: string;
-  scope: "brain" | "run" | "design";
+  scope: Scope;
   scope_id: string | null;
   run_id: string | null;
   model: string;
   route: string;
   reserved_usd: number;
-  state: "open" | "settled";
+  created_at: Date;
+  settled_at: Date | null;
+}
+
+export interface LedgerEntry {
+  id: string;
+  tenant_id: string;
+  idempotency_key: string;
+  scope: Scope;
+  scope_id: string | null;
+  run_id: string | null;
+  model: string;
+  route: string;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;
@@ -54,12 +72,13 @@ export interface ModelUsageRow {
   usd: number;
 }
 
-export interface ReserveResult {
-  reservation_id: string;
-  state: "new" | "open" | "settled";
-}
+export type ReserveResult =
+  | { state: "new"; reservation_id: string }
+  | { state: "open" | "settled" }
+  | { state: "over_budget"; limit: "monthly" | "run" };
 
 export class InMemoryBudgetLedger {
+  readonly reservations: LedgerReservation[] = [];
   readonly entries: LedgerEntry[] = [];
   readonly usage: ModelUsageRow[] = [];
   private readonly budgets = new Map<string, number>();
@@ -83,27 +102,44 @@ export class InMemoryBudgetLedger {
     return this.budgets.get(tenant_id) ?? this.defaultBudget;
   }
 
-  async spentThisMonth(tenant_id: string, month_start: Date): Promise<number> {
+  private monthSpend(tenant_id: string, month_start: Date): number {
+    const from = month_start.getTime();
     let sum = this.seeded.get(tenant_id) ?? 0;
-    for (const e of this.entries) {
-      if (e.tenant_id === tenant_id && e.at.getTime() >= month_start.getTime()) sum += counted(e);
+    for (const e of this.entries) if (e.tenant_id === tenant_id && e.at.getTime() >= from) sum += e.usd;
+    for (const r of this.reservations) {
+      if (r.tenant_id === tenant_id && r.settled_at === null && r.created_at.getTime() >= from) sum += r.reserved_usd;
     }
     return sum;
   }
 
-  async spentThisRun(run_id: string): Promise<number> {
+  private runSpend(run_id: string): number {
     let sum = 0;
-    for (const e of this.entries) if (e.run_id === run_id) sum += counted(e);
+    for (const e of this.entries) if (e.run_id === run_id) sum += e.usd;
+    for (const r of this.reservations) if (r.run_id === run_id && r.settled_at === null) sum += r.reserved_usd;
     return sum;
   }
 
+  async spentThisMonth(tenant_id: string, month_start: Date): Promise<number> {
+    return this.monthSpend(tenant_id, month_start);
+  }
+
+  async spentThisRun(run_id: string): Promise<number> {
+    return this.runSpend(run_id);
+  }
+
   async reserve(input: LedgerReserveInput): Promise<ReserveResult> {
-    const existing = this.entries.find(
-      (e) => e.tenant_id === input.tenant_id && e.idempotency_key === input.idempotency_key,
-    );
-    if (existing) return { reservation_id: existing.id, state: existing.state };
-    const id = `be_${this.entries.length + 1}`;
-    this.entries.push({
+    // No await between the checks and the push: atomic with respect to other calls.
+    const existing = this.reservations.find((r) => r.tenant_id === input.tenant_id && r.idempotency_key === input.idempotency_key);
+    if (existing) return { state: existing.settled_at === null ? "open" : "settled" };
+    const month = this.monthSpend(input.tenant_id, input.limits.month_start);
+    if (input.usd > 0 && (month >= input.limits.monthly_budget_usd || month + input.usd > input.limits.monthly_budget_usd)) {
+      return { state: "over_budget", limit: "monthly" };
+    }
+    if (input.limits.run_budget_usd !== null && input.run_id !== null && this.runSpend(input.run_id) + input.usd > input.limits.run_budget_usd) {
+      return { state: "over_budget", limit: "run" };
+    }
+    const id = `br_${this.reservations.length + 1}`;
+    this.reservations.push({
       id,
       tenant_id: input.tenant_id,
       idempotency_key: input.idempotency_key,
@@ -113,29 +149,36 @@ export class InMemoryBudgetLedger {
       model: input.model,
       route: input.route,
       reserved_usd: input.usd,
-      state: "open",
-      input_tokens: 0,
-      output_tokens: 0,
-      cache_read_tokens: 0,
-      usd: 0,
-      at: input.at,
+      created_at: input.at,
+      settled_at: null,
     });
-    return { reservation_id: id, state: "new" };
+    return { state: "new", reservation_id: id };
   }
 
   async settle(reservation_id: string, actual: LedgerSettleInput): Promise<void> {
-    const e = this.entries.find((x) => x.id === reservation_id);
-    if (!e) throw new Error(`unknown reservation ${reservation_id}`);
-    if (e.state === "settled") return;
-    e.state = "settled";
-    e.input_tokens = actual.input_tokens;
-    e.output_tokens = actual.output_tokens;
-    e.cache_read_tokens = actual.cache_read_tokens;
-    e.usd = actual.usd;
+    const r = this.reservations.find((x) => x.id === reservation_id);
+    if (!r) throw new Error(`unknown reservation ${reservation_id}`);
+    if (r.settled_at !== null) return;
+    r.settled_at = actual.at;
+    this.entries.push({
+      id: `be_${this.entries.length + 1}`,
+      tenant_id: r.tenant_id,
+      idempotency_key: r.idempotency_key,
+      scope: r.scope,
+      scope_id: r.scope_id,
+      run_id: r.run_id,
+      model: r.model,
+      route: r.route,
+      input_tokens: actual.input_tokens,
+      output_tokens: actual.output_tokens,
+      cache_read_tokens: actual.cache_read_tokens,
+      usd: actual.usd,
+      at: actual.at,
+    });
     const day = actual.at.toISOString().slice(0, 10);
-    let row = this.usage.find((u) => u.tenant_id === e.tenant_id && u.day === day && u.model === e.model && u.route === e.route);
+    let row = this.usage.find((u) => u.tenant_id === r.tenant_id && u.day === day && u.model === r.model && u.route === r.route);
     if (!row) {
-      row = { tenant_id: e.tenant_id, day, model: e.model, route: e.route, calls: 0, input_tokens: 0, output_tokens: 0, usd: 0 };
+      row = { tenant_id: r.tenant_id, day, model: r.model, route: r.route, calls: 0, input_tokens: 0, output_tokens: 0, usd: 0 };
       this.usage.push(row);
     }
     row.calls += 1;
@@ -143,8 +186,4 @@ export class InMemoryBudgetLedger {
     row.output_tokens += actual.output_tokens;
     row.usd += actual.usd;
   }
-}
-
-function counted(e: LedgerEntry): number {
-  return e.state === "open" ? e.reserved_usd : e.usd;
 }

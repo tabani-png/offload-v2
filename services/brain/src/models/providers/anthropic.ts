@@ -52,6 +52,7 @@ export function anthropicMessages(baseUrl: string, keySource: () => string): Mod
       if (req.schema !== undefined) body["output_config"] = { format: { type: "json_schema", schema: req.schema } };
       const res = await fetch(endpoint, {
         method: "POST",
+        redirect: "error",
         headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": ANTHROPIC_VERSION },
         body: JSON.stringify(body),
       });
