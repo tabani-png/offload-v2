@@ -153,13 +153,16 @@ export class DockerProvider implements SandboxProvider {
       "--mount", `type=bind,source=${b.work},target=${MOUNT_PATH.work}`,
       "--mount", `type=bind,source=${b.check},target=${MOUNT_PATH.check},readonly`,
       "--workdir", o.cwd,
+      // The image's own entrypoint is never used: argv[0] runs as PID 1 (the harness's kill(-1) sweep needs that).
+      "--entrypoint", o.argv[0]!,
       b.spec.image,
-      ...o.argv,
+      ...o.argv.slice(1),
     ];
   }
 
   async exec(s: Sandbox, o: ExecOptions): Promise<ExecResult> {
     checkEnv(o.env);
+    if (o.argv.length === 0 || o.argv[0] === "") throw new SandboxSpecError("exec needs a command");
     const b = this.box(s);
     const name = `offload-${s.id}-${++b.runs}`;
     const timeout = Math.min(o.timeout_ms, b.spec.wall_ms);

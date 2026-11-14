@@ -112,11 +112,13 @@ export interface Proof {
   exit: number | null;
   completed: boolean;
   tests: number;
+  /** The harness ran as PID 1 and killed every other process before reading the report. */
+  swept: boolean;
 }
 
 /** Reads the LAST `OFFLOAD_PROOF` line. ok only for this nonce, status pass, exit 0, completed and at least one test. */
 export function parseProof(stdout: string, nonce: string): Proof {
-  const none: Proof = { ok: false, nonce_ok: false, status: null, exit: null, completed: false, tests: 0 };
+  const none: Proof = { ok: false, nonce_ok: false, status: null, exit: null, completed: false, tests: 0, swept: false };
   const line = stdout
     .split("\n")
     .filter((l) => l.startsWith("OFFLOAD_PROOF "))
@@ -135,7 +137,7 @@ export function parseProof(stdout: string, nonce: string): Proof {
   const tests = typeof v["tests"] === "number" && Number.isInteger(v["tests"]) ? (v["tests"] as number) : 0;
   const nonce_ok = v["nonce"] === nonce;
   const ok = nonce_ok && status === "pass" && exit === 0 && completed && tests >= 1;
-  return { ok, nonce_ok, status, exit, completed, tests };
+  return { ok, nonce_ok, status, exit, completed, tests, swept: v["swept"] === true };
 }
 
 /** The read-only check folder of a sandbox: the check, the guard, its bunfig and the harness. */
