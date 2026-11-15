@@ -60,7 +60,7 @@ jobs:
       - run: bun scripts/check-workflows.ts
   mac:
     # Job shape ported from the old repo's ci/mac-release-workflow branch (docs/DEPLOYMENT.md section 6.2).
-    # The Swift package has empty targets today; it cannot run on the Linux dev box.
+    # The Swift package builds on macOS only; slice m3-02 (capture and upload) fills its targets, tested by `swift test`.
     # macos-26 matches the runner PR #41 built the old app on. Path filters for this job (apps/mac, packages/contracts,
     # .github/workflows) arrive with the first Swift slice; CI capacity for macOS is OQ-25 / operator item O12.
     name: mac (swift build and test, bundle stub, Swift slices)

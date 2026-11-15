@@ -2,7 +2,7 @@
 id: m3-02-mac-capture-upload
 title: Mac Accessibility-first observer, on-device masker with stable keyed pseudonyms, encrypted 7-day buffer, enrollment client, and the uploader as egress guard with a local egress ledger
 milestone: M3
-status: ready
+status: done
 depends_on: [m1-02-contracts-ingest, m1-04-login-devices, m3-01-ingest-batches]
 parallel_safe: false
 human_gated: true
@@ -12,7 +12,7 @@ parallel_group: M3-B
 owns: [apps/mac/**, .github/workflows/ci.yml]
 verify: bash slices/m3-02-mac-capture-upload/verify.sh
 min_tests: 30
-paths_in_scope: [apps/mac/**, packages/contracts/scripts/gen-swift.ts, packages/contracts/package.json, packages/contracts/tests/fixtures/**, slices/m3-02-mac-capture-upload/**, .github/workflows/ci.yml, package.json, bun.lock]
+paths_in_scope: [apps/mac/**, packages/contracts/scripts/gen-swift.ts, packages/contracts/package.json, packages/contracts/tests/fixtures/**, slices/m3-02-mac-capture-upload/**, .github/workflows/ci.yml, package.json, bun.lock, README.md, docs/ARCHITECTURE.md]
 paths_out_of_scope: [ee/**, services/**, packages/db/**, packages/contracts/src/**, apps/web/**, docs/adr/**]
 red_tests: [NONET, MASK, PSEUDO, EXCLUDE, STORE, UPLOAD, EGRESS]
 ---
@@ -118,4 +118,35 @@ port), Today, keyframe upload, recordings import (`OffloadImport`), the actuator
 and exits 0; with `REQUIRE_MAC=1` (CI `mac` job) a skip fails.
 
 ## Scope changes
-None.
+- Widened `paths_in_scope` by `README.md` and `docs/ARCHITECTURE.md`: both said the Mac targets are "empty" and are now
+  false ("Docs stay true", AGENTS.md). One line changed in each.
+
+## Notes from the build
+- **Tests**: 35 tests in `@Suite struct M302` (the 30 rows above plus generated-type strictness, key wrap under the
+  recovery code, the PKCE vector and the loopback listener). The fixtures are read from the repository by path, not copied
+  into a test bundle, so the JCS vectors stay one set of files.
+- **Where things live**: the pure client code that talks to the network (guard, uploader, device key, token session,
+  enrollment client with the loopback listener, `PseudonymKeyStore`) is in `OffloadUploader`; scrypt, `KeyWrap` and the
+  recovery code are in `OffloadMasker` next to `PseudonymKey`; the live macOS glue is `OffloadObserver/Live`; the app
+  wiring is `OffloadMac/CaptureRuntime.swift`.
+- **Built-in exclusions** reach Swift as `Generated/BuiltinExclusions.swift`, emitted by `gen-swift.ts` from
+  `packages/masking/src/exclusions.builtin.json`, so the freshness test also proves the list is the server's list.
+- **Seq conflicts**: a 409 `seq_replay` is answered by resending the identical bytes once (the server returns its stored
+  receipt for identical bytes); if that is refused too, the objects are re-batched under a new seq and counted
+  (`rebatched`). A detector hit stops the whole flush, sets the offending objects aside (counted `blocked`) and the next
+  flush sends the rest.
+- **Not built here** (out of scope or owner-gated): the opt-in input counts (a Settings-only item needing Input
+  Monitoring; the observer never emits `input_counts` today), keyframes, the "What was sent" screen (the ledger is
+  readable through `EgressLedger.read`), onboarding screens.
+
+## Owner steps (human_gated)
+The code and tests are done; the exit demo needs a real Mac and the signed app:
+1. O1 to O3: Apple Developer enrolment, the locked bundle id (`ai.offload.mac`, dev `ai.offload.mac.dev`), Developer ID and
+   notarization secrets. Until then `swift build` output is not an app bundle, so TCC grants do not stick.
+2. On that Mac, grant Accessibility (needed for titles, URLs and text) and Screen Recording (OCR fallback only) to the
+   bundled app, then leave it running a few minutes.
+3. Demo: enroll through the browser, see the pseudonym key wrap upload (`PUT /v1/devices/{id}/pseudonym-key-wrap`) and a
+   batch arrive at the API, and read the same batch back from the local egress ledger.
+4. CI's `mac` job is the compiler of record: this slice was written and its tests run against the macOS SDK with
+   Command Line Tools only (no Xcode on the build machine), so run `bash slices/m3-02-mac-capture-upload/verify.sh` with
+   `REQUIRE_MAC=1` there before merging.
