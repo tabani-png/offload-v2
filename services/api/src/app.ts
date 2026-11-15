@@ -12,6 +12,7 @@ import {
   touchSession, uuidv7, withTenant, withTransaction, type TenantContext, type Tx,
 } from "@offload/db";
 import { calculateJwkThumbprint } from "jose";
+import { registerIngest, uploadConsentState } from "./ingest/index.ts";
 import { ApiError, errorResponse, invalidRequest, toApiError, tokenExpired, unauthenticated } from "./http.ts";
 import { systemClock, type Clock } from "./clock.ts";
 import { random32, s256, safeEqual, sha256Hex } from "./auth/crypto.ts";
@@ -85,8 +86,10 @@ export function createApp(deps: AppDeps): Hono {
 
   app.onError((err, c) => errorResponse(c, toApiError(err)));
   app.notFound((c) => errorResponse(c, new ApiError(404, "not_found", "no such route")));
-  // Refuses large bodies before reading them (Content-Length, then while streaming).
-  app.use("*", bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => errorResponse(c, new ApiError(413, "too_large", "body too large")) }));
+  // Refuses large bodies before reading them (Content-Length, then while streaming). Ingest routes carry up to 1 MiB
+  // and enforce their own limit after the device token check (docs/API.md section 3).
+  const smallBodies = bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => errorResponse(c, new ApiError(413, "too_large", "body too large")) });
+  app.use("*", (c, next) => (c.req.path.startsWith("/v1/ingest/") ? next() : smallBodies(c, next)));
 
   /** A member's role, read inside the tenant (null when the member is gone, frozen or departed). */
   const roleOf = (tenantId: string, memberId: string) =>
@@ -285,11 +288,12 @@ export function createApp(deps: AppDeps): Hono {
         const raw = random32();
         if (await issueCsrfOnce(tx, p.session.id, unissuedCsrf(p.session.tokenSha256), sha256Hex(raw))) csrf = raw;
       }
-      return { me, csrf };
+      return { me, csrf, uploadConsent: await uploadConsentState(tx, p.memberId) };
     });
-    const body: MeResponse = {
+    // upload_consent is M3 (m3-01): the contracts schema for /v1/me does not list it yet, so the body type adds it here.
+    const body: MeResponse & { upload_consent: typeof out.uploadConsent } = {
       member: out.me.member, tenant: out.me.tenant, workspaces: out.me.workspaces, tenant_role: out.me.member.tenant_role,
-      features: deps.features?.() ?? [],
+      features: deps.features?.() ?? [], upload_consent: out.uploadConsent,
       ...(out.csrf ? { csrf_token: out.csrf } : {}),
     };
     c.header("cache-control", "no-store");
@@ -444,6 +448,14 @@ export function createApp(deps: AppDeps): Hono {
       }
     });
     return c.body(null, 204);
+  });
+
+  registerIngest(app, {
+    pool, clock, tokens,
+    authenticateMember: async (c) => {
+      const p = await authenticate(c);
+      return { tenantId: p.tenantId, memberId: p.memberId, tenantRole: p.tenantRole };
+    },
   });
 
   return app;

@@ -30,3 +30,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     contentTtlDays: days(env, "OFFLOAD_CONTENT_TTL_DAYS"),
   };
 }
+
+/**
+ * Version of the "what leaves your Mac" notice (ONBOARDING.md screen 5). Upload consent counts only for this version:
+ * raising it makes every member consent again (ingest answers consent_missing until they do).
+ */
+export const UPLOAD_NOTICE_ID = "what-leaves-your-mac";
+export const UPLOAD_NOTICE_VERSION = "1";

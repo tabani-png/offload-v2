@@ -193,6 +193,7 @@ async function seedMember(tx: Tx, t: FixtureTenant, memberId: string, deviceId: 
   await q("insert into pseudonym_key_wraps (tenant_id, device_id, wrapped_key, method) values ($1, $2, $3, 'device')", [t.tenantId, deviceId, hex()]);
   await q("insert into idempotency_keys (tenant_id, key, request_sha256, status, response) values ($1, $2, $3, 201, '{}')", [t.tenantId, `idem-${uuidv7()}`, hex()]);
   await q("insert into exclusions (tenant_id, member_id, id, kind, value, source) values ($1, $2, $3, 'host', 'bank.example.test', 'user')", [t.tenantId, memberId, uuidv7()]);
+  await q("insert into consents (tenant_id, id, member_id, device_id, notice_id, notice_version) values ($1, $2, $3, $4, 'what-leaves-your-mac', '1')", [t.tenantId, uuidv7(), memberId, deviceId]);
   const importId = uuidv7();
   await q("insert into imports (tenant_id, member_id, id, source_kind, first_day, last_day) values ($1, $2, $3, 'screenshots', '2026-11-01', '2026-11-02')", [t.tenantId, memberId, importId]);
   await q("insert into ingest_batches (tenant_id, device_id, seq, kind, body_sha256, object_count) values ($1, $2, 1, 'observations', $3, 2)", [t.tenantId, deviceId, hex()]);
