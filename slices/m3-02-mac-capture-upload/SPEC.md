@@ -2,7 +2,7 @@
 id: m3-02-mac-capture-upload
 title: Mac Accessibility-first observer, on-device masker with stable keyed pseudonyms, encrypted 7-day buffer, enrollment client, and the uploader as egress guard with a local egress ledger
 milestone: M3
-status: ready
+status: in_progress
 depends_on: [m1-02-contracts-ingest, m1-04-login-devices, m3-01-ingest-batches]
 parallel_safe: false
 human_gated: true
