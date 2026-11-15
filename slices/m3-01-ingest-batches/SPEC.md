@@ -128,4 +128,9 @@ Understanding, records, keyframe storage (M5), the Mac uploader (m3-02), device 
 `bash slices/m3-01-ingest-batches/verify.sh` (needs `DATABASE_URL`).
 
 ## Scope changes
-None.
+No file outside `paths_in_scope`. Notes on what the build added inside it:
+- `services/api/package.json` gains the workspace link `@offload/masking` (no external dependency); `bun.lock` follows.
+- Migration `0006_consents_retention_jobs.sql` adds `consents` and lets `offload_retention` call `jobs_list_tenants()`, because the
+  retention workflow writes `purge_log` per tenant and had no way to list tenants.
+- `packages/testkit` seeds one `consents` row per member (the m1-03 RLS test needs a row in every tenant table).
+- `/v1/me` returns `upload_consent`; `packages/contracts` (out of scope) does not list it in `MeResponseSchema` yet, so the API types it locally.

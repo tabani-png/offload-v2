@@ -86,8 +86,9 @@ test("KEYWRAP: another device's wrap is 404", async () => {
   for (const other of [sibling, foreign]) {
     const read = await h.req(wrapUrl(other.deviceId), { bearer: t });
     expect({ id: other.deviceId, status: read.status }).toEqual({ id: other.deviceId, status: 404 });
-    expect(await errorCode(read)).toBe("not_found");
-    expect(JSON.stringify(await read.clone().text())).not.toContain("ciphertext");
+    const text = await read.text();
+    expect((JSON.parse(text) as { error: { code: string } }).error.code).toBe("not_found");
+    expect(text).not.toContain("ciphertext");
     const write = await h.req(wrapUrl(other.deviceId), {
       method: "PUT", bearer: t, json: { wrapped_key: wrapped("hijack"), wrapped_by_device_id: null, method: "recovery_code" },
     });

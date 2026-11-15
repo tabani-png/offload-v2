@@ -1,6 +1,7 @@
 /**
  * @offload/api
  * HTTP edge (Hono): public REST, device ingest, Offload MCP server, inbound webhooks, auth.
+ * m3-01-ingest-batches: device ingest, upload consent, pseudonym key wraps and the retention purge (src/ingest).
  * m1-04-login-devices: login (one OIDC provider or a magic link), web sessions, device enrollment and device tokens.
  */
 export { createApp, type AppDeps, type Mailer } from "./app.ts";
@@ -11,3 +12,7 @@ export { safeReturnTo, isLoopbackRedirect, SESSION_COOKIE } from "./auth/web.ts"
 export { ApiError } from "./http.ts";
 export { systemClock, type Clock } from "./clock.ts";
 export { loadApiConfig, resolveSecretRef, ConfigError, type ApiConfig } from "./config.ts";
+export {
+  RETENTION_CRON, RETENTION_WORKFLOW, retentionPurgeWorkflow, runRetentionPurge, scheduleRetentionPurge,
+  type RetentionDeps, type RetentionResult,
+} from "./ingest/index.ts";

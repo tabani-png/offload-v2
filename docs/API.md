@@ -158,7 +158,7 @@ session; the server stores a single-use code (10 min) in `device_enrollment_code
 | `POST /v1/devices/challenge` | `{ device_id, audience: "device" \| "member" }` | `{ nonce, expires_at }` (2 min; the token gets this audience); 401 `unauthenticated` for an unknown or revoked device; 429 `rate_limited` (`Retry-After: 120`) when the device already holds 20 open nonces |
 | `POST /v1/devices/token` | `{ device_id, nonce, signature }` | `{ token, expires_at }` (15 min); 401 `unauthenticated` for a bad signature or revoked device; 401 `token_expired` for an expired nonce; 409 `nonce_used` |
 | `GET /v1/devices` · `DELETE /v1/devices/{id}` | session or member token; owner and admin see and revoke every device of the tenant, others their own | `Device[]` (`{ id, member_id, name, key_storage, enrolled_at, revoked_at }`) · 204, also for an already revoked device; 404 for another member's device. Revocation is immediate: tokens already minted fail on their next use |
-| `GET /v1/devices/{id}/pseudonym-key-wrap` · `PUT /v1/devices/{id}/pseudonym-key-wrap` (M3, m3-01) | device token (`aud=device`, own device only); PUT body `{ wrapped_key, wrapped_by_device_id \| null, method: "device" \| "recovery_code", recovery_wrap? }` (`recovery_wrap` only from the first device) | GET: this device's `{ wrapped_key, wrapped_by_device_id, method }`, or `{ recovery_wrap }` for a new device with no wrap yet; another device's id is 404 · PUT: 204. Ciphertext only ([ADR 0028](adr/0028-stable-keyed-pseudonyms.md)) |
+| `GET /v1/devices/{id}/pseudonym-key-wrap` · `PUT /v1/devices/{id}/pseudonym-key-wrap` (M3, m3-01) | device token (`aud=device`, own device only); PUT body `{ wrapped_key, wrapped_by_device_id \| null, method: "device" \| "recovery_code", recovery_wrap? }` (`recovery_wrap` only from the first device) | GET: this device's `{ wrapped_key, wrapped_by_device_id, method }`, or `{ recovery_wrap }` for a new device with no wrap yet (`null` while the tenant has no recovery copy); another device's id is 404 · PUT: 204 (`recovery_wrap` is refused with 400 once another device holds it). Ciphertext only ([ADR 0028](adr/0028-stable-keyed-pseudonyms.md)) |
 | `GET /v1/devices/pending-key-wraps` (M3, m3-06) | device token; lists enrolled devices of the tenant that still need the key | `{ devices: [{ device_id, public_jwk }] }` |
 
 ### Profile and privacy (core)
@@ -274,7 +274,7 @@ and the runtime never re-resolves ([ADR 0033](adr/0033-pinned-connector-resoluti
 |---|---|---|
 | `POST /v1/ingest/batches` | `IngestEnvelope` (JCS bytes) | `IngestReceipt` |
 | `POST /v1/ingest/keyframes` (M5) | `multipart/form-data`: `meta` (JSON `KeyframeMeta`, signed) + `image` (JPEG ≤ 512 KiB) | `IngestReceipt`; 403 `consent_missing` unless `keyframes_to_cloud` (always until M5) |
-| `GET /v1/ingest/config` | device token | `{ flush_seconds: 300, max_objects: 500, max_bytes: 1048576, exclusions[], keyframes_to_cloud }` (`keyframes_to_cloud` is `false` until M5) |
+| `GET /v1/ingest/config` | device token | `{ flush_seconds: 300, max_objects: 500, max_bytes: 1048576, exclusions[], keyframes_to_cloud }` (`exclusions[]` is `{ kind, value, source }`: the built-in list then the member's own rows; `keyframes_to_cloud` is `false` until M5) |
 
 ```json
 {
@@ -360,6 +360,11 @@ Required `Observation` fields per `kind`:
 9. Return the receipt.
 
 `IngestReceipt`: `{ "accepted": ["01JC..."], "rejected": [{ "id": "01JC...", "code": "leak_detected" }] }`.
+A batch whose objects were all rejected is still a processed batch: its receipt is stored and its `seq` is used, so a resend of the
+same bytes returns the same receipt. Only a whole-request failure (steps 1 to 6) leaves `seq` free. `observations.ingested` is written only
+when at least one object was accepted. The rate limit is a per-process sliding window of 60 requests per minute per device; `429` carries
+`Retry-After`. Retention: the daily `retentionPurge` workflow (03:15 UTC) drops `observations` and `observation_texts` partitions older
+than `OFFLOAD_RAW_TTL_DAYS` and `OFFLOAD_TEXT_TTL_DAYS` and writes `purge_log` (`raw_ttl`, `text_ttl`) for each tenant that lost rows.
 Object rejection codes: `schema_invalid`, `leak_detected`, `excluded`, `too_old`, `unknown_kind`, `not_enabled`,
 `consent_missing`, `rate_limited` (retryable), `server_error` (retryable).
 
