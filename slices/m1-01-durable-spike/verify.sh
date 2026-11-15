@@ -11,7 +11,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m1-01-durable-spike"
-BASE=""                                  # commit this slice stacks on (required once status is in_progress)
+BASE="8f6ff2d735e25c8d04f252334bc5a31920de0808"                                  # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="packages/db/tests/m1-01-durable-spike"   # one or more folders, space separated
 NEEDS_POSTGRES=1                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 # -------------------------------------------------------------------------

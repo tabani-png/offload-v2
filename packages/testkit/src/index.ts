@@ -1,8 +1,8 @@
 /**
  * @offload/testkit
- * Test helpers: PGlite tenant fixtures, golden-file helpers, fake model router, fake sandbox.
- *
- * Architecture only. No feature code yet. See AGENTS.md.
- * The first slice that touches this package replaces this marker.
+ * Test helpers. m1-03: real-Postgres tenant fixtures (pgTenantFixture, seedTenantRows, freshDatabase, roleUrl) and
+ * commit fault injection (onBeforeCommit). m1-04: auth fakes (FakeClock, fakeOidcIssuer, FakeMailer, deviceKey,
+ * deviceTokenSigningKey, pkcePair). Fake model router and fake sandbox arrive with later slices.
  */
-export type TodoTestkit = "TODO: not implemented. See AGENTS.md";
+export * from "./pg.ts";
+export * from "./auth.ts";

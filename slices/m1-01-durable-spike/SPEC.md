@@ -2,7 +2,7 @@
 id: m1-01-durable-spike
 title: Durable runtime spike - DBOS Transact on Bun behind the DurableRuntime port, with the fallback order and the outcome written into ADR 0009
 milestone: M1
-status: ready
+status: done
 depends_on: []
 parallel_safe: false
 human_gated: false
@@ -86,4 +86,17 @@ workflow, queues with concurrency limits (added with the first builder slice).
 `bash slices/m1-01-durable-spike/verify.sh` (needs `DATABASE_URL`).
 
 ## Scope changes
-None yet. Record the chosen fallback option here if (a) fails.
+None to scope. Option (a), DBOS Transact on Bun, passed every test, so fallbacks (b) and (c) were not used.
+Additions to the port beyond the SPEC's listing, all additive:
+- `DurableRuntime.create` also takes `workflows` (bodies by name; DBOS needs them registered before launch) and
+  `migratorUrl` (runs migrations as `offload_migrator`, which owns schema `durable`).
+- `startWorkflow(name, input, { workflowId? })`, `withTenant(fn)` and `shutdown()` on the runtime.
+- Dev dependency `@types/pg` 8.23.1 (types for the `pg` driver).
+- A ninth test, "DURABLE: schema durable is owned by offload_migrator" (skips only if the role cannot be created).
+- Step outputs are checked with `assertIdsOnly`, not just inputs and messages.
+Outcome and the reasons for the schedule tick loop are in ADR 0009 "Spike result".
+- CI fix (2026-11-14, with m1-03's password-auth fix): the kill test spawns the child with `process.execPath`, not
+  `"bun"`. Where `bun` on PATH is a shell shim, SIGKILL hit the shim and the real child kept running: it held DBOS
+  connections (the next run's `drop schema durable cascade` could deadlock) and could finish step two itself. The
+  child writes its pid and the test asserts that process is gone after the kill. `offload_migrator` gets the testkit's
+  `testRolePassword` instead of a random password (see m1-03's Scope changes).

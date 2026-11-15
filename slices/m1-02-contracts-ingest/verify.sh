@@ -11,7 +11,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m1-02-contracts-ingest"
-BASE=""                                  # commit this slice stacks on (required once status is in_progress)
+BASE="8f6ff2d735e25c8d04f252334bc5a31920de0808"                                  # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="packages/contracts/tests/m1-02-contracts-ingest"   # one or more folders, space separated
 NEEDS_POSTGRES=0                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 # -------------------------------------------------------------------------

@@ -11,7 +11,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m1-03-tenancy-rls"
-BASE=""                                  # commit this slice stacks on (required once status is in_progress)
+BASE="36231a36557dfca585560c5e06aee1ff4ce069f4"                                 # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="packages/db/tests/m1-03-tenancy-rls"   # one or more folders, space separated
 NEEDS_POSTGRES=1                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 # -------------------------------------------------------------------------

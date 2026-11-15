@@ -10,5 +10,16 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@offload/contracts": "workspace:*",
+    "@offload/db": "workspace:*",
+    "hono": "4.13.13",
+    "jose": "6.2.13",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@offload/testkit": "workspace:*",
+    "@types/pg": "8.23.1"
   }
 }
