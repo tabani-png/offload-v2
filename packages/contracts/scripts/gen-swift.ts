@@ -199,7 +199,6 @@ class Emitter {
     const allowed = props.map((p) => q(p.json)).join(", ");
     const dec: string[] = [];
     for (const p of props) {
-      const field = q(p.json);
       if (p.constValue !== undefined) {
         const lit = typeof p.constValue === "string" ? q(p.constValue) : String(p.constValue);
         const ty = typeof p.constValue === "string" ? "String" : "Int";
