@@ -2,7 +2,7 @@
 id: m2-02-connections-catalog
 title: Connections API, the launch catalog as data, capabilities, and connection pins (tool pin hashes stored at connect, compared before a run)
 milestone: M2
-status: in_progress
+status: done
 depends_on: [m1-02-contracts-ingest, m1-03-tenancy-rls, m1-04-login-devices, m1-05-routine-contract]
 parallel_safe: true
 human_gated: true
