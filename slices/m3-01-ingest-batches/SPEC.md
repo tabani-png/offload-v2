@@ -2,7 +2,7 @@
 id: m3-01-ingest-batches
 title: POST /v1/ingest/batches with signature, seq, clock and device checks, schema validation, upload consent, transport leak scan, idempotent insert, outbox event, pseudonym key wraps, and the scheduled retention purge
 milestone: M3
-status: in_progress
+status: done
 depends_on: [m1-02-contracts-ingest, m1-03-tenancy-rls, m1-04-login-devices]
 parallel_safe: true
 human_gated: false
