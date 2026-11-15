@@ -9,6 +9,10 @@ import {
   ErrorEnvelopeSchema, FigureSchema, IngestEnvelopeSchema, IngestReceiptSchema, KeyframeMetaSchema, NoticeAckSchema,
   ObservationSchema, ReviewEventSchema, StepResultSchema,
 } from "../src/index.ts";
+import {
+  CapabilitySchema, CatalogEntrySchema, ConnectionCreatedSchema, ConnectionCreateSchema, ConnectionSchema,
+  ToolPinListSchema,
+} from "../src/connections/index.ts";
 
 const SCHEMAS: Record<string, z.ZodType> = {
   "error-envelope": ErrorEnvelopeSchema,
@@ -20,6 +24,12 @@ const SCHEMAS: Record<string, z.ZodType> = {
   observation: ObservationSchema,
   "review-event": ReviewEventSchema,
   "step-result": StepResultSchema,
+  "catalog-entry": CatalogEntrySchema,
+  connection: ConnectionSchema,
+  "connection-create": ConnectionCreateSchema,
+  "connection-created": ConnectionCreatedSchema,
+  "tool-pin-list": ToolPinListSchema,
+  capability: CapabilitySchema,
 };
 
 /**
@@ -38,12 +48,29 @@ function addImportRule(node: unknown): void {
   for (const v of Object.values(o)) addImportRule(v);
 }
 
+/**
+ * The capability rule zod cannot export: a capability whose `step_class` is "commit" needs
+ * `commit_arguments_allowlist`.
+ */
+function addCommitAllowlistRule(node: unknown): void {
+  if (Array.isArray(node)) return node.forEach(addCommitAllowlistRule);
+  if (node === null || typeof node !== "object") return;
+  const o = node as Record<string, unknown>;
+  const props = o["properties"] as Record<string, unknown> | undefined;
+  if (props && "step_class" in props && "commit_arguments_allowlist" in props) {
+    o["if"] = { properties: { step_class: { const: "commit" } }, required: ["step_class"] };
+    o["then"] = { properties: { commit_arguments_allowlist: true }, required: ["commit_arguments_allowlist"] };
+  }
+  for (const v of Object.values(o)) addCommitAllowlistRule(v);
+}
+
 /** file name -> exact file text. Pure: no file access. */
 export function generateSchemas(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [name, schema] of Object.entries(SCHEMAS)) {
     const json = z.toJSONSchema(schema, { target: "draft-2020-12", io: "input" }) as Record<string, unknown>;
     addImportRule(json);
+    addCommitAllowlistRule(json);
     const { $schema, ...rest } = json;
     const doc = { $schema, $id: `https://offload.consultance.ai/schemas/${name}.json`, ...rest };
     out[`${name}.schema.json`] = `${JSON.stringify(doc, null, 2)}\n`;

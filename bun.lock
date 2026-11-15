@@ -32,6 +32,10 @@
     "packages/connectors-sdk": {
       "name": "@offload/connectors-sdk",
       "version": "0.0.0",
+      "dependencies": {
+        "@offload/contracts": "workspace:*",
+        "zod": "4.6.7",
+      },
     },
     "packages/contracts": {
       "name": "@offload/contracts",
@@ -81,6 +85,7 @@
       "name": "@offload/testkit",
       "version": "0.0.0",
       "dependencies": {
+        "@offload/connectors-sdk": "workspace:*",
         "@offload/contracts": "workspace:*",
         "@offload/db": "workspace:*",
         "jose": "6.2.13",
@@ -94,6 +99,7 @@
       "name": "@offload/api",
       "version": "0.0.0",
       "dependencies": {
+        "@offload/connectors-sdk": "workspace:*",
         "@offload/contracts": "workspace:*",
         "@offload/db": "workspace:*",
         "hono": "4.13.13",

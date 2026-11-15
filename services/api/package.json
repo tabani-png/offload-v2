@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@offload/connectors-sdk": "workspace:*",
     "@offload/contracts": "workspace:*",
     "@offload/db": "workspace:*",
     "hono": "4.13.13",
