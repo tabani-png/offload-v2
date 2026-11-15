@@ -2,7 +2,7 @@
 id: m2-03-credential-broker
 title: Credential broker process with the credential vault, key providers local and aws-kms, OAuth code exchange, single-flight refresh, and the read set and item hash re-checks
 milestone: M2
-status: done
+status: in_progress
 depends_on: [m1-02-contracts-ingest, m1-03-tenancy-rls]
 parallel_safe: true
 human_gated: false
@@ -110,7 +110,10 @@ PRs #43 to #45. The broker approval rules of old `control/src/modules/broker/*` 
       example `sheets.googleapis.com`, `api.stripe.com`, `backend.composio.dev`, the Notion and Linear MCP hosts);
       otherwise 403 `host_not_allowed` and no credential is decrypted.
     - The credential is added only to the outbound request's auth header (or Composio's `x-api-key` with the member
-      uuid as `user_id`); the response to the caller is the upstream status and body only.
+      uuid as `user_id`); the response to the caller is the upstream status and body only. The broker always overwrites
+      `user_id` with the connection's member uuid, in a JSON object body and in the query string; a caller-supplied
+      `user_id` never survives, and a composio call on a connection with no member uuid is refused (400
+      `invalid_request`, upstream not called).
   - `RunScopeSource` and `ApprovalVerifier` are ports. Their Postgres implementations land with the tables they read
     (approvals in m2-06, routine versions and runs in m2-09/m2-10, fixture sets in m2-04). This slice ships fakes in
     `packages/testkit/src/broker/`.
@@ -154,6 +157,9 @@ except loopback fakes).
 | BROKER | BROKER: a request to a host outside the provider allowlist is refused and nothing is decrypted | `FakeKms` saw no unwrap |
 | BROKER | BROKER: the credential reaches only the upstream auth header and never the caller | `fakeUpstream` saw it; the RPC response did not |
 | BROKER | BROKER: the socket file is mode 0600 | |
+| BROKER | BROKER: a caller-supplied user_id in the composio body is replaced by the member uuid | |
+| BROKER | BROKER: a caller-supplied user_id in the composio query string is replaced by the member uuid | |
+| BROKER | BROKER: a composio call on a connection with no member uuid is refused and nothing is sent | 400 `invalid_request` |
 | OAUTH | OAUTH: begin returns an authorize_url with PKCE S256 and a single-use state | only `state_sha256` stored |
 | OAUTH | OAUTH: finish with a used or expired state is refused and stores nothing | 10 minutes, fake clock |
 | OAUTH | OAUTH: finish exchanges the code with the client secret inside the broker and stores the tokens encrypted | `connections.state = active`; tokens only as ciphertext |
@@ -210,6 +216,9 @@ read of the code plus the red tests below; the AGENTS.md independent reviewer pa
   capability. Not closed here because binding the request to the capability needs a capability-to-request-shape table
   (method, path template, body derived from `arguments`) that belongs to the connector contract (m2-04 and
   connectors-sdk, both out of scope), and `docs/adr/**` is out of scope. See the first Follow-up.
+- Composio identity: the member uuid is the Composio `user_id` and is enforced, not defaulted. `handleCall` overwrites
+  `user_id` in the body and the query string and refuses a composio call with no member uuid (round 1 verifier defect,
+  fixed test first; covered by the three `BROKER: ... composio ... member uuid` tests).
 - Order of checks: service token (constant time, sha256 then `timingSafeEqual`) before parse or lookup; host allowlist
   before decrypt; credential used only in `handleCall` after both. No finding.
 - Egress: `fetch` only in `egress/http.ts`, `redirect: "manual"` so a credential is never replayed to another host,

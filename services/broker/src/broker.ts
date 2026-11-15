@@ -194,22 +194,23 @@ export function createBroker(deps: BrokerDeps): Broker {
       if (!deps.composio) throw new BrokerError("server_error", "composio is not configured");
       headers["x-api-key"] = deps.composio.apiKey;
       secrets.push(deps.composio.apiKey);
-      if (conn.member_id) {
-        let done = false;
-        if (body !== null) {
-          try {
-            const parsed: unknown = JSON.parse(body);
-            if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-              (parsed as Record<string, unknown>)["user_id"] ??= conn.member_id;
-              body = JSON.stringify(parsed);
-              done = true;
-            }
-          } catch {
-            /* not JSON: use the query string */
-          }
-        }
-        if (!done && !url.searchParams.has("user_id")) url.searchParams.set("user_id", conn.member_id);
+      // The member uuid is the Composio user_id and the caller cannot choose it: overwrite, never default.
+      if (!conn.member_id) {
+        return refuse(t, req.connection_id, "invalid_request", "the connection has no member to act as", { capability });
       }
+      if (body !== null) {
+        try {
+          const parsed: unknown = JSON.parse(body);
+          if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+            (parsed as Record<string, unknown>)["user_id"] = conn.member_id;
+            body = JSON.stringify(parsed);
+          }
+        } catch {
+          /* not JSON: the query string carries it */
+        }
+      }
+      // Always pin the query string too (set replaces every caller-supplied user_id).
+      url.searchParams.set("user_id", conn.member_id);
     } else {
       const secret = await usableSecret(t, req.connection_id);
       const [name, value] = authHeader(cfg, secret);
