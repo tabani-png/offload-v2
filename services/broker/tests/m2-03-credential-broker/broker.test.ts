@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { jcs, sha256Hex } from "@offload/contracts";
 import { uuidv7 } from "@offload/db";
 import { brokerClient } from "@offload/testkit/src/broker/index.ts";
+import type { FixtureTenant } from "@offload/testkit/src/pg.ts";
 import { COMPOSIO_KEY, SERVICE_TOKEN, auditActions, commitCall, connect, credentialRow, readCall, setup, type Env } from "./harness.ts";
 
 let env: Env;
@@ -189,6 +190,56 @@ test("BROKER: the composio adapter sends x-api-key and the member uuid as user_i
   expect(JSON.parse(seen.body).user_id).toBe(t.member);
   expect(r.text.includes(COMPOSIO_KEY)).toBe(false);
   expect(await credentialRow(env, t, conn)).toBeUndefined();
+});
+
+const FOREIGN_USER = "00000000-0000-4000-8000-00000000dead";
+
+async function composioConn(t: FixtureTenant): Promise<string> {
+  const conn = await connect(env, t, { adapter: "composio", provider: "slack", member: t.member });
+  await env.fx.admin.query("update connections set state = 'active' where tenant_id = $1 and id = $2", [t.tenantId, conn]);
+  env.scope.runs.set(RUN, ["message.read"]);
+  env.upstream.respond = () => Response.json({ items: [] });
+  return conn;
+}
+
+test("BROKER: a caller-supplied user_id in the composio body is replaced by the member uuid", async () => {
+  const t = env.fx.a;
+  const conn = await composioConn(t);
+  const r = await env.call("/call", {
+    ...readCall(env, t, conn, "message.read", { run_id: RUN }),
+    request: { method: "POST", url: `http://${env.upstream.host}/api/v3/tools/execute/SLACK_LIST`, headers: { "content-type": "application/json" }, body: JSON.stringify({ arguments: {}, user_id: FOREIGN_USER }) },
+  });
+  expect(r.status).toBe(200);
+  const seen = env.upstream.requests.at(-1)!;
+  expect(JSON.parse(seen.body).user_id).toBe(t.member);
+  expect(seen.body.includes(FOREIGN_USER)).toBe(false);
+});
+
+test("BROKER: a caller-supplied user_id in the composio query string is replaced by the member uuid", async () => {
+  const t = env.fx.a;
+  const conn = await composioConn(t);
+  const r = await env.call("/call", {
+    ...readCall(env, t, conn, "message.read", { run_id: RUN }),
+    request: { method: "GET", url: `http://${env.upstream.host}/api/v3/tools/execute/SLACK_LIST?user_id=${FOREIGN_USER}&x=1`, headers: {}, body: null },
+  });
+  expect(r.status).toBe(200);
+  const seen = env.upstream.requests.at(-1)!;
+  const u = new URL(`http://x${seen.path}`);
+  expect(u.searchParams.getAll("user_id")).toEqual([t.member]);
+  expect(u.searchParams.get("x")).toBe("1");
+});
+
+test("BROKER: a composio call on a connection with no member uuid is refused and nothing is sent", async () => {
+  const t = env.fx.a;
+  const conn = await composioConn(t);
+  await env.fx.admin.query("update connections set member_id = null where tenant_id = $1 and id = $2", [t.tenantId, conn]);
+  const before = env.upstream.requests.length;
+  const r = await env.call("/call", {
+    ...readCall(env, t, conn, "message.read", { run_id: RUN }),
+    request: { method: "POST", url: `http://${env.upstream.host}/api/v3/tools/execute/SLACK_LIST`, headers: { "content-type": "application/json" }, body: JSON.stringify({ arguments: {}, user_id: FOREIGN_USER }) },
+  });
+  expect(r.status).toBe(400);
+  expect(env.upstream.requests.length).toBe(before);
 });
 
 test("BROKER: tools/list uses the same outbound rules and returns the raw tool list", async () => {
