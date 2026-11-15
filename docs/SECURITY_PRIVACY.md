@@ -227,7 +227,10 @@ v2 design ([ADR 0011](adr/0011-sandboxed-build-workers.md)):
   request, to hosts on the provider's allowlist, never follows a redirect, and never returns a credential or echoes one
   from an upstream body. Refusals are audited (`broker.refused`) with ids and hashes only.
 - Only the broker decrypts. It re-checks the gate token and item hash before a commit and the run's declared read set
-  before a read. Token refresh is single-flight with a lease: a short transaction takes the lease, the refresh call runs
+  before a read. **Known gap until the capability-to-request binding lands (follow-up of m2-03):** these checks bind to
+  the declared capability and `arguments`, not to the outbound method, path and body, so a compromised main process
+  could still send a write on an allowlisted host under a declared read capability, or change the body of an approved
+  commit; the host allowlist is the only request-level control today. Token refresh is single-flight with a lease: a short transaction takes the lease, the refresh call runs
   outside any transaction, a second short transaction writes the result. **No network I/O inside `withTenant`.**
 - Server egress is limited by lint and test: `fetch`, `Bun.connect`, `node:http(s)` and `node:net` may appear only in
   the model router, the broker, the sandbox provider, the model egress proxy, the OIDC client and outbound webhooks

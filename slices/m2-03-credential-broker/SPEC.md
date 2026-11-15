@@ -199,6 +199,17 @@ read of the code plus the red tests below; the AGENTS.md independent reviewer pa
 - Item hash and read set: `handleCall` computes `item_hash = sha256Hex(jcs(arguments))` itself, asks `ApprovalVerifier`
   before any decrypt, and refuses an undeclared read before any decrypt. Covered by `BROKER: a commit whose item hash is
   not in the approved batch is refused`, `...hashes the arguments itself`, `...outside the run's declared read set`.
+- **Finding (residual, accepted for this slice, must close before M2 exit): the checks bind to the declared
+  `capability` and `arguments`, not to the outbound `request`.** The SPEC's contract checks the read set against
+  `capability` and the approval against `jcs(arguments)`; `request.method`, `request.url` path and `request.body` are
+  built by the caller (connectors-sdk, out of scope) and the broker only checks the host allowlist. So a compromised
+  main process can (a) send `kind: "read"` with a declared capability and a POST/PUT/PATCH/DELETE or a write path on an
+  allowlisted host, which carries the credential and writes upstream with no approval, or (b) reuse an approved
+  `arguments` object with a different `request.body`. This narrows, and does not meet, ADR 0034 line 34 ("it can only
+  ask the broker for an approved call"): today it can ask for any call on an allowlisted host that names a declared
+  capability. Not closed here because binding the request to the capability needs a capability-to-request-shape table
+  (method, path template, body derived from `arguments`) that belongs to the connector contract (m2-04 and
+  connectors-sdk, both out of scope), and `docs/adr/**` is out of scope. See the first Follow-up.
 - Order of checks: service token (constant time, sha256 then `timingSafeEqual`) before parse or lookup; host allowlist
   before decrypt; credential used only in `handleCall` after both. No finding.
 - Egress: `fetch` only in `egress/http.ts`, `redirect: "manual"` so a credential is never replayed to another host,
@@ -211,6 +222,13 @@ read of the code plus the red tests below; the AGENTS.md independent reviewer pa
   role until `bootstrapRoles` owns it (see Follow-ups).
 
 ## Follow-ups (owned by another slice, needed before M2 exit)
+- **Bind the outbound request to the checked capability and arguments** (closes the finding above; m2-04 with
+  connectors-sdk, plus a revision line in ADR 0034). Options: the broker builds `request` itself from a pinned
+  per-capability template and `arguments`; or the caller sends `request` and the broker verifies it against that
+  template. Minimum rules: a `read` capability may only use GET, or a POST on a path the template marks read-only (MCP
+  `tools/list`, `tools/call` for a read-class tool); a `commit` hash covers `arguments` and the request body is derived
+  from it or hashed with it (`item_hash = sha256Hex(jcs({arguments, request}))` if the caller keeps building it). Add
+  red tests: a `read` with a POST write path is refused; an approved `arguments` with a changed body is refused.
 - Add `offload_broker` to `ROLES` and `bootstrapRoles` in `packages/db/src/roles.ts` (out of scope here), so `0201` grants
   run on a fresh deployment instead of printing a notice. Until then DEPLOYMENT.md tells the operator to create the role
   before running migrations, or to re-run the `0201` grants.
