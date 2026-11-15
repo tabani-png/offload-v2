@@ -310,6 +310,11 @@ The connector port, catalog, capabilities and pins are in `packages/connectors-s
 | `GET /v1/notices` · `POST /v1/feature-enablements` | **ee** (M9) | team monitoring notices and enablement records ([OQ-15](OPEN_QUESTIONS.md#oq-15-monitoring-law-features-for-teams)) |
 | `GET /v1/budget?scope=` | core | spend by scope from `budget_entries` and `model_usage` |
 
+Core anchors: the `auditAnchor` job signs each tenant's chain head every hour (cron `0 * * * *`, UTC) with the Ed25519
+key named by `OFFLOAD_SERVICE_SIGNING_KEY_REF`, and writes nothing when the head has not moved. `verify` recomputes the
+chain from seq 1 and then checks every anchor. Anchors live in the same database, so they catch accidental damage and
+tampering by someone without the key, not the operator (an external sink is EE, M9).
+
 `service_principals` and `circuit_breaker_trips` writes are internal; trips are read through `GET /v1/routines/{id}`.
 
 ## 3. Device ingest
