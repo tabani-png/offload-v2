@@ -6,7 +6,7 @@ beforeAll(async () => {
   h = await makeHarness();
 });
 afterAll(async () => {
-  await h.close();
+  await h?.close(); // beforeAll may have failed before h was set: report that failure, not a TypeError here
 });
 
 test("SESSION: first login creates a personal tenant with the member as owner", async () => {

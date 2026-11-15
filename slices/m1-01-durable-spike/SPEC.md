@@ -95,3 +95,8 @@ Additions to the port beyond the SPEC's listing, all additive:
 - A ninth test, "DURABLE: schema durable is owned by offload_migrator" (skips only if the role cannot be created).
 - Step outputs are checked with `assertIdsOnly`, not just inputs and messages.
 Outcome and the reasons for the schedule tick loop are in ADR 0009 "Spike result".
+- CI fix (2026-11-14, with m1-03's password-auth fix): the kill test spawns the child with `process.execPath`, not
+  `"bun"`. Where `bun` on PATH is a shell shim, SIGKILL hit the shim and the real child kept running: it held DBOS
+  connections (the next run's `drop schema durable cascade` could deadlock) and could finish step two itself. The
+  child writes its pid and the test asserts that process is gone after the kill. `offload_migrator` gets the testkit's
+  `testRolePassword` instead of a random password (see m1-03's Scope changes).

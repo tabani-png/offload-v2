@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Pool } from "pg";
 import { MAX_RECV_MS, DurableRuntime, assertIdsOnly, type WorkflowFn } from "../../src/durable/index.ts";
+import { testRolePassword } from "@offload/testkit";
 import { TENANT_A, TENANT_B, bump, count, databaseUrl, fakeClock, newPool, waitFor, withUser } from "./helpers.ts";
 
 const CANARY = "Quarterly invoice for Hartwell Bakery, total 4,812 pounds";
@@ -57,7 +58,9 @@ beforeAll(async () => {
   try {
     await pool.query("do $$ begin if not exists (select 1 from pg_roles where rolname = 'offload_migrator') then create role offload_migrator login; end if; end $$");
     await pool.query("select format('grant create on database %I to offload_migrator', current_database()) as q").then((r) => pool.query(r.rows[0].q));
-    const password = randomUUID(); // throwaway, never printed; works with trust and with password auth
+    // The same test-only password the testkit fixture uses (never printed): a random one here would break a
+    // concurrent fixture run on a password-auth cluster, since roles are cluster-wide.
+    const password = testRolePassword("offload_migrator");
     await pool.query(`alter role offload_migrator login password '${password}'`);
     migratorUrl = withUser(databaseUrl(), "offload_migrator", password);
     migratorOwned = true;
@@ -89,24 +92,34 @@ async function durableDump(): Promise<string> {
 }
 
 // ---- kill scenario (child Bun process), run once and shared by the first two tests ----
-let scenario: Promise<{ workflowId: string; checkpointBeforeKill: boolean; killedExit: number }> | undefined;
+let scenario: Promise<{ workflowId: string; checkpointBeforeKill: boolean; killedExit: number; killedAlive: boolean }> | undefined;
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 function killScenario() {
   scenario ??= (async () => {
     const wd = mkdtempSync(join(tmpdir(), "durable-kill-"));
     const workflowId = randomUUID();
     const script = join(import.meta.dir, "child-workflow.ts");
     const env = { ...process.env };
-    const first = Bun.spawn(["bun", script, "start", wd, workflowId], { env, stdout: "ignore", stderr: "ignore" });
+    // process.execPath, not "bun": on PATH `bun` can be a shell shim, and SIGKILL would then miss the workflow process.
+    const first = Bun.spawn([process.execPath, script, "start", wd, workflowId], { env, stdout: "ignore", stderr: "ignore" });
     const checkpointed = async () =>
       (await pool.query("select 1 from durable.operation_outputs where workflow_uuid = $1 and function_name = 'step-one'", [workflowId])).rowCount === 1;
     await waitFor("step one checkpoint row", async () => (await checkpointed()) || null);
       first.kill("SIGKILL");
     const killedExit = await first.exited;
+    const killedAlive = alive(Number(await Bun.file(join(wd, "start.pid")).text()));
     await Bun.write(join(wd, "release"), "go");
-    const second = Bun.spawn(["bun", script, "resume", wd, workflowId], { env, stdout: "ignore", stderr: "ignore" });
+    const second = Bun.spawn([process.execPath, script, "resume", wd, workflowId], { env, stdout: "ignore", stderr: "ignore" });
     expect(await second.exited).toBe(0);
     scenarioDir = wd;
-    return { workflowId, checkpointBeforeKill: true, killedExit };
+    return { workflowId, checkpointBeforeKill: true, killedExit, killedAlive };
   })();
   return scenario;
 }
@@ -116,6 +129,7 @@ test("DURABLE: a two-step workflow killed between steps resumes once on Bun", as
   const s = await killScenario();
   expect(s.checkpointBeforeKill).toBe(true);
   expect(s.killedExit).not.toBe(0); // it really was killed
+  expect(s.killedAlive).toBe(false); // the workflow process itself, not only a launcher in front of it
   expect(count(join(scenarioDir, "step1.count"))).toBe(1);
   expect(count(join(scenarioDir, "step2.count"))).toBe(1);
   expect(await stateOf(s.workflowId)).toBe("success");

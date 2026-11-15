@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { sha256Hex } from "@offload/contracts";
 import {
-  APPEND_ONLY_TABLES, LastOwnerError, bootstrapRoles, NetworkIoInTransactionError, createPersonalTenant, setMemberRole,
+  APPEND_ONLY_TABLES, LastOwnerError, ROLES, bootstrapRoles, NetworkIoInTransactionError, createPersonalTenant, setMemberRole,
   setMemberState, uuidv7, withTenant, withTransaction,
 } from "../../src/index.ts";
-import { pgTenantFixture, seedTenantRows, type PgTenantFixture } from "@offload/testkit";
+import { databaseUrl, pgTenantFixture, roleUrl, seedTenantRows, type PgTenantFixture } from "@offload/testkit";
 
 let fx: PgTenantFixture;
 beforeAll(async () => {
@@ -240,5 +240,27 @@ test("ROLE: bootstrapRoles is idempotent and refuses to run as a role it manages
     expect(err?.message).toMatch(/administrator/);
   } finally {
     c.release();
+  }
+});
+
+test("ROLE: the fixture's role logins carry a generated test password, so they connect under scram-sha-256 auth", async () => {
+  const roles = Object.values(ROLES) as string[];
+  const passwords = roles.map((r) => new URL(roleUrl(r)).password);
+  for (const [i, pw] of passwords.entries()) {
+    expect(pw.length).toBeGreaterThanOrEqual(32);
+    expect(new URL(roleUrl(roles[i]!)).password).toBe(pw); // stable within and across runs on one cluster
+    expect(pw).not.toBe(new URL(databaseUrl()).password);
+  }
+  expect(new Set(passwords).size).toBe(roles.length);
+  // Every login role has a SCRAM verifier, so a password-auth cluster (CI) accepts the fixture's connections.
+  const rows = (await fx.admin.query(
+    "select rolname, rolpassword like 'SCRAM-SHA-256$%' as scram from pg_authid where rolname = any($1) order by rolname",
+    [roles],
+  )).rows as { rolname: string; scram: boolean }[];
+  expect(rows.map((r) => r.rolname)).toEqual([...roles].sort());
+  for (const r of rows) expect(r.scram).toBe(true);
+  // And each pool really authenticates as its role.
+  for (const [pool, role] of [[fx.migrator, ROLES.migrator], [fx.app, ROLES.app], [fx.retention, ROLES.retention], [fx.jobs, ROLES.jobs]] as const) {
+    expect((await pool.query("select session_user as u")).rows[0].u).toBe(role);
   }
 });

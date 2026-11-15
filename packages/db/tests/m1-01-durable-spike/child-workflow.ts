@@ -23,6 +23,9 @@ const twoStep: WorkflowFn = async (rt) => {
 
 const rt = await DurableRuntime.create({ databaseUrl: databaseUrl(), workflows: { "two-step": twoStep } });
 if (mode === "start") {
+  // The parent checks this pid is gone after SIGKILL: a launcher in between (a shell shim for `bun`) would take the
+  // signal and leave this process running and holding database connections and locks.
+  await Bun.write(join(dir, "start.pid"), String(process.pid));
   await rt.startWorkflow("two-step", { tenant_id: "0197a000-0000-7000-8000-00000000000a" }, { workflowId });
   await new Promise(() => {}); // wait to be killed
 } else {

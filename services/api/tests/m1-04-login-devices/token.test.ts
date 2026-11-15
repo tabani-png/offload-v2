@@ -12,7 +12,7 @@ beforeAll(async () => {
   s = await session(h, user("token"));
 });
 afterAll(async () => {
-  await h.close();
+  await h?.close(); // beforeAll may have failed before h was set: report that failure, not a TypeError here
 });
 
 test("TOKEN: signed nonce returns a 15-minute ES256 token", async () => {
