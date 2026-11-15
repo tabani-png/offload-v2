@@ -71,8 +71,9 @@ Swift 6, SwiftUI, SwiftPM, macOS 14+ ([ADR 0024](adr/0024-client-stacks.md)). Ca
 and an attended actuator for device steps ([ADR 0007](adr/0007-cloud-brain-thin-mac-client.md),
 [ADR 0025](adr/0025-execution-placement-and-mac-actuator.md)). It does no understanding, ranking or building.
 
-SwiftPM targets (empty markers today): `OffloadContracts` (generated types, JCS), `OffloadObserver`, `OffloadMasker`,
-`OffloadStore`, `OffloadUploader`, `OffloadImport`, `OffloadActuator`, and the app target `OffloadMac`. The observer
+SwiftPM targets: `OffloadContracts` (generated types, JCS), `OffloadObserver`, `OffloadMasker`, `OffloadStore`,
+`OffloadUploader` (built in m3-02), `OffloadImport` and `OffloadActuator` (markers until their slices), and the app target
+`OffloadMac`. The observer
 depends on contracts, store and masker only and never links the uploader.
 
 Parts:

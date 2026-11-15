@@ -64,7 +64,7 @@ One person uses it free. Teams pay. Run it on Offload Cloud or on your own serve
 ## Repo map
 
 ```
-apps/mac            Swift 6 SwiftPM Mac client (empty targets; builds on macOS only)
+apps/mac            Swift 6 SwiftPM Mac client (capture, masking, egress-guarded upload; builds on macOS only)
 apps/web            React 19 + Vite web app (all plans; hosted on Pro and Enterprise)
 services/api        module: HTTP edge, REST, device ingest, device commands, webhooks, auth
 services/brain      module: understanding, user model, opportunity finder, fix designer, model router
