@@ -1,6 +1,7 @@
 // swift-tools-version: 6.0
 // Offload Mac client (thin client: capture, on-device masking and pseudonyms, egress-guarded upload, actuator, UI).
-// Architecture only: empty targets. See docs/ARCHITECTURE.md#1-mac-client.
+// Capture half (slice m3-02): contracts + JCS, store, masker, observer, uploader (egress guard), app wiring.
+// OffloadImport and OffloadActuator are still markers. See docs/ARCHITECTURE.md#1-mac-client.
 // Builds only on macOS 14+ with Swift 6 (CI job "mac"). Not buildable on Linux.
 // `swift build` output is not an app bundle: TCC grants bind to bundle id + Team ID, so daily use needs the
 // bundled, signed app (operator items O1 to O3 in docs/ROADMAP.md).

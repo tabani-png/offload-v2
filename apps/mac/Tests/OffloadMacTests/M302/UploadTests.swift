@@ -187,7 +187,11 @@ extension M302 {
         let seqs = try rig2.server.batchRequests.map { r -> Int in
             (try JSONSerialization.jsonObject(with: try #require(r.body)) as? [String: Any])?["seq"] as? Int ?? -1
         }
-        #expect(seqs.count == 3 && seqs[0] == seqs[1] && seqs[2] > seqs[1])
+        #expect(seqs.count == 3)
+        if seqs.count == 3 {
+            #expect(seqs[0] == seqs[1])
+            #expect(seqs[2] > seqs[1])
+        }
         #expect(await uploader.counters.rebatched == 1)
     }
 
@@ -225,5 +229,21 @@ extension M302 {
         #expect(EnrollmentURLs.parseCallback("/callback?code=abc&state=st", expectedState: "st") == "abc")
         #expect(EnrollmentURLs.parseCallback("/callback?code=abc&state=other", expectedState: "st") == nil)
         #expect(EnrollmentURLs.parseCallback("/elsewhere?code=abc&state=st", expectedState: "st") == nil)
+    }
+
+    @Test("UPLOAD: the loopback listener hands back the code only for the right state")
+    func loopbackListenerChecksState() async throws {
+        let listener = LoopbackListener(expectedState: "good-state")
+        let port = try await listener.start()
+        defer { listener.stop() }
+        #expect(port >= 1024)
+        func get(_ target: String) async throws -> Int {
+            let (_, response) = try await URLSession.shared.data(from: try #require(URL(string: "http://127.0.0.1:\(port)\(target)")))
+            return (response as? HTTPURLResponse)?.statusCode ?? -1
+        }
+        // A request with the wrong state is answered 400 and never becomes the code.
+        #expect(try await get("/callback?code=evil&state=other") == 400)
+        #expect(try await get("/callback?code=real-code&state=good-state") == 200)
+        #expect(try await listener.waitForCode(timeout: 5) == "real-code")
     }
 }

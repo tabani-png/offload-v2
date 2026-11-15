@@ -10,7 +10,8 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit -p .",
-    "gen:schemas": "bun scripts/gen-json-schema.ts"
+    "gen:schemas": "bun scripts/gen-json-schema.ts",
+    "gen:swift": "bun scripts/gen-swift.ts"
   },
   "dependencies": {
     "@noble/hashes": "2.4.0",

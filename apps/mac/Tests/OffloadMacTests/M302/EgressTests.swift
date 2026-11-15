@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import OffloadContracts
+@testable import OffloadMasker
 @testable import OffloadStore
 @testable import OffloadUploader
 
@@ -122,7 +123,8 @@ extension M302 {
         #expect(json?["method"] as? String == "recovery_code")
         #expect(json?["wrapped_by_device_id"] is NSNull || json?["wrapped_by_device_id"] == nil)
         #expect(json?["wrapped_key"] as? String == json?["recovery_wrap"] as? String)
-        #expect(Set(json?.keys.map { $0 } ?? []).isSubset(of: ["wrapped_key", "wrapped_by_device_id", "method", "recovery_wrap"]))
+        let sent = Set((json ?? [:]).keys)
+        #expect(sent.isSubset(of: ["wrapped_key", "wrapped_by_device_id", "method", "recovery_wrap"]))
         // The key itself lives in the Keychain item, this device only.
         let secrets = MemorySecretStore()
         let keeper = PseudonymKeyStore(secrets: secrets)

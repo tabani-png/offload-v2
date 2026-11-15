@@ -194,7 +194,7 @@ final class FakeServer: HTTPTransport, @unchecked Sendable {
     }
 
     static func error(_ code: String) -> Data {
-        Data("{\"error\":{\"code\":\"\(code)\",\"message\":\"x\",\"request_id\":\"r1\"}}".utf8)
+        Data("{\"error\":{\"code\":\"\(code)\",\"message\":\"x\",\"request_id\":\"req_01JC0000000000000000000000\"}}".utf8)
     }
 }
 
