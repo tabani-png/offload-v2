@@ -2,7 +2,7 @@
 id: m2-12-audit-anchors
 title: Hourly signed audit anchors, chain verify that detects an edited event, a deleted event and a fork, and the audit read and verify routes
 milestone: M2
-status: in_progress
+status: done
 depends_on: [m1-01-durable-spike, m1-02-contracts-ingest, m1-03-tenancy-rls, m1-04-login-devices]
 parallel_safe: false
 human_gated: false
