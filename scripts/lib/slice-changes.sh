@@ -65,6 +65,6 @@ slice_files() {
   if [ "$end" = "HEAD" ]; then
     uncommitted="$(git diff --no-renames --name-only HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null)"
   fi
-  SLICE_FILES="$(printf '%s\n%s\n' "$committed" "$uncommitted" | grep -v '^$' | sort -u)"
+  SLICE_FILES="$(printf '%s\n%s\n' "$committed" "$uncommitted" | grep -v '^$' | LC_ALL=C sort -u)"
   return 0
 }
