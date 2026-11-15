@@ -11,7 +11,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m2-12-audit-anchors"
-BASE=""                                  # commit this slice stacks on (required once status is in_progress)
+BASE="8c25e91ec519c5780a0de1b35ea56e5f27edfda4"                                  # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="packages/db/tests/m2-12-audit-anchors services/api/tests/m2-12-audit-anchors"   # one or more folders, space separated
 NEEDS_POSTGRES=1                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 # -------------------------------------------------------------------------

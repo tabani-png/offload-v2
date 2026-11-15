@@ -14,3 +14,4 @@ export * from "./partitions.ts";
 export * from "./audit.ts";
 export * from "./tenants.ts";
 export * from "./auth.ts";
+export * from "./audit/index.ts";

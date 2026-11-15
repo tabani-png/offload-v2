@@ -9,3 +9,4 @@ export * from "./ingest.ts";
 export * from "./jcs.ts";
 export * from "./pseudonym.ts";
 export * from "./auth/index.ts";
+export * from "./audit/index.ts";
