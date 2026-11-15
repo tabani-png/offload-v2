@@ -10,5 +10,16 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@aws-sdk/client-kms": "3.1169.0",
+    "@offload/contracts": "workspace:*",
+    "@offload/db": "workspace:*",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@offload/testkit": "workspace:*",
+    "@types/pg": "8.23.1"
   }
 }

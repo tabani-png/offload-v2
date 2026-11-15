@@ -2,7 +2,7 @@
 id: m2-03-credential-broker
 title: Credential broker process with the credential vault, key providers local and aws-kms, OAuth code exchange, single-flight refresh, and the read set and item hash re-checks
 milestone: M2
-status: ready
+status: done
 depends_on: [m1-02-contracts-ingest, m1-03-tenancy-rls]
 parallel_safe: true
 human_gated: false
@@ -12,7 +12,7 @@ parallel_group: M2-A
 owns: [services/broker/**, packages/contracts/src/broker/**, packages/db/migrations/0201_credentials.sql, packages/testkit/src/broker/**, .env.example, docs/DEPLOYMENT.md, docs/DATA_MODEL.md, docs/SECURITY_PRIVACY.md]
 verify: bash slices/m2-03-credential-broker/verify.sh
 min_tests: 24
-paths_in_scope: [services/broker/**, packages/contracts/src/broker/**, packages/db/migrations/0201_credentials.sql, packages/testkit/src/broker/**, slices/m2-03-credential-broker/**, .env.example, docs/DEPLOYMENT.md, docs/DATA_MODEL.md, docs/SECURITY_PRIVACY.md, package.json, bun.lock]
+paths_in_scope: [services/broker/**, packages/contracts/src/broker/**, packages/db/migrations/0201_credentials.sql, packages/testkit/src/broker/**, slices/m2-03-credential-broker/**, packages/db/tests/m1-03-tenancy-rls/rls.test.ts, .env.example, docs/DEPLOYMENT.md, docs/DATA_MODEL.md, docs/SECURITY_PRIVACY.md, package.json, bun.lock]
 paths_out_of_scope: [ee/**, apps/**, services/api/**, services/brain/**, services/builder/**, services/runtime/**, packages/connectors-sdk/**, packages/masking/**, packages/db/src/**, packages/contracts/src/index.ts, packages/contracts/scripts/**, packages/contracts/schemas/**, packages/testkit/src/index.ts, docs/adr/**]
 red_tests: [KEY, VAULT, BROKER, OAUTH, REFRESH]
 ---
@@ -110,7 +110,10 @@ PRs #43 to #45. The broker approval rules of old `control/src/modules/broker/*` 
       example `sheets.googleapis.com`, `api.stripe.com`, `backend.composio.dev`, the Notion and Linear MCP hosts);
       otherwise 403 `host_not_allowed` and no credential is decrypted.
     - The credential is added only to the outbound request's auth header (or Composio's `x-api-key` with the member
-      uuid as `user_id`); the response to the caller is the upstream status and body only.
+      uuid as `user_id`); the response to the caller is the upstream status and body only. The broker always overwrites
+      `user_id` with the connection's member uuid, in a JSON object body and in the query string; a caller-supplied
+      `user_id` never survives, and a composio call on a connection with no member uuid is refused (400
+      `invalid_request`, upstream not called).
   - `RunScopeSource` and `ApprovalVerifier` are ports. Their Postgres implementations land with the tables they read
     (approvals in m2-06, routine versions and runs in m2-09/m2-10, fixture sets in m2-04). This slice ships fakes in
     `packages/testkit/src/broker/`.
@@ -154,6 +157,9 @@ except loopback fakes).
 | BROKER | BROKER: a request to a host outside the provider allowlist is refused and nothing is decrypted | `FakeKms` saw no unwrap |
 | BROKER | BROKER: the credential reaches only the upstream auth header and never the caller | `fakeUpstream` saw it; the RPC response did not |
 | BROKER | BROKER: the socket file is mode 0600 | |
+| BROKER | BROKER: a caller-supplied user_id in the composio body is replaced by the member uuid | |
+| BROKER | BROKER: a caller-supplied user_id in the composio query string is replaced by the member uuid | |
+| BROKER | BROKER: a composio call on a connection with no member uuid is refused and nothing is sent | 400 `invalid_request` |
 | OAUTH | OAUTH: begin returns an authorize_url with PKCE S256 and a single-use state | only `state_sha256` stored |
 | OAUTH | OAUTH: finish with a used or expired state is refused and stores nothing | 10 minutes, fake clock |
 | OAUTH | OAUTH: finish exchanges the code with the client secret inside the broker and stores the tokens encrypted | `connections.state = active`; tokens only as ciphertext |
@@ -175,4 +181,64 @@ per-row `wrapped_dek` column (see "Scope changes" if the reviewer asks for a per
 KMS credentials and is not counted.
 
 ## Scope changes
-None.
+- Widened `paths_in_scope` by `packages/db/tests/m1-03-tenancy-rls/rls.test.ts`. The m1-03 tests "RLS: offload_app with tenant
+  A reads zero rows of tenant B" and "RLS: with app.tenant_id unset offload_app reads zero rows" read every tenant table as
+  `offload_app`, but this slice's contract is that `offload_app` has no privilege on `credentials` or `oauth_requests`
+  (SECURITY_PRIVACY section 9), so they failed with `permission denied for table credentials`. Those two tables are now left
+  out of the three app-readable loops (`BROKER_ONLY_TABLES`); every other m1-03 check (FORCE RLS, policy shape) still covers
+  them, and the broker's own tenant wall is tested here (`VAULT: offload_broker ...`).
+- `offload_broker` cannot be created by migration `0201` (the migrator has no `CREATEROLE`), and `packages/db/src/roles.ts`
+  (`ROLES`, `bootstrapRoles`) is out of scope, so the role is created by an administrator (testkit: `ensureBrokerRole`) and
+  the grants in `0201` run only when it exists (notice otherwise). Adding it to `bootstrapRoles` is a follow-up for the slice
+  that owns `packages/db/src`.
+- `credentials` has primary key `(tenant_id, connection_id)` (the DATA_MODEL key) and also the `UNIQUE (tenant_id,
+  connection_id)` this SPEC asks for.
+- `aws-kms` wraps through the port's `wrap(dek, ctx)` by asking KMS for a data key and using it as a one-time wrapping key
+  (the vault's data key is made by the vault, KMS generates its own); see `services/broker/src/keys/aws-kms.ts`.
+- Test fixes after the red commit (harness and timing, not behaviour): the single-flight test's provider delay (40 ms, under
+  the 80 ms lease wait), the composio test sets its connection `active`, the foreign-host test accepts 400 for an unparsable
+  url, and extra tests were added (composio, tools/list, scrubber, egress lint, tenant wall, LIVE).
+
+## Security review (SECURITY_PRIVACY section 13, broker row)
+Recorded 2026-11-15 against `services/broker/src/**` at the review commit, before `done`. Reviewer: the slice builder's
+read of the code plus the red tests below; the AGENTS.md independent reviewer pass (Opus) still applies at merge.
+- Item hash and read set: `handleCall` computes `item_hash = sha256Hex(jcs(arguments))` itself, asks `ApprovalVerifier`
+  before any decrypt, and refuses an undeclared read before any decrypt. Covered by `BROKER: a commit whose item hash is
+  not in the approved batch is refused`, `...hashes the arguments itself`, `...outside the run's declared read set`.
+- **Finding (residual, accepted for this slice, must close before M2 exit): the checks bind to the declared
+  `capability` and `arguments`, not to the outbound `request`.** The SPEC's contract checks the read set against
+  `capability` and the approval against `jcs(arguments)`; `request.method`, `request.url` path and `request.body` are
+  built by the caller (connectors-sdk, out of scope) and the broker only checks the host allowlist. So a compromised
+  main process can (a) send `kind: "read"` with a declared capability and a POST/PUT/PATCH/DELETE or a write path on an
+  allowlisted host, which carries the credential and writes upstream with no approval, or (b) reuse an approved
+  `arguments` object with a different `request.body`. This narrows, and does not meet, ADR 0034 line 34 ("it can only
+  ask the broker for an approved call"): today it can ask for any call on an allowlisted host that names a declared
+  capability. Not closed here because binding the request to the capability needs a capability-to-request-shape table
+  (method, path template, body derived from `arguments`) that belongs to the connector contract (m2-04 and
+  connectors-sdk, both out of scope), and `docs/adr/**` is out of scope. See the first Follow-up.
+- Composio identity: the member uuid is the Composio `user_id` and is enforced, not defaulted. `handleCall` overwrites
+  `user_id` in the body and the query string and refuses a composio call with no member uuid (round 1 verifier defect,
+  fixed test first; covered by the three `BROKER: ... composio ... member uuid` tests).
+- Order of checks: service token (constant time, sha256 then `timingSafeEqual`) before parse or lookup; host allowlist
+  before decrypt; credential used only in `handleCall` after both. No finding.
+- Egress: `fetch` only in `egress/http.ts`, `redirect: "manual"` so a credential is never replayed to another host,
+  bounded body and 30 s timeout. Upstream bodies are scrubbed of the credential (plain, URL-encoded, base64) before they
+  reach the caller. No finding.
+- Errors and logs: unknown errors log the class and SQLSTATE only; the logger scrubs section 9 patterns. No finding.
+- Socket: umask `0177` during `Bun.serve`, then `chmod 0600`; stale socket removed only if it is a socket. No finding.
+- Residual, accepted: `redact` skips secrets shorter than 4 characters; the scrub is a backstop, not the control (the
+  control is that the credential is never placed in anything returned). `offload_broker` needs an administrator-created
+  role until `bootstrapRoles` owns it (see Follow-ups).
+
+## Follow-ups (owned by another slice, needed before M2 exit)
+- **Bind the outbound request to the checked capability and arguments** (closes the finding above; m2-04 with
+  connectors-sdk, plus a revision line in ADR 0034). Options: the broker builds `request` itself from a pinned
+  per-capability template and `arguments`; or the caller sends `request` and the broker verifies it against that
+  template. Minimum rules: a `read` capability may only use GET, or a POST on a path the template marks read-only (MCP
+  `tools/list`, `tools/call` for a read-class tool); a `commit` hash covers `arguments` and the request body is derived
+  from it or hashed with it (`item_hash = sha256Hex(jcs({arguments, request}))` if the caller keeps building it). Add
+  red tests: a `read` with a POST write path is refused; an approved `arguments` with a changed body is refused.
+- Add `offload_broker` to `ROLES` and `bootstrapRoles` in `packages/db/src/roles.ts` (out of scope here), so `0201` grants
+  run on a fresh deployment instead of printing a notice. Until then DEPLOYMENT.md tells the operator to create the role
+  before running migrations, or to re-run the `0201` grants.
+- The independent Opus reviewer pass (AGENTS.md) and the operator's one-time `LIVE:` aws-kms run are recorded in the PR.

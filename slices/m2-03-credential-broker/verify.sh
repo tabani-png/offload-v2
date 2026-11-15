@@ -11,7 +11,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m2-03-credential-broker"
-BASE=""                                  # commit this slice stacks on (required once status is in_progress)
+BASE="f6af6ca4de635aad89ba543a9a18eb8472c90e17"                                  # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="services/broker/tests/m2-03-credential-broker"   # one or more folders, space separated
 NEEDS_POSTGRES=1                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 # -------------------------------------------------------------------------

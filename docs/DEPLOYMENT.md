@@ -474,15 +474,18 @@ references).
 
 | Name | Self-host | Read by | Notes |
 |---|---|---|---|
-| `DATABASE_URL` | required | `serve`, `broker` | connects as `offload_app` (no `BYPASSRLS`) |
+| `DATABASE_URL` | required | `serve`, `broker` | connects as `offload_app` (no `BYPASSRLS`); for `broker`, a login that can `SET ROLE offload_broker`, or `offload_broker` itself |
 | `DATABASE_MIGRATOR_URL` | required | `migrate` | connects as `offload_migrator`; empty means `DATABASE_URL` |
-| `DATABASE_APP_ROLE` | optional | `serve`, `broker` | default `offload_app` |
+| `DATABASE_APP_ROLE` | optional | `serve`, `broker` | default `offload_app`; set to `offload_broker` for `broker` (the broker issues `SET ROLE` on each connection) |
 | `OFFLOAD_PUBLIC_BASE_URL` | required | `serve` | public origin behind your TLS proxy |
 | `OFFLOAD_OBJECT_STORE_URL`, `OFFLOAD_OBJECT_STORE_BUCKET` | required | `serve` | compose defaults the URL to the `objectstore` service |
 | `OFFLOAD_OBJECT_STORE_ACCESS_KEY_ID`, `OFFLOAD_OBJECT_STORE_SECRET_ACCESS_KEY` | required with static keys | `serve` | empty when a workload role grants access |
 | `OFFLOAD_RAW_TTL_DAYS`, `OFFLOAD_TEXT_TTL_DAYS`, `OFFLOAD_CONTENT_TTL_DAYS` | optional | `serve` | defaults from [OQ-02](OPEN_QUESTIONS.md#oq-02-raw-ttl-for-masked-observations-in-the-cloud) |
-| `OFFLOAD_MASTER_KEY_FILE` | required for `local` | `broker` only | path to the 32-byte key file |
+| `OFFLOAD_KEY_PROVIDER` | required | `broker` only | `local` or `aws-kms` (`gcp-kms` is not built yet) |
+| `OFFLOAD_MASTER_KEY_FILE` | required for `local` | `broker` only | path to the 32-byte key file; the broker refuses to start unless it is exactly 32 bytes, owned by its OS user and mode `0600` |
 | `OFFLOAD_KMS_KEY_REF` | required for a KMS | `broker` only | key id |
+| `OFFLOAD_BROKER_SERVICE_TOKEN_REF` | required | `serve`, `broker` | path of the file holding the service token every request to the broker carries |
+| `OFFLOAD_GOOGLE_CLIENT_ID`, `OFFLOAD_GOOGLE_CLIENT_SECRET_REF` | with Google apps | `broker` only | the owner's Internal OAuth client (operator item O5); the secret is a file path |
 | `OFFLOAD_DEVICE_TOKEN_SIGNING_KEY_REF`, `OFFLOAD_SERVICE_SIGNING_KEY_REF` | required | `serve`, `broker` | references, never the key |
 | `OFFLOAD_BROKER_SOCKET` | set by compose | `serve`, `broker` | Unix socket path in the shared volume |
 | `ANTHROPIC_API_KEY` | required unless the local tier serves every route | `serve` | your own key |
@@ -498,6 +501,14 @@ references).
 | `OFFLOAD_IMAGE`, `OFFLOAD_VERSION`, `OFFLOAD_HTTP_PORT` | compose only | compose | image and port |
 | `POSTGRES_PASSWORD` | compose only | `postgres` container | bootstrap password of `offload_migrator` |
 | `OBJECT_STORE_ROOT_USER`, `OBJECT_STORE_ROOT_PASSWORD` | compose only | `objectstore` container | root credentials of the bundled store |
+
+**Broker role.** `offload_broker` is created by an administrator, like the other database roles (the migrator has no
+`CREATEROLE`): `create role offload_broker login nosuperuser nocreatedb nocreaterole nobypassrls`, with `connect` on the
+database and `usage` on schema `public`. Migration `0201_credentials.sql` then grants it `SELECT, INSERT, UPDATE, DELETE`
+on `credentials` and `oauth_requests`, `SELECT` and `UPDATE (state)` on `connections`, and `SELECT, INSERT` on
+`audit_events`. If the role did not exist when `0201` ran, the migration only prints a notice; create the role and run
+those grants (the last `do` block of `0201`). `offload_app` has no privilege on `credentials` or `oauth_requests`.
+The broker listens on `OFFLOAD_BROKER_SOCKET` (mode `0600`); `offload broker` is `bun services/broker/src/main.ts`.
 
 Narrowing which service sees which variable (for example connector keys only in `broker`) is done when the services
 exist; the skeleton gives the `.env` file to the three Offload services.
