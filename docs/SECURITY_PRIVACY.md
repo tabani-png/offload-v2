@@ -215,6 +215,17 @@ v2 design ([ADR 0011](adr/0011-sandboxed-build-workers.md)):
 - Log scrubbing redacts known secret patterns (sk-ant, sk-, gh*_, github_pat_, AKIA/ASIA, xox*, JWT, PEM, Bearer/Basic,
   `KEY=value`), including base64 and URL-encoded forms. The same API-key patterns feed the server transport scan.
 - Credentials are references where the platform allows (Composio connected account, OAuth grant).
+- The broker runs as its own database role, `offload_broker` (not an owner, no `BYPASSRLS`): `SELECT, INSERT, UPDATE,
+  DELETE` on `credentials` and `oauth_requests`, `SELECT` and `UPDATE (state)` on `connections`, `SELECT, INSERT` on
+  `audit_events`. `offload_app` has no privilege on `credentials` or `oauth_requests`, so a bug in the main process
+  cannot read a credential. The role list itself is in [ADR 0013](adr/0013-tenancy-and-rls.md).
+- Credentials are sealed with AES-256-GCM under a per-row data key (AAD `tenant_id || 0x00 || connection_id`); the data
+  key is wrapped by the key provider (`local`: a 32-byte master key file that must be mode `0600`, owned by the broker's
+  OS user; `aws-kms`: `GenerateDataKey` and `Decrypt` with encryption context `tenant_id`). A row from another provider
+  or key fails closed (`key_provider_mismatch`). Every request to the broker carries the service token, checked in
+  constant time before any lookup; the socket is mode `0600`. The broker adds a credential only to the outbound
+  request, to hosts on the provider's allowlist, never follows a redirect, and never returns a credential or echoes one
+  from an upstream body. Refusals are audited (`broker.refused`) with ids and hashes only.
 - Only the broker decrypts. It re-checks the gate token and item hash before a commit and the run's declared read set
   before a read. Token refresh is single-flight with a lease: a short transaction takes the lease, the refresh call runs
   outside any transaction, a second short transaction writes the result. **No network I/O inside `withTenant`.**
