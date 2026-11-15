@@ -41,6 +41,9 @@ jobs:
       DATABASE_URL: postgres://offload:offload-ci@localhost:5432/offload_test
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: slice verify.sh diffs BASE..HEAD, and a shallow clone has no BASE commit.
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
@@ -49,6 +52,10 @@ jobs:
       - run: bun test
       - run: bash scripts/check-license-boundary.sh
       - run: bash scripts/check-slices.sh
+        env:
+          # Scope-check only this change's own commits: on pull_request HEAD is GitHub's merge commit and HEAD^1 is
+          # the base branch tip; on push it is the previous tip. See scripts/lib/slice-changes.sh.
+          SLICE_UPSTREAM: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
       - run: bun scripts/check-doc-links.ts
       - run: bash scripts/check-copy.sh
       - run: bash scripts/check-secrets-hygiene.sh
@@ -95,6 +102,9 @@ jobs:
       LC_ALL: en_US.UTF-8
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: slice verify.sh diffs BASE..HEAD, and a shallow clone has no BASE commit.
+          fetch-depth: 0
       - name: select toolchain and print it
         # Select the image's newest Xcode, not Command Line Tools: Swift Testing (`import Testing`) ships with Xcode
         # and is not reliably present in CLT, so `swift test` failed with "no such module 'Testing'" under CLT.
@@ -166,6 +176,7 @@ jobs:
         continue-on-error: true
         env:
           REQUIRE_MAC: "1"
+          SLICE_UPSTREAM: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
         run: |
           if grep -q '^status: done' slices/m3-02-mac-capture-upload/SPEC.md; then
             bash slices/m3-02-mac-capture-upload/verify.sh
