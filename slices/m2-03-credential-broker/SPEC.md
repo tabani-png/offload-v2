@@ -2,7 +2,7 @@
 id: m2-03-credential-broker
 title: Credential broker process with the credential vault, key providers local and aws-kms, OAuth code exchange, single-flight refresh, and the read set and item hash re-checks
 milestone: M2
-status: done
+status: in_progress
 depends_on: [m1-02-contracts-ingest, m1-03-tenancy-rls]
 parallel_safe: true
 human_gated: false
@@ -192,3 +192,26 @@ KMS credentials and is not counted.
 - Test fixes after the red commit (harness and timing, not behaviour): the single-flight test's provider delay (40 ms, under
   the 80 ms lease wait), the composio test sets its connection `active`, the foreign-host test accepts 400 for an unparsable
   url, and extra tests were added (composio, tools/list, scrubber, egress lint, tenant wall, LIVE).
+
+## Security review (SECURITY_PRIVACY section 13, broker row)
+Recorded 2026-11-15 against `services/broker/src/**` at the review commit, before `done`. Reviewer: the slice builder's
+read of the code plus the red tests below; the AGENTS.md independent reviewer pass (Opus) still applies at merge.
+- Item hash and read set: `handleCall` computes `item_hash = sha256Hex(jcs(arguments))` itself, asks `ApprovalVerifier`
+  before any decrypt, and refuses an undeclared read before any decrypt. Covered by `BROKER: a commit whose item hash is
+  not in the approved batch is refused`, `...hashes the arguments itself`, `...outside the run's declared read set`.
+- Order of checks: service token (constant time, sha256 then `timingSafeEqual`) before parse or lookup; host allowlist
+  before decrypt; credential used only in `handleCall` after both. No finding.
+- Egress: `fetch` only in `egress/http.ts`, `redirect: "manual"` so a credential is never replayed to another host,
+  bounded body and 30 s timeout. Upstream bodies are scrubbed of the credential (plain, URL-encoded, base64) before they
+  reach the caller. No finding.
+- Errors and logs: unknown errors log the class and SQLSTATE only; the logger scrubs section 9 patterns. No finding.
+- Socket: umask `0177` during `Bun.serve`, then `chmod 0600`; stale socket removed only if it is a socket. No finding.
+- Residual, accepted: `redact` skips secrets shorter than 4 characters; the scrub is a backstop, not the control (the
+  control is that the credential is never placed in anything returned). `offload_broker` needs an administrator-created
+  role until `bootstrapRoles` owns it (see Follow-ups).
+
+## Follow-ups (owned by another slice, needed before M2 exit)
+- Add `offload_broker` to `ROLES` and `bootstrapRoles` in `packages/db/src/roles.ts` (out of scope here), so `0201` grants
+  run on a fresh deployment instead of printing a notice. Until then DEPLOYMENT.md tells the operator to create the role
+  before running migrations, or to re-run the `0201` grants.
+- The independent Opus reviewer pass (AGENTS.md) and the operator's one-time `LIVE:` aws-kms run are recorded in the PR.
