@@ -300,8 +300,8 @@ The connector port, catalog, capabilities and pins are in `packages/connectors-s
 |---|---|---|
 | `GET /v1/metrics/hours-saved?scope=&period=` | core (M4) | `HoursSavedReport` (hs-1, floor of 5 for groups) |
 | `GET /v1/outcomes?month=` | core (M4) | `FixOutcome[]` (`pending`, `on_track`, `partial`, `under`, `unmeasured`, with arithmetic) |
-| `GET /v1/audit-events?cursor=` | core | `AuditEvent[]` |
-| `GET /v1/audit-events/verify` | core | `{ ok, checked, first_bad_seq? }` |
+| `GET /v1/audit-events?cursor=&limit=` | core | `{ items: AuditEvent[], next_cursor }`: newest first, `limit` 1 to 200 (default 50), `next_cursor` null on the last page. Owner, admin and auditor only; a `member` gets 403 `forbidden` |
+| `GET /v1/audit-events/verify` | core | `{ ok, checked, first_bad_seq?, reason? }`; `reason` is `hash_mismatch`, `seq_gap`, `prev_hash_mismatch`, `anchor_mismatch` or `anchor_signature`. Same roles. Each run is audited as `audit.verified` with `ok` and `checked` |
 | `POST /v1/audit-exports` · `GET /v1/audit-exports/{id}` | **ee** (M9) | `{ export_id, url }` |
 | `PUT /v1/audit-streams/{id}` | **ee** (M9) | SIEM sink config (`audit_streams`) |
 | `PUT /v1/anchor-sinks/{id}` | **ee** (M9) | external anchor sink config (`anchor_sinks`) |

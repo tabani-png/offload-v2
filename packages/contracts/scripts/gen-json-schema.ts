@@ -9,6 +9,7 @@ import {
   ErrorEnvelopeSchema, FigureSchema, IngestEnvelopeSchema, IngestReceiptSchema, KeyframeMetaSchema, NoticeAckSchema,
   ObservationSchema, ReviewEventSchema, StepResultSchema,
 } from "../src/index.ts";
+import { AuditEventListSchema, AuditEventSchema, AuditVerifyResultSchema } from "../src/audit/index.ts";
 import {
   CapabilitySchema, CatalogEntrySchema, ConnectionCreatedSchema, ConnectionCreateSchema, ConnectionSchema,
   ToolPinListSchema,
@@ -30,6 +31,9 @@ const SCHEMAS: Record<string, z.ZodType> = {
   "connection-created": ConnectionCreatedSchema,
   "tool-pin-list": ToolPinListSchema,
   capability: CapabilitySchema,
+  "audit-event": AuditEventSchema,
+  "audit-event-list": AuditEventListSchema,
+  "audit-verify-result": AuditVerifyResultSchema,
 };
 
 /**

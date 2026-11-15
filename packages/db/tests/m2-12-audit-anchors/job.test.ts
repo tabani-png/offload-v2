@@ -67,13 +67,12 @@ test("ANCHOR: the hourly job anchors every tenant once per hour in a fake clock"
 test("ANCHOR: the anchor job's workflow input and step outputs hold ids only", async () => {
   const pool = new Pool({ connectionString: process.env["DATABASE_URL"]!, max: 1 });
   try {
-    const inputs = (await pool.query("select inputs from durable.workflow_status where name = 'auditAnchor'")).rows;
-    expect(inputs.length).toBeGreaterThanOrEqual(2);
-    for (const r of inputs) {
-      const input = JSON.parse(r.inputs);
-      const first = Array.isArray(input) ? input[0] : input.args?.[0] ?? input;
-      expect(Object.keys(first).sort()).toEqual(["scheduled_for", "tenant_id"]);
-      assertIdsOnly(first);
+    // The scheduled input is { tenant_id: "system", scheduled_for }: no tenant content, nothing else.
+    const listed = await rt.list({ name: "auditAnchor" });
+    expect(listed.length).toBeGreaterThanOrEqual(2);
+    for (const w of listed) expect(w.tenantId).toBe("system");
+    for (const r of (await pool.query("select inputs from durable.workflow_status where name = 'auditAnchor' and inputs is not null")).rows) {
+      assertIdsOnly(JSON.parse(r.inputs), "workflow input");
     }
     const outs = (await pool.query("select function_name, output from durable.operation_outputs where output is not null")).rows;
     expect(outs.length).toBeGreaterThan(0);

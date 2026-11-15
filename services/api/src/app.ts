@@ -9,7 +9,7 @@ import {
   appendAudit, claimEnrollmentCode, countOpenNonces, claimMagicLink, claimNonce, createPersonalTenant, emailHash, getDevice, getNonce,
   insertDevice, insertEnrollmentCode, insertMagicLink, insertNonce, insertSession, issueCsrfOnce, listDevices, loadMe,
   memberRole, resolveDevice, resolveEnrollmentCode, resolveIdentity, resolveSession, revokeDevice, revokeSession,
-  touchSession, uuidv7, withTenant, withTransaction, type TenantContext, type Tx,
+  touchSession, uuidv7, withTenant, withTransaction, type ServiceSigner, type TenantContext, type Tx,
 } from "@offload/db";
 import { calculateJwkThumbprint } from "jose";
 import { ApiError, errorResponse, invalidRequest, toApiError, tokenExpired, unauthenticated } from "./http.ts";
@@ -21,6 +21,7 @@ import { parseP256PublicJwk, verifyDeviceSignature } from "./auth/signature.ts";
 import type { BrokerPort } from "@offload/connectors-sdk";
 import type { CatalogEntry } from "@offload/contracts/src/connections/index.ts";
 import { mountConnections } from "./connections/routes.ts";
+import { mountAudit } from "./audit/routes.ts";
 import {
   LOGIN_COOKIE, LOGIN_TTL_MS, MAGIC_LINK_TTL_MS, SESSION_ABSOLUTE_MS, SESSION_COOKIE, clearCookie, decodeLoginState,
   encodeLoginState, hostCookie, idleTimeoutMs, isLoopbackRedirect, readCookie, safeReturnTo,
@@ -55,6 +56,8 @@ export interface AppDeps {
   broker?: BrokerPort;
   /** The connector catalog (default: the shipped launch catalog). */
   catalog?: CatalogEntry[];
+  /** The audit anchor signer. Absent: GET /v1/audit-events/verify is 404. */
+  signer?: ServiceSigner;
 }
 
 type Role = "owner" | "admin" | "member" | "auditor";
@@ -454,6 +457,8 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   mountConnections(app, { pool, broker: deps.broker, authenticate, clock, publicBaseUrl: base, catalog: deps.catalog, jsonBody });
+
+  mountAudit(app, { pool, signer: deps.signer, authenticate });
 
   return app;
 }

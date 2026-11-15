@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://offload.consultance.ai/schemas/audit-verify-result.json",
+  "type": "object",
+  "properties": {
+    "ok": {
+      "type": "boolean"
+    },
+    "checked": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "first_bad_seq": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "hash_mismatch",
+        "seq_gap",
+        "prev_hash_mismatch",
+        "anchor_mismatch",
+        "anchor_signature"
+      ]
+    }
+  },
+  "required": [
+    "ok",
+    "checked"
+  ],
+  "additionalProperties": false
+}
