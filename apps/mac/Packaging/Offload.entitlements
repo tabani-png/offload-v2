@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Offload.app entitlements (DEPLOYMENT section 3.3). The hardened runtime is turned on by codesign
+     (options runtime), not here. Accessibility and Screen Recording are permission grants, not entitlements, so the
+     app needs none for capture. The Apple Events entitlement arrives with the actuator slice (M6), not before. -->
+<plist version="1.0">
+<dict/>
+</plist>

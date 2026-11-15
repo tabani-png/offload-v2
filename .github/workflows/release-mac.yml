@@ -1,0 +1,187 @@
+# Mac release: bundle, Developer ID signing, notarization and stapling, disk image, Sparkle archive and appcast item
+# (beta channel), checksums, then a GitHub prerelease. docs/DEPLOYMENT.md sections 3, 4, 6.3 and 13.
+# Runs only in the protected `release` environment (required reviewer), only on a version tag or a manual dispatch,
+# only on hosted macos-26 (a clean machine per run; OQ-25). Never on pull requests.
+# Secrets are the six placeholder names of DEPLOYMENT 13 (operator items O1 to O3, O11); public values are
+# repository variables (APPLE_TEAM_ID, SPARKLE_ED_PUBLIC_KEY, OFFLOAD_DOWNLOADS_HOST). None exists yet: the first
+# step turns each group into a true/false output, every step that needs a group is gated on it, and a sibling step
+# prints the skip line. Without signing secrets nothing is published (release builds are never ad hoc signed).
+# Action versions are pinned by tag for now; SHA pinning is an M8 acceptance test.
+# A re-release (roll forward) is this workflow dispatched on the older good tag with a higher version.
+name: release-mac
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, MAJOR.MINOR.PATCH (a tag push takes it from the tag)"
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-mac
+  cancel-in-progress: false
+jobs:
+  build:
+    name: build, sign, notarize, appcast
+    runs-on: macos-26
+    environment: release
+    timeout-minutes: 90
+    env:
+      TZ: UTC
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      DIST: apps/mac/.build/dist
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      publishable: ${{ steps.secrets.outputs.has_signing == 'true' && steps.secrets.outputs.has_notary == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: secrets
+        id: secrets
+        # Booleans only: whether each group of secrets exists. No value is read here.
+        env:
+          HAS_SIGNING: ${{ secrets.DEVELOPER_ID_P12_BASE64 != '' && secrets.DEVELOPER_ID_P12_PASSWORD != '' }}
+          HAS_NOTARY: ${{ secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.ASC_KEY_P8 != '' }}
+          HAS_SPARKLE: ${{ secrets.SPARKLE_ED_PRIVATE_KEY != '' }}
+        run: |
+          echo "has_signing=$HAS_SIGNING" >> "$GITHUB_OUTPUT"
+          echo "has_notary=$HAS_NOTARY" >> "$GITHUB_OUTPUT"
+          echo "has_sparkle=$HAS_SPARKLE" >> "$GITHUB_OUTPUT"
+          echo "signing secrets present: $HAS_SIGNING; notarization: $HAS_NOTARY; sparkle: $HAS_SPARKLE"
+      - name: version
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then v="$INPUT_VERSION"; else v="${GITHUB_REF_NAME#v}"; fi
+          echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "version must be MAJOR.MINOR.PATCH"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "version $v, build ${GITHUB_RUN_NUMBER}"
+      - name: select toolchain and print it
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer"
+          xcodebuild -version
+          swiftc --version
+          xcrun --show-sdk-version
+          sw_vers
+          uname -m
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: swift build
+        working-directory: apps/mac
+        timeout-minutes: 30
+        run: swift build -c release
+      - name: bundle app
+        env:
+          OUT_DIR: apps/mac/.build/dist
+          OFFLOAD_VERSION: ${{ steps.version.outputs.version }}
+          OFFLOAD_BUILD_NUMBER: ${{ github.run_number }}
+          OFFLOAD_DOWNLOADS_HOST: ${{ vars.OFFLOAD_DOWNLOADS_HOST }}
+          SPARKLE_ED_PUBLIC_KEY: ${{ vars.SPARKLE_ED_PUBLIC_KEY }}
+        run: bash apps/mac/Packaging/bundle.sh release
+      - name: sign with Developer ID
+        if: steps.secrets.outputs.has_signing == 'true'
+        env:
+          DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: bash apps/mac/Packaging/sign.sh "$DIST/Offload.app" developer-id
+      - name: sign with Developer ID (skipped)
+        if: steps.secrets.outputs.has_signing != 'true'
+        run: |
+          echo "signing: skipped (absent: DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD); nothing is published"
+      - name: check bundle
+        if: steps.secrets.outputs.has_signing == 'true'
+        run: |
+          bash apps/mac/Packaging/check-bundle.sh "$DIST/Offload.app"
+          codesign -d --verbose=2 "$DIST/Offload.app" 2>&1 | grep -E '^(Identifier|TeamIdentifier|Timestamp|Runtime)'
+      - name: notarize and staple
+        if: steps.secrets.outputs.has_signing == 'true' && steps.secrets.outputs.has_notary == 'true'
+        timeout-minutes: 45
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          bash apps/mac/Packaging/notarize.sh "$DIST/Offload.app" "${{ steps.version.outputs.version }}"
+          spctl --assess --type execute --verbose=4 "$DIST/Offload.app"
+      - name: notarize and staple (skipped)
+        if: steps.secrets.outputs.has_notary != 'true' || steps.secrets.outputs.has_signing != 'true'
+        run: |
+          echo "notarization: skipped (absent: ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8, or no Developer ID signature)"
+      - name: upload notary log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notary-log-${{ github.run_number }}
+          path: apps/mac/.build/dist/notary-log-*.json
+          if-no-files-found: ignore
+      - name: Sparkle archive
+        # A zip of the stapled app (DEPLOYMENT 3.5 step 3), in its own folder so generate_appcast sees only archives.
+        run: |
+          mkdir -p "$DIST/updates"
+          ditto -c -k --sequesterRsrc --keepParent "$DIST/Offload.app" \
+            "$DIST/updates/Offload-${{ steps.version.outputs.version }}.zip"
+      - name: appcast (beta)
+        if: steps.secrets.outputs.has_sparkle == 'true'
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          OFFLOAD_DOWNLOADS_HOST: ${{ vars.OFFLOAD_DOWNLOADS_HOST }}
+        run: |
+          bash apps/mac/Packaging/appcast.sh "$DIST/updates/Offload-${{ steps.version.outputs.version }}.zip" \
+            "${{ steps.version.outputs.version }}" beta
+      - name: appcast (skipped)
+        if: steps.secrets.outputs.has_sparkle != 'true'
+        run: |
+          echo "appcast: skipped (absent: SPARKLE_ED_PRIVATE_KEY)"
+      - name: checksums and notices
+        run: |
+          cd "$DIST"
+          cp ../../../../NOTICE THIRD_PARTY_NOTICES.txt
+          ls Offload-*.dmg updates/Offload-*.zip 2>/dev/null | xargs shasum -a 256 > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: upload release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: offload-mac-release-${{ steps.version.outputs.version }}
+          path: |
+            apps/mac/.build/dist/Offload-*.dmg
+            apps/mac/.build/dist/updates/
+            apps/mac/.build/dist/SHA256SUMS.txt
+            apps/mac/.build/dist/THIRD_PARTY_NOTICES.txt
+          if-no-files-found: error
+      - name: delete the temporary keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/offload-signing.keychain-db" 2>/dev/null || true
+          echo "temporary keychain removed"
+  publish:
+    # The only job with write access. Publishes a GitHub prerelease; copying the files and appcast.xml to the
+    # downloads host (operator items O7, O13) is not automated yet.
+    name: publish prerelease
+    needs: build
+    if: needs.build.outputs.publishable == 'true'
+    runs-on: macos-26
+    environment: release
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: offload-mac-release-${{ needs.build.outputs.version }}
+          path: dist
+      - name: create the prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          files="$(find dist -type f \( -name '*.dmg' -o -name '*.zip' -o -name 'appcast.xml' -o -name '*.signature.txt' -o -name 'SHA256SUMS.txt' -o -name 'THIRD_PARTY_NOTICES.txt' \))"
+          # shellcheck disable=SC2086
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Offload $VERSION" --notes "Beta build $VERSION (run $GITHUB_RUN_NUMBER)." $files

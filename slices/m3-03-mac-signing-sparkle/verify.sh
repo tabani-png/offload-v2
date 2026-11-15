@@ -13,7 +13,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m3-03-mac-signing-sparkle"
-BASE=""                                  # commit this slice stacks on (required once status is in_progress)
+BASE="a94059ce0f3230770890cbcc910b72a0bee73603"                                 # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="scripts/tests/m3-03-mac-signing-sparkle"   # bun suite folder(s), space separated
 NEEDS_POSTGRES=0                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 SWIFT_PKG="apps/mac"
