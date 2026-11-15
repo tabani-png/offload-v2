@@ -2,7 +2,7 @@
 id: m1-03-tenancy-rls
 title: Postgres 17 migrations for tenancy, identity and capture tables with forced tenant RLS, restrictive member isolation, roles, resolver functions, withTenant and the audit chain writer
 milestone: M1
-status: in_progress
+status: done
 depends_on: [m1-01-durable-spike, m1-02-contracts-ingest]
 parallel_safe: false
 human_gated: false
@@ -12,8 +12,8 @@ parallel_group: M1-C
 owns: [packages/db/**, packages/testkit/**, docs/DATA_MODEL.md]
 verify: bash slices/m1-03-tenancy-rls/verify.sh
 min_tests: 24
-paths_in_scope: [packages/db/**, packages/testkit/**, slices/m1-03-tenancy-rls/**, infra/docker-compose/**, docs/DATA_MODEL.md, package.json, bun.lock]
-paths_out_of_scope: [ee/**, apps/**, services/**, packages/contracts/src/**, docs/adr/**]
+paths_in_scope: [packages/db/**, packages/testkit/**, slices/m1-03-tenancy-rls/**, infra/docker-compose/**, docs/DATA_MODEL.md, package.json, bun.lock, services/api/**, packages/contracts/src/auth/**, packages/contracts/src/index.ts, docs/API.md, slices/m1-01-durable-spike/SPEC.md, slices/m1-04-login-devices/**, .github/workflows/ci.yml, AGENTS.md, scripts/check-workflows.ts, scripts/lib/slice-changes.sh, scripts/tests/slice-changes.test.ts, scripts/tests/workflows.test.ts]
+paths_out_of_scope: [ee/**, apps/**, services/brain/**, services/builder/**, services/runtime/**, services/broker/**, docs/adr/**]
 red_tests: [MIGRATE, RLS, ROLE, AUDIT]
 ---
 
@@ -145,3 +145,9 @@ HTTP routes, device auth, user-model tables (M5), routine tables (M2), the sched
   is unchanged: `bootstrapRoles` still leaves passwords to the operator. A ROLE test pins it. `pgTenantFixture` ends its
   pools when tenant setup fails. m1-01's durable test sets `offload_migrator`'s password with the same helper instead of
   a random one, so it no longer breaks a concurrent fixture run on a password-auth cluster.
+- Interleaved branch (2026-11-15): m1-03 and m1-04 commits are mixed on this stacked branch (m1-04 started before the
+  m1-03 CI password fix landed), and history is not rewritten. `BASE..done` therefore also contains m1-04's files,
+  the CI and harness commits (`ci.yml`, `AGENTS.md`, `scripts/check-workflows.ts`, `scripts/lib/slice-changes.sh`
+  and its two tests) and m1-01's SPEC. `paths_in_scope` lists those exact paths and `services/api/**`, and
+  `paths_out_of_scope` narrows `services/**` to the services m1-03 and m1-04 do not touch and drops `packages/contracts/src/**` (`paths_in_scope` still limits contracts to m1-04's auth files and the index). m1-04 owns the
+  `services/api` code and its own review; m1-03 changed none of it.
