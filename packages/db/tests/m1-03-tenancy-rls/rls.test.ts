@@ -4,6 +4,9 @@ import { pgTenantFixture, seedTenantRows, type PgTenantFixture } from "@offload/
 
 let fx: PgTenantFixture;
 let tenantTables: string[];
+/** m2-03: tables only offload_broker can read (offload_app has no privilege on them); their wall is tested in services/broker. */
+const BROKER_ONLY_TABLES = ["credentials", "oauth_requests"];
+const appReadable = () => tenantTables.filter((t) => !BROKER_ONLY_TABLES.includes(t));
 
 beforeAll(async () => {
   fx = await pgTenantFixture();
@@ -53,8 +56,8 @@ test("RLS: every tenant table has FORCE ROW LEVEL SECURITY", async () => {
 });
 
 test("RLS: offload_app with tenant A reads zero rows of tenant B", async () => {
-  expect(tenantTables.length).toBeGreaterThanOrEqual(20);
-  for (const table of tenantTables) {
+  expect(appReadable().length).toBeGreaterThanOrEqual(20);
+  for (const table of appReadable()) {
     const col = table === "tenants" ? "id" : "tenant_id";
     // Seeded: tenant B has rows in this table (checked as the superuser).
     const seeded = (await fx.admin.query(`select count(*)::int as n from ${table} where ${col} = $1`, [fx.b.tenantId])).rows[0].n;
@@ -71,14 +74,14 @@ test("RLS: offload_app with tenant A reads zero rows of tenant B", async () => {
 test("RLS: with app.tenant_id unset offload_app reads zero rows", async () => {
   const c = await fx.app.connect();
   try {
-    for (const table of tenantTables) {
+    for (const table of appReadable()) {
       const n = (await c.query(`select count(*)::int as n from ${table}`)).rows[0].n;
       expect({ table, n }).toEqual({ table, n: 0 });
     }
     // An empty setting is the same as unset.
     await c.query("begin");
     await c.query("select set_config('app.tenant_id', '', true), set_config('app.member_scope', 'tenant', true)");
-    for (const table of tenantTables) {
+    for (const table of appReadable()) {
       const n = (await c.query(`select count(*)::int as n from ${table}`)).rows[0].n;
       expect({ table, n }).toEqual({ table, n: 0 });
     }

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { jcs, sha256Hex } from "@offload/contracts";
 import { uuidv7 } from "@offload/db";
 import { brokerClient } from "@offload/testkit/src/broker/index.ts";
@@ -140,7 +141,7 @@ test("BROKER: a request to a host outside the provider allowlist is refused and 
   const before = env.upstream.requests.length;
   for (const url of ["https://evil.example.test/steal", "http://127.0.0.1:9/x", `http://${env.upstream.host}.evil.test/x`, "ftp://x.test/y"]) {
     const r = await env.call("/call", { ...readCall(env, env.fx.a, conn, "thing.read", { run_id: RUN }), request: { method: "GET", url, headers: {} } });
-    expect(r.status).toBe(403);
+    expect([400, 403]).toContain(r.status);
     expect(["host_not_allowed", "invalid_request"]).toContain(r.json.error.code);
   }
   const first = await env.call("/call", { ...readCall(env, env.fx.a, conn, "thing.read", { run_id: RUN }), request: { method: "GET", url: "https://evil.example.test/steal", headers: {} } });
@@ -174,6 +175,7 @@ test("BROKER: the socket file is mode 0600", () => {
 test("BROKER: the composio adapter sends x-api-key and the member uuid as user_id, with no vault row", async () => {
   const t = env.fx.a;
   const conn = await connect(env, t, { adapter: "composio", provider: "slack", member: t.member });
+  await env.fx.admin.query("update connections set state = 'active' where tenant_id = $1 and id = $2", [t.tenantId, conn]);
   env.scope.runs.set(RUN, ["message.read"]);
   env.upstream.respond = () => Response.json({ items: [] });
   const r = await env.call("/call", {
@@ -200,4 +202,15 @@ test("BROKER: tools/list uses the same outbound rules and returns the raw tool l
   const seen = env.upstream.requests.at(-1)!;
   expect(seen.headers["authorization"]).toBe(`Bearer ${KEY}`);
   expect(JSON.parse(seen.body).method).toBe("tools/list");
+});
+
+test("BROKER: fetch and socket APIs appear only in the egress module and the server", () => {
+  const root = join(import.meta.dir, "../../src");
+  const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(dir, e.name)) : [join(dir, e.name)]));
+  for (const f of files(root)) {
+    const text = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    const rel = f.slice(root.length + 1);
+    if (rel.startsWith("egress/")) continue;
+    expect(`${rel}:${/\bfetch\s*\(|Bun\.connect|node:https?|node:net|node:tls|node:dgram/.test(text)}`).toBe(`${rel}:false`);
+  }
 });

@@ -107,3 +107,36 @@ test("VAULT: shred deletes the credential and a later call on that connection fa
   expect(await credentialRow(env, env.fx.b, other)).toBeDefined();
   void uuidv7;
 });
+
+test("VAULT: the logger scrubs secret patterns, including base64 and URL-encoded forms", async () => {
+  const { createLogger, scrub } = await import("../../src/log.ts");
+  const secrets = ["sk-ant-api03-abcdefghijklmnop", "ghp_abcdefghijklmnopqrstuvwxyz0123", "AKIAABCDEFGHIJKLMNOP", "xoxb-1234567890-abcdefghij", "Bearer abcdef0123456789xyz"];
+  for (const s of secrets) {
+    expect(scrub(`x ${s} y`)).not.toContain(s);
+    expect(scrub(`x ${encodeURIComponent(s)} y`)).not.toContain(encodeURIComponent(s));
+    expect(scrub(`x ${Buffer.from(s).toString("base64")} y`)).not.toContain(Buffer.from(s).toString("base64"));
+  }
+  expect(scrub("OFFLOAD_MASTER_KEY=supersecretvalue1")).not.toContain("supersecretvalue1");
+  const lines: string[] = [];
+  createLogger((l) => lines.push(l)).info("t", { note: "token=abc123456789", ok: 1 });
+  expect(lines[0]).not.toContain("abc123456789");
+});
+
+test("VAULT: offload_broker sees only its own tenant's credentials and oauth requests", async () => {
+  const a = await connect(env, env.fx.a);
+  const b = await connect(env, env.fx.b);
+  await env.broker.vault.put(env.fx.a.tenantId, a, { kind: "api_key", api_key: "ka" }, { scopes: [], expiresAt: null });
+  await env.broker.vault.put(env.fx.b.tenantId, b, { kind: "api_key", api_key: "kb" }, { scopes: [], expiresAt: null });
+  const ctx = { tenantId: env.fx.a.tenantId, principalId: "service:broker", memberId: null, tenantRole: "service" as const };
+  const seen = await withTenant(env.pool, ctx, async (tx) => ({
+    mine: (await tx.query("select count(*)::int as n from credentials where tenant_id = $1", [env.fx.a.tenantId])).rows[0].n as number,
+    theirs: (await tx.query("select count(*)::int as n from credentials where tenant_id = $1", [env.fx.b.tenantId])).rows[0].n as number,
+    unfiltered: (await tx.query("select count(*)::int as n from credentials")).rows[0].n as number,
+  }));
+  expect(seen.mine).toBeGreaterThan(0);
+  expect(seen.theirs).toBe(0);
+  expect(seen.unfiltered).toBe(seen.mine);
+  // The broker role is no owner and cannot touch other tables.
+  const denied = await withTenant(env.pool, ctx, (tx) => tx.query("select * from members")).then(() => null, (e: Error) => e);
+  expect(denied?.message).toMatch(/permission denied/);
+});

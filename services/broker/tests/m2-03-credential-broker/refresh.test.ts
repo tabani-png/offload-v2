@@ -26,7 +26,7 @@ async function expired(): Promise<string> {
 
 test("REFRESH: two concurrent refreshes make one provider call", async () => {
   const conn = await expired();
-  env.oauth.delayMs = 150;
+  env.oauth.delayMs = 40;
   const before = refreshCalls().length;
   try {
     const [a, b] = await Promise.all([

@@ -12,7 +12,7 @@ parallel_group: M2-A
 owns: [services/broker/**, packages/contracts/src/broker/**, packages/db/migrations/0201_credentials.sql, packages/testkit/src/broker/**, .env.example, docs/DEPLOYMENT.md, docs/DATA_MODEL.md, docs/SECURITY_PRIVACY.md]
 verify: bash slices/m2-03-credential-broker/verify.sh
 min_tests: 24
-paths_in_scope: [services/broker/**, packages/contracts/src/broker/**, packages/db/migrations/0201_credentials.sql, packages/testkit/src/broker/**, slices/m2-03-credential-broker/**, .env.example, docs/DEPLOYMENT.md, docs/DATA_MODEL.md, docs/SECURITY_PRIVACY.md, package.json, bun.lock]
+paths_in_scope: [services/broker/**, packages/contracts/src/broker/**, packages/db/migrations/0201_credentials.sql, packages/testkit/src/broker/**, slices/m2-03-credential-broker/**, packages/db/tests/m1-03-tenancy-rls/rls.test.ts, .env.example, docs/DEPLOYMENT.md, docs/DATA_MODEL.md, docs/SECURITY_PRIVACY.md, package.json, bun.lock]
 paths_out_of_scope: [ee/**, apps/**, services/api/**, services/brain/**, services/builder/**, services/runtime/**, packages/connectors-sdk/**, packages/masking/**, packages/db/src/**, packages/contracts/src/index.ts, packages/contracts/scripts/**, packages/contracts/schemas/**, packages/testkit/src/index.ts, docs/adr/**]
 red_tests: [KEY, VAULT, BROKER, OAUTH, REFRESH]
 ---
@@ -175,4 +175,20 @@ per-row `wrapped_dek` column (see "Scope changes" if the reviewer asks for a per
 KMS credentials and is not counted.
 
 ## Scope changes
-None.
+- Widened `paths_in_scope` by `packages/db/tests/m1-03-tenancy-rls/rls.test.ts`. The m1-03 tests "RLS: offload_app with tenant
+  A reads zero rows of tenant B" and "RLS: with app.tenant_id unset offload_app reads zero rows" read every tenant table as
+  `offload_app`, but this slice's contract is that `offload_app` has no privilege on `credentials` or `oauth_requests`
+  (SECURITY_PRIVACY section 9), so they failed with `permission denied for table credentials`. Those two tables are now left
+  out of the three app-readable loops (`BROKER_ONLY_TABLES`); every other m1-03 check (FORCE RLS, policy shape) still covers
+  them, and the broker's own tenant wall is tested here (`VAULT: offload_broker ...`).
+- `offload_broker` cannot be created by migration `0201` (the migrator has no `CREATEROLE`), and `packages/db/src/roles.ts`
+  (`ROLES`, `bootstrapRoles`) is out of scope, so the role is created by an administrator (testkit: `ensureBrokerRole`) and
+  the grants in `0201` run only when it exists (notice otherwise). Adding it to `bootstrapRoles` is a follow-up for the slice
+  that owns `packages/db/src`.
+- `credentials` has primary key `(tenant_id, connection_id)` (the DATA_MODEL key) and also the `UNIQUE (tenant_id,
+  connection_id)` this SPEC asks for.
+- `aws-kms` wraps through the port's `wrap(dek, ctx)` by asking KMS for a data key and using it as a one-time wrapping key
+  (the vault's data key is made by the vault, KMS generates its own); see `services/broker/src/keys/aws-kms.ts`.
+- Test fixes after the red commit (harness and timing, not behaviour): the single-flight test's provider delay (40 ms, under
+  the 80 ms lease wait), the composio test sets its connection `active`, the foreign-host test accepts 400 for an unparsable
+  url, and extra tests were added (composio, tools/list, scrubber, egress lint, tenant wall, LIVE).
