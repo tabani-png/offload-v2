@@ -9,8 +9,10 @@ const lib = join(import.meta.dir, "..", "lib", "slice-changes.sh");
 const dirs: string[] = [];
 afterAll(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
+// SLICE_UPSTREAM is set by CI and by local verify runs; each test must choose it itself, so drop the ambient value.
+const { SLICE_UPSTREAM: _ambientUpstream, ...cleanEnv } = process.env;
 const env = {
-  ...process.env,
+  ...cleanEnv,
   GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.invalid",
   GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.invalid",
   GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1",
