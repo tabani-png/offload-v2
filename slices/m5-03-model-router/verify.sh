@@ -11,7 +11,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m5-03-model-router"
-BASE=""                                  # commit this slice stacks on (required once status is in_progress)
+BASE="ffd2114ead235fd25839a8b4a71fb20490e860cb"                                 # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="services/brain/tests/m5-03-model-router packages/masking/tests/m5-03-model-router"   # one or more folders, space separated
 NEEDS_POSTGRES=0                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 # -------------------------------------------------------------------------

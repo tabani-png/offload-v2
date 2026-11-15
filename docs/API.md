@@ -234,6 +234,61 @@ happens); an approval past 24 h is `409 approval_expired`.
 Routine artifacts follow `routine.json` ([ADR 0026](adr/0026-routine-artifact-contract.md)). Browser-automation commits
 always ask, in every commit mode and every plan.
 
+#### Routine artifact contract (`packages/routine-sdk`)
+
+`routine.json` is `RoutineDefinition` (zod in `packages/routine-sdk/src/routine.ts`, exported to JSON Schema 2020-12
+as `packages/routine-sdk/schemas/routine.schema.json`; the resolved form is `resolved-routine.schema.json`). Every
+object is closed (`additionalProperties: false`).
+
+| Field | Rule |
+|---|---|
+| `v`, `name` | `1`; 1 to 80 characters |
+| `trigger` | `{ kind: "schedule", cron (5 fields, numeric), timezone? (IANA) }` · `{ kind: "webhook" }` · `{ kind: "event", event_type }` · `{ kind: "manual" }` |
+| `steps[].id` | `^[a-z][a-z0-9_]{0,31}$`, unique |
+| `steps[]` by `class` | `read`, `draft`, `commit`: `capability` and `connection_ref` required. `transform`: `transform` (`transforms/<name>.ts`), no capability. `model`: `model: { route, prompt_ref (prompts/*.md), output_schema_ref (schemas/*.json) }`, no capability, connection or tools |
+| `steps[].runs_on` | `cloud`, or `device` only for a `commit` step whose capability is `shortcut.run`, `appleevent.template`, `ax.action` or `browser.step` |
+| `steps[].foreach` | an earlier step id |
+| `steps[].args` | object whose leaves are template strings (below) |
+| `limits` | `max_items_per_run` 1..500, `max_runs_per_day` 1..96, `run_budget_usd` > 0 and ≤ 4.00, `quiet_hours?: { start, end } \| null` (`HH:MM`), `recipients_from?` (a step id) |
+| `capabilities` | unique; must list every step's capability |
+
+Cross-step rules (unique ids, earlier-step references, listed capabilities, cron ranges, IANA zone) are zod
+refinements: validate with `parseRoutine`, not with the JSON Schema alone.
+
+**Templates.** A template string is text plus references, nothing else: `{{ steps.<id>.output<json pointer> }}`
+(an earlier step's output, narrowed by an optional RFC 6901 pointer, for example
+`{{ steps.payouts.output/data/0/amount }}`) and `{{ item.<field> }}` (inside `foreach` only). `{{` and `}}` appear only
+as reference delimiters; expressions such as `{{ 1 + 1 }}` are rejected. `renderArgs(template, scope)` is pure: a string
+that is exactly one reference becomes the referenced JSON value; a reference inside text must be a string, number or
+boolean. Only own properties and array indexes resolve.
+
+**Commit items.** `planCommit(step, scope)` returns `Item = { item_key, item_hash, capability, connection_ref, args }`,
+one per `foreach` element (or one item). `item_hash = sha256Hex(JCS({ capability, connection_ref, args }))`;
+`item_key = "<step id>/" + sha256Hex(JCS(foreach element))` (of the rendered args without `foreach`), so the same input
+keeps its key across runs. The SDK performs no I/O.
+
+**Definition.** `resolveDefinition(def, pins)` adds to each `read`, `draft` and `commit` step the pinned
+`connection_id`, `adapter`, `provider`, `account_label`, `tool_name` and `tool_pin_hash`
+([ADR 0033](adr/0033-pinned-connector-resolution-and-launch-catalog.md)); a missing connection or tool pin is an error.
+`definition_hash = sha256Hex(JCS(resolved))` ([ADR 0032](adr/0032-deploy-approval-binds-definition.md)).
+`describeDefinition(resolved)` returns the `words[]` of `GET /v1/builds/{id}/definition`, for example
+`Step payouts: reads payouts.list (stripe · acme-live).` and `At most 50 items a run and 1 run a day. Run budget $0.50.`
+
+**Deploy checks.** `checkManifest(def, brief)` fails with `capability_not_in_brief` unless
+`def.capabilities ⊆ brief.capabilities`, and with `connection_not_in_brief` unless every `connection_ref` is pinned in
+the brief. `loadTransform(source)` checks that a transform loads in the isolate.
+
+**Transforms.** `runTransform(source, input)` runs a compiled transform module (`export default function (input)`) in a
+QuickJS isolate (`quickjs-emscripten`) with no host functions: no `fetch`, timers, `require`, module imports or console;
+64 MiB memory and 1 s time. Input and output are JSON values. Errors carry `code`: `transform_timeout`,
+`transform_memory`, `transform_error` (the transform threw) or `transform_invalid` (does not load, or input or output
+is not JSON).
+
+**Fake connector** (`packages/testkit`, tests only). `fakeConnector(fixtureSet)` replays recorded reads keyed by
+`(capability, sha256Hex(JCS(args)))`, records commit items without executing them, and fails on a read it has no
+recording for (`no_recording`, and `assertNoMissedReads()` after the run). Fixture strings must be fixture tokens
+(`tok_` + 12 hex), ISO dates or listed enum values ([ADR 0027](adr/0027-fixture-capture-and-connector-content.md)).
+
 ### Connections (core)
 
 Resolution is pinned at design time: the brief names `connection_id`, adapter, tool name and tool pin hash per step,
