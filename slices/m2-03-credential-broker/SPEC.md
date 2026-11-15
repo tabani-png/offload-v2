@@ -2,7 +2,7 @@
 id: m2-03-credential-broker
 title: Credential broker process with the credential vault, key providers local and aws-kms, OAuth code exchange, single-flight refresh, and the read set and item hash re-checks
 milestone: M2
-status: ready
+status: in_progress
 depends_on: [m1-02-contracts-ingest, m1-03-tenancy-rls]
 parallel_safe: true
 human_gated: false
