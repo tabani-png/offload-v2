@@ -190,6 +190,7 @@ jobs:
         env:
           REQUIRE_MAC: "1"
           SKIP_FULL_SUITE: "1"
+          SLICE_UPSTREAM: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
         run: |
           if grep -q '^status: done' slices/m3-03-mac-signing-sparkle/SPEC.md; then
             bash slices/m3-03-mac-signing-sparkle/verify.sh
