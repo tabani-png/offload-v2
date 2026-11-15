@@ -15,6 +15,7 @@
     "@offload/contracts": "workspace:*",
     "@offload/db": "workspace:*",
     "@offload/routine-sdk": "workspace:*",
+    "jose": "6.2.13",
     "pg": "8.23.1"
   },
   "devDependencies": {

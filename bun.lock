@@ -92,6 +92,7 @@
         "@offload/contracts": "workspace:*",
         "@offload/db": "workspace:*",
         "@offload/routine-sdk": "workspace:*",
+        "jose": "6.2.13",
         "pg": "8.23.1",
       },
       "devDependencies": {
@@ -101,6 +102,17 @@
     "services/api": {
       "name": "@offload/api",
       "version": "0.0.0",
+      "dependencies": {
+        "@offload/contracts": "workspace:*",
+        "@offload/db": "workspace:*",
+        "hono": "4.13.13",
+        "jose": "6.2.13",
+        "pg": "8.23.1",
+      },
+      "devDependencies": {
+        "@offload/testkit": "workspace:*",
+        "@types/pg": "8.23.1",
+      },
     },
     "services/brain": {
       "name": "@offload/brain",
@@ -238,7 +250,11 @@
 
     "fast-uri": ["fast-uri@3.1.9", "", {}, "sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ=="],
 
+    "hono": ["hono@4.13.13", "", {}, "sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA=="],
+
     "is-what": ["is-what@4.1.16", "", {}, "sha512-ZhMwEosbFJkA0YhFnNDgTM4ZxDRsS6HqTo7qsZM08fehyRYIYa0yHu5R6mgo1n/8MgaPBXiPimPD77baVFYg+A=="],
+
+    "jose": ["jose@6.2.13", "", {}, "sha512-7TIg10ZE1x82YediN+lcrPNvGMKge9yFHQD+Qho/b8y2adfugU3AsvvHfxV0fzyFllT6l9xCjf4RWY9g/Z9PJQ=="],
 
     "json-schema-traverse": ["json-schema-traverse@1.0.0", "", {}, "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug=="],
 
