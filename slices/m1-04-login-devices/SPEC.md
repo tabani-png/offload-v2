@@ -2,7 +2,7 @@
 id: m1-04-login-devices
 title: Login with one OIDC provider or a magic link, personal tenant on first login, web sessions, device enrollment (authorize + loopback PKCE) and device tokens for audiences device and member
 milestone: M1
-status: in_progress
+status: done
 depends_on: [m1-02-contracts-ingest, m1-03-tenancy-rls]
 parallel_safe: false
 human_gated: false
@@ -12,7 +12,7 @@ parallel_group: M1-D
 owns: [services/api/**, docs/API.md]
 verify: bash slices/m1-04-login-devices/verify.sh
 min_tests: 22
-paths_in_scope: [services/api/**, packages/contracts/src/auth/**, packages/contracts/src/index.ts, packages/contracts/schemas/**, packages/db/src/**, packages/testkit/**, slices/m1-04-login-devices/**, docs/API.md, package.json, bun.lock, packages/db/tests/m1-01-durable-spike/durable.test.ts, packages/db/tests/m1-01-durable-spike/child-workflow.ts, packages/db/tests/m1-03-tenancy-rls/role.test.ts, slices/m1-01-durable-spike/SPEC.md, slices/m1-03-tenancy-rls/SPEC.md]
+paths_in_scope: [services/api/**, packages/contracts/src/auth/**, packages/contracts/src/index.ts, packages/contracts/schemas/**, packages/db/src/**, packages/testkit/**, slices/m1-04-login-devices/**, docs/API.md, package.json, bun.lock, packages/db/tests/m1-01-durable-spike/durable.test.ts, packages/db/tests/m1-01-durable-spike/child-workflow.ts, packages/db/tests/m1-03-tenancy-rls/role.test.ts, slices/m1-01-durable-spike/SPEC.md, slices/m1-03-tenancy-rls/SPEC.md, .github/workflows/ci.yml, AGENTS.md, scripts/check-workflows.ts, scripts/lib/slice-changes.sh, scripts/tests/slice-changes.test.ts, scripts/tests/workflows.test.ts]
 paths_out_of_scope: [ee/**, apps/**, services/brain/**, services/builder/**, services/runtime/**, services/broker/**, packages/db/migrations/**, docs/adr/**]
 red_tests: [SESSION, ENROLL, TOKEN, AUDIT]
 ---
@@ -112,3 +112,8 @@ SAML, SCIM, WorkOS (M8/M9), team invites (M8), ingest routes (m3-01), pseudonym 
   `process.execPath` so SIGKILL reaches the child. Those m1-01 and m1-03 test files and SPECs are outside this slice's
   paths, but this slice's `BASE` is below the fix, so `paths_in_scope` lists those five exact files. Here, each test
   file's `afterAll` uses `h?.close()`, so a failed `beforeAll` reports its own error rather than a TypeError.
+- Done with m1-03-tenancy-rls now `done` too (2026-11-15). Its commits are interleaved with this slice's and history is
+  not rewritten, so the exact CI and harness files that landed on this branch (`ci.yml`, `AGENTS.md`,
+  `scripts/check-workflows.ts`, `scripts/lib/slice-changes.sh` and its two tests) are listed in `paths_in_scope`.
+  The `slice-changes` test helper now drops an ambient `SLICE_UPSTREAM`, which made five SCOPE tests fail in the full
+  suite whenever verify ran with it set.
