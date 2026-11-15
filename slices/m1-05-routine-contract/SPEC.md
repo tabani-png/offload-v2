@@ -2,7 +2,7 @@
 id: m1-05-routine-contract
 title: Routine artifact contract in packages/routine-sdk - routine.json schema, definition_hash, pure transform isolate, manifest checks, and the testkit fake connector
 milestone: M1
-status: in_progress
+status: done
 depends_on: [m1-02-contracts-ingest]
 parallel_safe: false
 human_gated: false
@@ -12,8 +12,8 @@ parallel_group: M1-C
 owns: [packages/routine-sdk/**]
 verify: bash slices/m1-05-routine-contract/verify.sh
 min_tests: 20
-paths_in_scope: [packages/routine-sdk/**, packages/testkit/**, slices/m1-05-routine-contract/**, docs/API.md, package.json, bun.lock]
-paths_out_of_scope: [ee/**, apps/**, services/**, packages/db/**, packages/contracts/src/**, docs/adr/**]
+paths_in_scope: [packages/routine-sdk/**, packages/testkit/**, slices/m1-05-routine-contract/**, docs/API.md, package.json, bun.lock, slices/m5-03-model-router/**, services/brain/src/models/**, services/brain/config/**, services/brain/tests/m5-03-model-router/**, services/brain/package.json, packages/masking/src/names/**, packages/masking/tests/m5-03-model-router/**, docs/ARCHITECTURE.md]
+paths_out_of_scope: [ee/**, apps/**, services/api/**, services/broker/**, services/builder/**, services/runtime/**, packages/db/**, packages/contracts/src/**, docs/adr/**]
 red_tests: [ROUTINE, TRANSFORM, FAKE]
 ---
 
@@ -120,3 +120,8 @@ The routine runtime, the broker, real connectors, the build orchestrator (M2), d
 - Two red tests were corrected after the red commit because the tests were wrong, not the code: the planCommit
   expectation (a whole-string reference keeps the number) and the 64 MiB string case (QuickJS builds `s + s` as ropes
   and hits a length limit first). Cases were added, not removed.
+- Done (2026-11-15), scope widened for the interleaved m5-03-model-router commits. m5-03 was built on the same branch
+  after this slice's BASE and history is not rewritten, so its files (`services/brain/src/models/**`,
+  `services/brain/config/**`, its tests, `services/brain/package.json`, `packages/masking/src/names/**` and its tests,
+  `docs/ARCHITECTURE.md`, `slices/m5-03-model-router/**`) are listed in `paths_in_scope`, and `services/**` in
+  `paths_out_of_scope` is narrowed to the services this slice and m5-03 do not touch. m5-03 has its own scope check.
