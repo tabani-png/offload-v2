@@ -5,15 +5,28 @@ import Foundation
 @MainActor
 public final class PermissionsModel: ObservableObject {
   @Published public private(set) var ticker: PermissionTicker
-  /// Kinds whose system prompt was shown this launch (and which are therefore in the Settings list).
+  /// Kinds whose system prompt was shown this launch (the prompt is shown at most once per launch).
   @Published public private(set) var attemptedPrompt: Set<PermissionKind> = []
+  /// Kinds whose Settings list already holds Offload, from earlier launches (saved in the onboarding state).
+  private let listedBefore: Set<PermissionKind>
 
   private let probe: PermissionProbe
   private var pollTask: Task<Void, Never>?
 
-  public init(probe: PermissionProbe, screenRecordingConfirmed: Bool) {
+  public init(probe: PermissionProbe, screenRecordingConfirmed: Bool, listedInSettings: Set<PermissionKind> = []) {
     self.probe = probe
     self.ticker = PermissionTicker(screenRecordingConfirmed: screenRecordingConfirmed)
+    self.listedBefore = listedInSettings
+  }
+
+  /// Rows whose System Settings list holds Offload: prompted this launch or in an earlier one.
+  public var listedInSettings: Set<PermissionKind> { listedBefore.union(attemptedPrompt) }
+
+  /// The observer's frame requests failed: Screen Recording is off whatever one preflight says.
+  public func screenCaptureFailed() {
+    var t = ticker
+    t.screenCaptureFailed()
+    ticker = t
   }
 
   public var macOSMajor: Int { probe.macOSMajor }
@@ -48,12 +61,15 @@ public final class PermissionsModel: ObservableObject {
     pollTask = nil
   }
 
-  /// "Open Settings": the system prompt once per launch, then the right Privacy pane.
-  public func openSettings(for kind: PermissionKind) {
-    switch ScreenPermissionGate.destination(hasPermissionNow: ticker.isGranted(kind),
-                                            hasAttemptedSystemPrompt: attemptedPrompt.contains(kind)) {
+  /// "Open Settings": the system prompt once per launch, then the right Privacy pane. Returns where it went, so the
+  /// caller can save that Offload is now in the list.
+  @discardableResult
+  public func openSettings(for kind: PermissionKind) -> ScreenPermissionGate.Destination {
+    let destination = ScreenPermissionGate.destination(hasPermissionNow: ticker.isGranted(kind),
+                                                       hasAttemptedSystemPrompt: attemptedPrompt.contains(kind))
+    switch destination {
     case .alreadyGranted:
-      return
+      break
     case .systemPrompt:
       attemptedPrompt.insert(kind)
       switch kind {
@@ -63,6 +79,7 @@ public final class PermissionsModel: ObservableObject {
     case .systemSettings:
       probe.openSettings(PrivacyPane.url(for: kind, macOSMajor: probe.macOSMajor))
     }
+    return destination
   }
 
   /// What the row shows: "on" once it ticks, else its button.
@@ -70,7 +87,7 @@ public final class PermissionsModel: ObservableObject {
     ticker.isGranted(kind) ? "on" : OnboardingCopy.openSettings
   }
 
-  public var showInFinder: Bool { ticker.showInFinder(listedInSettings: attemptedPrompt) }
+  public var showInFinder: Bool { ticker.showInFinder(listedInSettings: listedInSettings) }
 
   public func revealInFinder() { probe.revealAppInFinder() }
 }

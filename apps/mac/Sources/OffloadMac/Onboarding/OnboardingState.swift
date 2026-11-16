@@ -82,8 +82,49 @@ public struct OnboardingState: Codable, Equatable, Sendable {
   /// "Open Offload when I log in": on by default.
   public var openAtLogin = true
   public var reask = ReaskState()
+  /// "What leaves your Mac" changed version (row 11.11): screen 5 marks it "new" until the person chooses.
+  public var reconsentPending = false
+  /// Rows whose System Settings list already holds Offload (its system prompt was shown once), kept across launches
+  /// so "Show Offload in Finder" does not come back after the relaunch.
+  public var listedInSettings: Set<PermissionKind> = []
 
   public init() {}
+
+  enum CodingKeys: String, CodingKey {
+    case screen, history, completed, setupCompletedAt, signedIn, lastSignInResult, uploadConsent, consentedNoticeVersion,
+         includeEarlierDays, accessibility, screenRecording, screenRecordingConfirmed, showScreenReadingOn, captureStarted,
+         profile, neverWatchText, neverWatch, connectedApps, recordingsImportStarted, openAtLogin, reask,
+         reconsentPending, listedInSettings
+  }
+
+  /// Tolerant decoding: a key a newer or older build did not write keeps its default instead of resetting setup.
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    let d = OnboardingState()
+    screen = try c.decodeIfPresent(OnboardingScreen.self, forKey: .screen) ?? d.screen
+    history = try c.decodeIfPresent([OnboardingScreen].self, forKey: .history) ?? d.history
+    completed = try c.decodeIfPresent(Bool.self, forKey: .completed) ?? d.completed
+    setupCompletedAt = try c.decodeIfPresent(Date.self, forKey: .setupCompletedAt)
+    signedIn = try c.decodeIfPresent(Bool.self, forKey: .signedIn) ?? d.signedIn
+    lastSignInResult = try c.decodeIfPresent(SignInResult.self, forKey: .lastSignInResult)
+    uploadConsent = try c.decodeIfPresent(Bool.self, forKey: .uploadConsent) ?? d.uploadConsent
+    consentedNoticeVersion = try c.decodeIfPresent(String.self, forKey: .consentedNoticeVersion)
+    includeEarlierDays = try c.decodeIfPresent(Bool.self, forKey: .includeEarlierDays) ?? d.includeEarlierDays
+    accessibility = try c.decodeIfPresent(Bool.self, forKey: .accessibility) ?? d.accessibility
+    screenRecording = try c.decodeIfPresent(Bool.self, forKey: .screenRecording) ?? d.screenRecording
+    screenRecordingConfirmed = try c.decodeIfPresent(Bool.self, forKey: .screenRecordingConfirmed) ?? d.screenRecordingConfirmed
+    showScreenReadingOn = try c.decodeIfPresent(Bool.self, forKey: .showScreenReadingOn) ?? d.showScreenReadingOn
+    captureStarted = try c.decodeIfPresent(Bool.self, forKey: .captureStarted) ?? d.captureStarted
+    profile = try c.decodeIfPresent(ProfileAnswers.self, forKey: .profile) ?? d.profile
+    neverWatchText = try c.decodeIfPresent(String.self, forKey: .neverWatchText) ?? d.neverWatchText
+    neverWatch = try c.decodeIfPresent([Exclusion].self, forKey: .neverWatch) ?? d.neverWatch
+    connectedApps = try c.decodeIfPresent([ConnectedApp].self, forKey: .connectedApps) ?? d.connectedApps
+    recordingsImportStarted = try c.decodeIfPresent(Bool.self, forKey: .recordingsImportStarted) ?? d.recordingsImportStarted
+    openAtLogin = try c.decodeIfPresent(Bool.self, forKey: .openAtLogin) ?? d.openAtLogin
+    reask = try c.decodeIfPresent(ReaskState.self, forKey: .reask) ?? d.reask
+    reconsentPending = try c.decodeIfPresent(Bool.self, forKey: .reconsentPending) ?? d.reconsentPending
+    listedInSettings = try c.decodeIfPresent(Set<PermissionKind>.self, forKey: .listedInSettings) ?? d.listedInSettings
+  }
 
   /// Signed in and sending.
   public var sending: Bool { signedIn && uploadConsent }

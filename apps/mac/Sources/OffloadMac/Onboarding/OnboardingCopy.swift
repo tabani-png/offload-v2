@@ -15,6 +15,8 @@ public struct RetentionConfig: Equatable, Sendable {
   public var textTTLDays: Int
   public var rawTTLDays: Int
   public var derivedModel: DerivedModelRule
+  /// The local egress ledger on this Mac keeps every sent batch for 7 days (ADR 0035, m3-02). Not the cloud text TTL.
+  public let ledgerDays = 7
 
   public init(textTTLDays: Int = 7, rawTTLDays: Int = 30, derivedModel: DerivedModelRule = .keptUntilDeleted) {
     self.textTTLDays = textTTLDays
@@ -41,6 +43,8 @@ public struct RetentionConfig: Equatable, Sendable {
 /// What one screen shows: one headline, one primary button, at most one secondary, and Skip on question screens.
 public struct ScreenSpec: Equatable, Sendable {
   public var headline: String
+  /// A small mark beside the headline ("new" on screen 5 after the notice changed).
+  public var badge: String?
   public var body: String?
   public var caption: String?
   public var primaryTitle: String
@@ -57,6 +61,7 @@ public enum OnboardingCopy {
   public static let moveBody = "Updates and permissions are unreliable when Offload runs from the disk image."
   public static let movePrimary = "Move and reopen"
   public static let moveSecondary = "Quit"
+  public static let moveFailed = "Offload couldn't be copied to Applications. Drag it there in Finder, then open it from Applications."
   public static let startFreshBody = "Offload's saved data on this Mac can't be opened. Start fresh?"
   public static let startFreshPrimary = "Start fresh"
   public static let startFreshNote = "This deletes only the unreadable data on this Mac. Your account is not affected."
@@ -96,6 +101,7 @@ public enum OnboardingCopy {
   public static let signInFooter = "By continuing you agree to the Terms and Privacy Policy."
   public static let signInWaiting = "Waiting for your browser..."
   public static let signInOpenAgain = "Open the page again"
+  public static func permissionOn(_ name: String) -> String { "\(name) is on." }
   public static let cancel = "Cancel"
   public static let signInTimedOut = "That took too long. Try again?"
   public static let signInOffline = "You're offline. You can continue without an account and sign in later."
@@ -125,6 +131,7 @@ public enum OnboardingCopy {
   public static let startSending = "Start sending"
   public static let keepOnThisMac = "Keep it on this Mac"
   public static let noticeChanged = "new"
+  public static let consentFailed = "Offload couldn't record your choice, so nothing was sent. Try again in a moment."
 
   public static func retentionLine(_ c: RetentionConfig) -> String {
     let learned: String
@@ -140,7 +147,7 @@ public enum OnboardingCopy {
     [
       "AI models from Anthropic read the masked text to understand your work. Offload doesn't sell your data.",
       retentionLine(c),
-      "Masking is automatic and can miss things. You can see every batch sent from this Mac in the last \(c.textTTLDays) days, and delete anything from Settings.",
+      "Masking is automatic and can miss things. You can see every batch sent from this Mac in the last \(c.ledgerDays) days, and delete anything from Settings.",
     ]
   }
 
@@ -196,12 +203,15 @@ public enum OnboardingCopy {
   // MARK: Screen 13
   public static let doneHeadline = "You're set. Keep working."
   public static let openAtLoginLabel = "Open Offload when I log in"
-  public static let menuBarPointer = "Pause, or tell it not to watch an app, from here."
+  /// Pause arrives with the observer (m3-02); until then the pointer promises only what the menu has.
+  public static let menuBarPointer = "Tell it not to watch an app, from here."
   public static let openToday = "Open today"
   public static let localBody = "Offload is watching on this Mac only. Sign in when you want your week and fixes."
+  /// Local mode while this build has no capture yet (m3-02): honest about it.
+  public static let localNotCapturingBody = "Your choices are saved on this Mac. Watching starts with a later update, and nothing is sent until you say so."
 
-  public static func doneBody(state: OnboardingState) -> String {
-    guard state.sending else { return localBody }
+  public static func doneBody(state: OnboardingState, capturing: Bool = true) -> String {
+    guard state.sending else { return capturing ? localBody : localNotCapturingBody }
     let rhythm = state.profile.rhythm ?? Rhythm()
     let goals = state.profile.goals.map { $0.lowercased() }
     let around: String
@@ -233,6 +243,10 @@ public enum OnboardingCopy {
   public static let menuSetup = "Continue setup"
   public static let menuPause = "Pause watching"
   public static let menuNeverWatch = "Don't watch this app"
+  public static func menuDontWatch(_ appName: String) -> String { "Don't watch \(appName)" }
+  public static let menuNeverWatchMore = "Never watch an app or site…"
+  public static let neverWatchYours = "Yours"
+  public static let remove = "Remove"
   public static let menuQuit = "Quit Offload"
   public static let menuNotWatching = "not watching yet."
 
@@ -240,8 +254,8 @@ public enum OnboardingCopy {
 
   public static func spec(for screen: OnboardingScreen, state: OnboardingState) -> ScreenSpec {
     func s(_ h: String, body: String? = nil, caption: String? = nil, primary: String = OnboardingCopy.continueTitle,
-           secondary: String? = nil, skip: Bool = false) -> ScreenSpec {
-      ScreenSpec(headline: h, body: body, caption: caption, primaryTitle: primary, secondaryTitle: secondary,
+           secondary: String? = nil, skip: Bool = false, badge: String? = nil) -> ScreenSpec {
+      ScreenSpec(headline: h, badge: badge, body: body, caption: caption, primaryTitle: primary, secondaryTitle: secondary,
                  hasSkip: skip, skipTitle: skip ? OnboardingCopy.skip : nil)
     }
     switch screen {
@@ -250,7 +264,9 @@ public enum OnboardingCopy {
     case .permissions: return s(permissionsHeadline, caption: permissionsCaption)
     case .lastTenMinutes: return s("Here's your last 10 minutes.", caption: lastTenCaption)
     case .signIn: return s(signInHeadline, body: signInBody, caption: nil, primary: signInPrimary, secondary: notNow)
-    case .whatLeaves: return s(whatLeavesHeadline, primary: startSending, secondary: keepOnThisMac)
+    case .whatLeaves:
+      return s(whatLeavesHeadline, primary: startSending, secondary: keepOnThisMac,
+               badge: state.reconsentPending ? noticeChanged : nil)
     case .role: return s(roleQuestion, caption: roleCaption, skip: true)
     case .goals: return s(goalsQuestion, caption: goalsCaption(count: state.profile.goals.count), skip: true)
     case .drains: return s(drainsQuestion, caption: drainsCaption, skip: true)
@@ -287,7 +303,8 @@ public enum OnboardingCopy {
       recordingsHeadline, importTitle, chooseFolder, recordingsNotReady, doneHeadline, openAtLoginLabel, menuBarPointer,
       openToday, localBody, todayTitle, todayEmptyTitle, todayEmptyBody, finishSettingUp, continueSetup, bannerSignIn,
       bannerStartSending, signIn, screenReadingOff, windowDetailsOff, turnOn, connectedAppsOnly, dismiss, menuOpen,
-      menuSetup, menuPause, menuNeverWatch, menuQuit,
+      menuSetup, menuPause, menuNeverWatch, menuQuit, consentFailed, permissionOn("Accessibility"), localNotCapturingBody,
+      moveFailed, menuDontWatch("Slack"), menuNeverWatchMore, neverWatchYours, remove,
       TimeHeadline.detailTitle, TimeHeadline.findingsTitle, TimeHeadline.mathsTitle, TimeHeadline.findingsFooter,
       TimeHeadline.emptyLine,
     ]
@@ -306,6 +323,12 @@ public enum OnboardingCopy {
     s.append(LocalNowSummary.compute(events: [], now: 0).line)
     return s
   }
+}
+
+/// Where "Read the privacy details" goes until Offload's own privacy policy exists (OQ-17): the public repo's
+/// privacy document.
+public enum PrivacyLinks {
+  public static let details = URL(string: "https://github.com/tabani-png/offload-v2/blob/main/docs/SECURITY_PRIVACY.md")!
 }
 
 /// Accessibility identifiers, the UI test hooks.

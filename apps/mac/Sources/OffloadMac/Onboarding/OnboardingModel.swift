@@ -56,8 +56,10 @@ public final class OnboardingModel: ObservableObject {
         do {
           try await services.consent.recordUploadConsent(noticeVersion: version)
         } catch {
+          // Never start sending without a recorded consent: back to screen 5, and say so.
           consentFailed = true
-          await perform(.reconsentNeeded)
+          await perform(.consentFailed)
+          notice = OnboardingCopy.consentFailed
         }
       case .patchProfile(let update):
         try? await services.profile.patch(update)
@@ -115,14 +117,38 @@ public final class OnboardingModel: ObservableObject {
 
   public func cancelSignIn() { signInWait = nil }
 
-  // MARK: Screen 9
+  /// "Open the page again" while waiting.
+  public func reopenSignInPage() { services.account.reopenPage() }
 
-  /// Applies the typed Never watch entries; names that are not installed apps are reported, not guessed.
-  public func applyNeverWatchText(resolve: (String) -> String?) async {
+  // MARK: Screen 9 and the Never watch sheet
+
+  /// Applies the typed Never watch entries. Names that are not installed apps are not guessed: they stay in the field
+  /// and the notice names them. Returns true when everything typed was applied.
+  @discardableResult
+  public func addTypedNeverWatch(resolve: (String) -> String?) async -> Bool {
     let r = NeverWatch.exclusions(from: flow.state.neverWatchText, resolve: resolve)
-    notice = r.unresolved.isEmpty ? nil : OnboardingCopy.neverWatchNotFound(r.unresolved)
     if !r.exclusions.isEmpty { await perform(.neverWatch(add: r.exclusions)) }
-    if r.unresolved.isEmpty { await perform(.neverWatchText("")) }
+    await perform(.neverWatchText(r.unresolved.joined(separator: ", ")))
+    notice = r.unresolved.isEmpty ? nil : OnboardingCopy.neverWatchNotFound(r.unresolved)
+    return r.unresolved.isEmpty
+  }
+
+  /// Continue (`answer`) or Skip (`nil`) on screen 9. Typed entries are applied either way, before anything else; if a
+  /// name cannot be found the screen stays open so nothing the person asked to hide is left watched.
+  public func leaveRhythm(answer: Rhythm?, resolve: (String) -> String?) async {
+    guard await addTypedNeverWatch(resolve: resolve) else { return }
+    if let answer {
+      await perform(.answer(.rhythm(answer)))
+    } else {
+      await perform(.skip)
+    }
+  }
+
+  /// Row 11.11 at launch: screen 5 again, and the uploader pauses at once.
+  public func reconsentNeeded() {
+    let effects = flow.perform(.reconsentNeeded, now: Date())
+    store.save(flow.state)
+    if effects.contains(.pauseUploader) { services.uploader.pause() }
   }
 
   // MARK: Screen 10
