@@ -61,6 +61,9 @@ else
 fi
 
 echo "== scope"
+# This branch stacks slices (m3-09 sits on m3-04 and its review commits), so BASE..HEAD holds other slices' and the
+# orchestrator's commits. The scope check counts only commits whose subject starts with "$SLICE_ID: " (AGENTS commit
+# rule), plus uncommitted changes. Same rule as slices/m3-04-mac-onboarding/verify.sh.
 . "$ROOT/scripts/lib/slice-changes.sh"
 case "$STATUS" in
   in_progress|done) slice_files "$BASE"; scope_rc=$? ;;   # BASE is required: no silent skip
@@ -72,6 +75,26 @@ case $scope_rc in
   *) fail "scope check could not run: $SLICE_ERROR (set BASE when status is in_progress)" ;;
 esac
 if [ $scope_rc -eq 0 ]; then
+  # Commits are matched on the subject line only (a body line starting with the slice id does not count).
+  subjects="$(git log --format='%H%x09%s' "$BASE"..HEAD 2>/dev/null)"
+  own=""
+  for c in $(printf '%s\n' "$subjects" | awk -F'\t' -v p="$SLICE_ID: " 'index($2, p) == 1 { print $1 }'); do
+    own="$own
+$(git show --no-renames --format= --name-only "$c")"
+  done
+  # Another slice's commit must not change a path this slice owns (AGENTS: one writer per owned path).
+  OWNS="$(list owns | sed 's#\*\*#*#g')"
+  for c in $(printf '%s\n' "$subjects" | awk -F'\t' -v p="$SLICE_ID: " '$2 ~ /^m[0-9]+-[0-9][0-9]-[a-z0-9-]+: / && index($2, p) != 1 { print $1 }'); do
+    set -f
+    for p in $(git show --no-renames --format= --name-only "$c"); do
+      for g in $OWNS; do
+        case "$p" in $g) fail "commit $(git log -1 --format=%h "$c") of another slice changed owned path: $p" ;; esac
+      done
+    done
+    set +f
+  done
+  uncommitted="$(git diff --no-renames --name-only HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null)"
+  SLICE_FILES="$(printf '%s\n%s\n' "$own" "$uncommitted" | grep -v '^$' | sort -u)"
   set -f  # globs below are patterns, not filenames
   while IFS= read -r p; do
     [ -n "$p" ] || continue
