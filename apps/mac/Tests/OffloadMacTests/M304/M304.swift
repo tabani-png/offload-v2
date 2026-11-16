@@ -95,14 +95,30 @@ struct FakeServiceError: Error {}
 @MainActor final class FakeFileOps: AppFileOps {
   var existing: Set<String> = []
   var copyFails = false
+  var replaceFails = false
   private(set) var log: [String] = []
   func exists(_ url: URL) -> Bool { existing.contains(url.path) }
-  func trash(_ url: URL) throws { log.append("trash \(url.path)"); existing.remove(url.path) }
   func copy(_ from: URL, to: URL) throws {
     if copyFails { throw FakeServiceError() }
     log.append("copy \(from.path) \(to.path)")
     existing.insert(to.path)
   }
+  func replace(_ destination: URL, with item: URL) throws {
+    if replaceFails { throw FakeServiceError() }
+    log.append("replace \(destination.path) \(item.path)")
+    existing.remove(item.path)
+  }
+  func move(_ from: URL, to: URL) throws {
+    log.append("move \(from.path) \(to.path)")
+    existing.remove(from.path)
+    existing.insert(to.path)
+  }
+  func remove(_ url: URL) throws {
+    guard existing.contains(url.path) else { return }
+    log.append("remove \(url.path)")
+    existing.remove(url.path)
+  }
+  func clearQuarantine(_ url: URL) { log.append("unquarantine \(url.path)") }
   func openAndQuit(_ url: URL) { log.append("open \(url.path)") }
 }
 
