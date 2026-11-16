@@ -152,6 +152,14 @@ public struct ProfileAnswers: Codable, Equatable, Sendable {
   public init() {}
 }
 
+extension ProfileAnswers {
+  /// Every answered field, for the catch-up `PATCH /v1/profile` after consent.
+  public var asUpdate: ProfileUpdate {
+    ProfileUpdate(role: role, goals: goals.isEmpty ? nil : goals, drains: drains.isEmpty ? nil : drains,
+                  rhythm: rhythm, autonomy: autonomy)
+  }
+}
+
 /// One answer, as given on its screen.
 public enum ProfileAnswer: Equatable, Sendable {
   case role(String)

@@ -98,7 +98,7 @@ struct ScreenButtons: View {
   var body: some View {
     HStack(spacing: Tokens.Space.s12) {
       if let back, showBack {
-        Button("Back") { Task { await back() } }
+        Button(OnboardingCopy.back) { Task { await back() } }
           .buttonStyle(SecondaryButtonStyle())
       }
       Spacer()
@@ -252,7 +252,7 @@ struct PermissionRowView: View {
         }
         Spacer()
         if on {
-          Text("on").textStyle(Tokens.TypeScale.label).foregroundStyle(Theme.done)
+          Text(OnboardingCopy.on).textStyle(Tokens.TypeScale.label).foregroundStyle(Theme.done)
         } else {
           Button(OnboardingCopy.openSettings) {
             if permissions.openSettings(for: row.kind) == .systemPrompt { onPrompted(row.kind) }
@@ -270,7 +270,7 @@ struct PermissionRowView: View {
     }
     .chromeCard(padding: Tokens.Space.s16)
     .accessibilityElement(children: .contain)
-    .accessibilityLabel("\(row.title), \(on ? "on" : "off")")
+    .accessibilityLabel("\(row.title), \(on ? OnboardingCopy.on : OnboardingCopy.off)")
     .accessibilityIdentifier(A11yID.permissionRow(row.kind))
   }
 }
@@ -346,6 +346,8 @@ struct LastTenMinutesScreen: View {
           if reduceMotion {
             pointerAt = true
           } else {
+            // The pointer is drawn at its start first, then flies: one frame later the offset animates to the line.
+            try? await Task.sleep(nanoseconds: 60_000_000)
             withAnimation(.easeOut(duration: 0.6)) { pointerAt = true }
           }
           typing = true
@@ -566,7 +568,7 @@ struct RhythmEditor: View {
           ForEach(Self.times, id: \.self) { Text(Rhythm.clock($0)).tag($0) }
         }
         .frame(maxWidth: 220)
-        Picker("to", selection: $rhythm.end) {
+        Picker(OnboardingCopy.rhythmEnd, selection: $rhythm.end) {
           ForEach(Self.times, id: \.self) { Text(Rhythm.clock($0)).tag($0) }
         }
         .frame(maxWidth: 160)
@@ -576,7 +578,7 @@ struct RhythmEditor: View {
           ForEach(Weekday.allCases, id: \.self) { Text($0.full).tag($0) }
         }
         .frame(maxWidth: 260)
-        Picker("at", selection: $rhythm.reviewTime) {
+        Picker(OnboardingCopy.rhythmReviewTime, selection: $rhythm.reviewTime) {
           ForEach(Self.times, id: \.self) { Text(Rhythm.clock($0)).tag($0) }
         }
         .frame(maxWidth: 160)
@@ -731,7 +733,7 @@ struct ConnectScreen: View {
             Text(app.name).textStyle(Tokens.TypeScale.title).foregroundStyle(Theme.chromeInk)
             Text(connected?.account ?? app.pathLine).textStyle(Tokens.TypeScale.callout).foregroundStyle(Theme.chromeMute)
             if connected != nil {
-              Label("on", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.done)
+              Label(OnboardingCopy.on, systemImage: "checkmark.circle.fill").foregroundStyle(Theme.done)
             } else {
               Button(OnboardingCopy.connect) { Task { await model.connect(appID: app.id) } }
                 .buttonStyle(SecondaryButtonStyle())

@@ -62,13 +62,14 @@ public final class OnboardingModel: ObservableObject {
           notice = OnboardingCopy.consentFailed
         }
       case .patchProfile(let update):
-        try? await services.profile.patch(update)
+        // Nothing reaches the account without a recorded consent.
+        if !consentFailed { try? await services.profile.patch(update) }
       case .applyExclusionsLocally(let entries):
         services.neverWatch.add(entries)
       case .removeExclusionLocally(let entry):
         services.neverWatch.remove(entry)
       case .uploadExclusions(let entries):
-        try? await services.exclusions.upload(entries)
+        if !consentFailed { try? await services.exclusions.upload(entries) }
       case .setLoginItem(let on):
         services.loginItem.setEnabled(on)
       case .relaunch:
@@ -146,9 +147,16 @@ public final class OnboardingModel: ObservableObject {
 
   /// Row 11.11 at launch: screen 5 again, and the uploader pauses at once.
   public func reconsentNeeded() {
-    let effects = flow.perform(.reconsentNeeded, now: Date())
+    if performSync(.reconsentNeeded).contains(.pauseUploader) { services.uploader.pause() }
+  }
+
+  /// Runs an action and saves, without running its effects; for launch-time and menu-time steps that the caller
+  /// finishes itself (no effect here may need a network call).
+  @discardableResult
+  public func performSync(_ action: OnboardingAction) -> [OnboardingEffect] {
+    let effects = flow.perform(action, now: Date())
     store.save(flow.state)
-    if effects.contains(.pauseUploader) { services.uploader.pause() }
+    return effects
   }
 
   // MARK: Screen 10
