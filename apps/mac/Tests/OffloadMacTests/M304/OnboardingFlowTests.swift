@@ -172,7 +172,9 @@ extension M304 {
     #expect(!before.contains { if case .uploadExclusions = $0 { return true } else { return false } })
     #expect(!before.contains { if case .patchProfile = $0 { return true } else { return false } })
     let after = f.perform(.startSending(noticeVersion: "2026-11-14"), now: M304Clock.now)
-    #expect(after == [.recordConsent(noticeVersion: "2026-11-14"), .startUploader])
+    // The Never watch entry made before consent reaches the account only now, after consent (review 2 finding 9).
+    #expect(after == [.recordConsent(noticeVersion: "2026-11-14"), .startUploader,
+                      .uploadExclusions([Exclusion(kind: .bundleID, value: "com.apple.MobileSMS")])])
     #expect(!f.state.includeEarlierDays)
 
     let fakes = M304Services()

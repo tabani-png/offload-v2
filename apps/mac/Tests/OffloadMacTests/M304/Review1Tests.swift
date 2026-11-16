@@ -223,22 +223,33 @@ extension M304 {
 
   // MARK: Finding 8: Move and reopen
 
-  @Test("SHELL: Move and reopen replaces an older copy, opens the new one, and says so when the copy fails")
+  @Test("SHELL: Move and reopen copies beside the old copy, then replaces it, clears quarantine and opens it; a failure leaves the old copy")
   @MainActor func moveAndReopen() {
     let src = URL(fileURLWithPath: "/Volumes/Offload/Offload.app")
     let apps = URL(fileURLWithPath: "/Applications")
-    let ops = FakeFileOps()
-    #expect(AppMover.move(source: src, applications: apps, ops: ops) == .opened(path: "/Applications/Offload.app"))
-    #expect(ops.log == ["copy /Volumes/Offload/Offload.app /Applications/Offload.app", "open /Applications/Offload.app"])
+    let tmp = "/Applications/.Offload.app.moving"
+    let dst = "/Applications/Offload.app"
+    let fresh = FakeFileOps()
+    #expect(AppMover.move(source: src, applications: apps, ops: fresh) == .opened(path: dst))
+    #expect(fresh.log == ["copy \(src.path) \(tmp)", "move \(tmp) \(dst)", "unquarantine \(dst)", "open \(dst)"])
     let older = FakeFileOps()
-    older.existing = ["/Applications/Offload.app"]
-    _ = AppMover.move(source: src, applications: apps, ops: older)
-    #expect(older.log == ["trash /Applications/Offload.app", "copy /Volumes/Offload/Offload.app /Applications/Offload.app",
-                          "open /Applications/Offload.app"])
-    let failing = FakeFileOps()
-    failing.copyFails = true
-    #expect(AppMover.move(source: src, applications: apps, ops: failing) == .failed(OnboardingCopy.moveFailed))
-    #expect(failing.log.isEmpty)
+    older.existing = [dst]
+    #expect(AppMover.move(source: src, applications: apps, ops: older) == .opened(path: dst))
+    #expect(older.log == ["copy \(src.path) \(tmp)", "replace \(dst) \(tmp)", "unquarantine \(dst)", "open \(dst)"])
+    // A failed copy changes nothing: the old copy stays in Applications.
+    let copyFails = FakeFileOps()
+    copyFails.existing = [dst]
+    copyFails.copyFails = true
+    #expect(AppMover.move(source: src, applications: apps, ops: copyFails) == .failed(OnboardingCopy.moveFailed))
+    #expect(copyFails.log.isEmpty)
+    #expect(copyFails.existing == [dst])
+    // A failed replace removes the half-done copy and keeps the old one.
+    let replaceFails = FakeFileOps()
+    replaceFails.existing = [dst]
+    replaceFails.replaceFails = true
+    #expect(AppMover.move(source: src, applications: apps, ops: replaceFails) == .failed(OnboardingCopy.moveFailed))
+    #expect(replaceFails.log == ["copy \(src.path) \(tmp)", "remove \(tmp)"])
+    #expect(replaceFails.existing == [dst])
   }
 
   // MARK: Finding 9: a confirmed grant is not forever
