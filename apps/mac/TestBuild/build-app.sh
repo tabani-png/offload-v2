@@ -21,6 +21,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 MAC="$(cd "$HERE/.." && pwd)"
+REPO="$(cd "$MAC/../.." && pwd)"
 
 BUNDLE_ID="ai.offload.mac.dev"   # ROADMAP O2: dev and test builds never take the release id ai.offload.mac
 EXE_NAME="Offload"
@@ -30,6 +31,8 @@ CATEGORY="public.app-category.productivity"
 SCREEN_USAGE="Offload reads what's on screen, on this Mac, to understand your work."
 SMOKE_PATH="/usr/bin:/bin:/usr/sbin:/sbin"
 SMOKE_SECONDS=30
+BUNDLE_MAX_MB="${BUNDLE_MAX_MB:-50}"   # DEPLOYMENT 3.1 planning figure
+NOTICES="THIRD_PARTY_NOTICES.txt"     # the name m3-03's check-bundle.sh uses
 
 CODESIGN="${CODESIGN:-codesign}"
 DITTO="${DITTO:-ditto}"
@@ -95,6 +98,14 @@ assemble() {
   [ $# -eq 2 ] || usage "assemble <binary> <out-dir>"
   local bin="$1" out="$2" app version build commit b
   [ -f "$bin" ] || die "no binary at $bin (run swift build -c release first)"
+  # SwiftPM's generated Bundle.module looks for a resource bundle at the .app root and at the build machine's path,
+  # never in Contents/Resources, and codesign refuses files at the .app root. Copying one into Resources would give
+  # an app that crashes on first resource use on every Mac but the build runner, so stop instead (none exist today).
+  for b in "$(dirname "$bin")"/*.bundle; do
+    if [ -d "$b" ]; then
+      die "SwiftPM resource bundle $(basename "$b") beside the binary: Bundle.module would not find it inside an installed Offload.app. Load it through Bundle.main.resourceURL first, then copy it here."
+    fi
+  done
   version="$(read_version)"
   build="${OFFLOAD_BUILD_NUMBER:-1}"
   commit="${OFFLOAD_COMMIT:-0000000}"
@@ -106,10 +117,9 @@ assemble() {
   printf 'APPL????' > "$app/Contents/PkgInfo"
   cp "$bin" "$app/Contents/MacOS/$EXE_NAME"
   chmod 755 "$app/Contents/MacOS/$EXE_NAME"
-  # SwiftPM resource bundles (none today) sit beside the binary; Bundle.module finds them in Resources.
-  for b in "$(dirname "$bin")"/*.bundle; do
-    if [ -d "$b" ]; then cp -R "$b" "$app/Contents/Resources/"; fi
-  done
+  # DEPLOYMENT 3.1: a third-party notices file in every bundle; the MIT license beside it.
+  cp "$REPO/NOTICE" "$app/Contents/Resources/$NOTICES"
+  cp "$REPO/LICENSE" "$app/Contents/Resources/LICENSE.txt"
   find "$app" -name .DS_Store -delete
   echo "assembled $app ($version, build $build, $(short_sha "$commit"))"
 }
@@ -139,6 +149,7 @@ check_app() {
   plist="$app/Contents/Info.plist"
   exe="$app/Contents/MacOS/$EXE_NAME"
   f() { echo "FAIL $*"; fails=$((fails + 1)); }
+  valid_build "$BUNDLE_MAX_MB" || die "BUNDLE_MAX_MB must be a whole number of MB" 2
   [ -d "$app" ] || { f "no bundle at $app"; return 1; }
   [ -f "$plist" ] || f "missing Contents/Info.plist"
   [ -f "$app/Contents/PkgInfo" ] || f "missing Contents/PkgInfo"
@@ -158,6 +169,20 @@ check_app() {
     valid_build "$(plist_get "$plist" CFBundleVersion)" || f "Info.plist CFBundleVersion is not a number"
     valid_sha "$(plist_get "$plist" OffloadCommit)" || f "Info.plist OffloadCommit is not a commit"
   fi
+  # DEPLOYMENT 3.1 bundle rules: notices present, no Mach-O under Resources, size budget.
+  [ -s "$app/Contents/Resources/$NOTICES" ] || f "missing Contents/Resources/$NOTICES"
+  if [ -d "$app/Contents/Resources" ]; then
+    while IFS= read -r r; do
+      [ -n "$r" ] || continue
+      case "$(od -An -tx1 -N4 "$r" 2>/dev/null | tr -d ' \n')" in
+        feedface|cefaedfe|feedfacf|cffaedfe|cafebabe|bebafeca) f "Mach-O under Resources: ${r#"$app"/}" ;;
+      esac
+    done <<EOF_FIND
+$(find "$app/Contents/Resources" -type f 2>/dev/null)
+EOF_FIND
+  fi
+  local kb; kb="$(du -sk "$app" | cut -f1)"
+  [ "$kb" -le $((BUNDLE_MAX_MB * 1024)) ] || f "bundle is ${kb} KB, over the size budget of ${BUNDLE_MAX_MB} MB"
   "$CODESIGN" --verify --deep --strict "$app" >/dev/null 2>&1 || f "codesign --verify --deep --strict rejects the bundle"
   "$CODESIGN" -dv --verbose=2 "$app" 2>&1 | grep -q '^Signature=adhoc' || f "the signature is not ad hoc"
   [ "$fails" -eq 0 ] || return 1
