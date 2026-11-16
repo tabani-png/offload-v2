@@ -77,6 +77,7 @@ public struct PrimaryButtonStyle: ButtonStyle {
       .padding(.vertical, Tokens.Space.s8 + 2)
       .background(Capsule().fill(Theme.chrome))
       .opacity(configuration.isPressed ? 0.85 : 1)
+      .modifier(FocusRing())
   }
 }
 
@@ -91,6 +92,21 @@ public struct SecondaryButtonStyle: ButtonStyle {
       .padding(.vertical, Tokens.Space.s8 + 2)
       .background(Capsule().strokeBorder(Theme.rule))
       .opacity(configuration.isPressed ? 0.7 : 1)
+      .modifier(FocusRing())
+  }
+}
+
+/// A visible focus ring for the custom button styles (keyboard navigation, ONBOARDING section 13).
+struct FocusRing: ViewModifier {
+  @Environment(\.isFocused) private var isFocused
+  func body(content: Content) -> some View {
+    content.overlay(
+      Capsule()
+        .strokeBorder(Theme.working, lineWidth: 2)
+        .padding(-3)
+        .opacity(isFocused ? 1 : 0)
+        .accessibilityHidden(true)
+    )
   }
 }
 

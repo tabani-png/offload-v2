@@ -28,6 +28,9 @@ public enum OnboardingAction: Equatable, Sendable {
   case consentFailed
   /// The row's system prompt was shown, so Offload is now in that System Settings list.
   case promptedInSettings(PermissionKind)
+  /// Launch read on screen 2 found Screen Recording on that was off before: macOS's own "Quit & Reopen" relaunched
+  /// Offload (row 11.1), so setup resumes at screen 3.
+  case screenRecordingOnAtLaunch
 }
 
 /// What the app must do after an action. Values, so tests assert them without I/O.
@@ -111,6 +114,16 @@ public struct OnboardingFlow: Equatable, Sendable {
 
     case .promptedInSettings(let kind):
       state.listedInSettings.insert(kind)
+      return []
+
+    case .screenRecordingOnAtLaunch:
+      guard state.screen == .permissions, !state.screenRecording else { return [] }
+      state.screenRecording = true
+      state.screenRecordingConfirmed = true
+      state.showScreenReadingOn = true
+      // Screen 2 is resolved with a permission on; the app starts capture at launch from this flag.
+      state.captureStarted = true
+      go(.lastTenMinutes)
       return []
 
     case .consentFailed:
@@ -204,7 +217,12 @@ public struct OnboardingFlow: Equatable, Sendable {
       state.includeEarlierDays = false
       state.reconsentPending = false
       if state.completed { state.screen = .done } else { advance() }
-      return [.recordConsent(noticeVersion: version), .startUploader]
+      // What was kept on the Mac before consent reaches the account now, after consent (ARCHITECTURE section 1).
+      var effects: [OnboardingEffect] = [.recordConsent(noticeVersion: version), .startUploader]
+      if !state.neverWatch.isEmpty { effects.append(.uploadExclusions(state.neverWatch)) }
+      let answered = state.profile.asUpdate
+      if !answered.fieldNames.isEmpty { effects.append(.patchProfile(answered)) }
+      return effects
 
     case (.whatLeaves, .keepOnThisMac):
       state.uploadConsent = false
@@ -243,8 +261,8 @@ public struct OnboardingFlow: Equatable, Sendable {
       return patch(ProfileUpdate(autonomy: a))
 
     case (.recordings, .importRecordings):
-      state.recordingsImportStarted = true
-      advance()
+      // Nothing is recorded and the screen stays: the import itself lands in m3-05, which sets
+      // recordingsImportStarted once a file is really read.
       return [.startRecordingsImport]
 
     case (.done, .next):

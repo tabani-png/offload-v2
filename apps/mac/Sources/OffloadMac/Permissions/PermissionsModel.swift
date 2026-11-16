@@ -5,6 +5,8 @@ import Foundation
 @MainActor
 public final class PermissionsModel: ObservableObject {
   @Published public private(set) var ticker: PermissionTicker
+  /// Seconds between checks in normal running, outside screen 2 (ONBOARDING row 11.3).
+  public static let backgroundInterval: Double = 5
   /// Kinds whose system prompt was shown this launch (the prompt is shown at most once per launch).
   @Published public private(set) var attemptedPrompt: Set<PermissionKind> = []
   /// Kinds whose Settings list already holds Offload, from earlier launches (saved in the onboarding state).

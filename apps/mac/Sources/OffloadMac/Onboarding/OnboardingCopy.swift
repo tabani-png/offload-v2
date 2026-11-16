@@ -177,6 +177,11 @@ public enum OnboardingCopy {
   public static let handsOnQuestion = "How hands-on should it be?"
   public static let handsOnCaption = "change it any time · each fix still asks once"
   public static let skip = "Skip"
+  public static let back = "Back"
+  public static let on = "on"
+  public static let off = "off"
+  public static let rhythmEnd = "Until"
+  public static let rhythmReviewTime = "Review time"
   public static let continueTitle = "Continue"
 
   // MARK: Screen 10
@@ -304,7 +309,8 @@ public enum OnboardingCopy {
       openToday, localBody, todayTitle, todayEmptyTitle, todayEmptyBody, finishSettingUp, continueSetup, bannerSignIn,
       bannerStartSending, signIn, screenReadingOff, windowDetailsOff, turnOn, connectedAppsOnly, dismiss, menuOpen,
       menuSetup, menuPause, menuNeverWatch, menuQuit, consentFailed, permissionOn("Accessibility"), localNotCapturingBody,
-      moveFailed, menuDontWatch("Slack"), menuNeverWatchMore, neverWatchYours, remove,
+      moveFailed, menuDontWatch("Slack"), menuNeverWatchMore, neverWatchYours, remove, back, on, off, rhythmEnd,
+      rhythmReviewTime,
       TimeHeadline.detailTitle, TimeHeadline.findingsTitle, TimeHeadline.mathsTitle, TimeHeadline.findingsFooter,
       TimeHeadline.emptyLine,
     ]

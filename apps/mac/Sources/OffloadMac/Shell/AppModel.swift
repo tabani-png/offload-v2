@@ -10,9 +10,9 @@ public final class AppModel: ObservableObject {
   /// The Never watch sheet (menu bar "Never watch an app or site…"), available in every mode.
   @Published public var showingNeverWatch = false
   /// The app in front other than Offload, for the menu bar's "Don't watch <app>".
-  @Published public private(set) var frontmost: (bundleID: String, name: String)?
+  @Published public private(set) var frontmost: (bundleID: String, name: String)? = nil
   /// Shown on the move sheet when copying to Applications failed.
-  @Published public private(set) var moveError: String?
+  @Published public private(set) var moveError: String? = nil
   public let onboarding: OnboardingModel
   public let permissions: PermissionsModel
   public let events: LocalEventSource
@@ -20,6 +20,7 @@ public final class AppModel: ObservableObject {
   public let neverWatch: NeverWatchStore
 
   private var frontmostObserver: NSObjectProtocol?
+  private var backgroundChecks: Task<Void, Never>?
 
   /// `currentNoticeVersion` is the server's "What leaves your Mac" version from `GET /v1/me` (nil until sign-in
   /// exists, m1-04).
@@ -44,9 +45,41 @@ public final class AppModel: ObservableObject {
       // Row 11.11: uploads pause until the new notice is accepted.
       onboarding.reconsentNeeded()
     }
+    // Rows 11.1 and 11.4: both permissions are read at every launch.
+    readPermissions(atLaunch: true)
     // Capture resumes after a relaunch once screen 2 was resolved with a permission on.
     if onboarding.state.captureStarted { services.capture.start() }
+    // Uploads resume for a person who is sending; never without consent, never while a new notice waits.
+    if onboarding.state.sending && !onboarding.state.reconsentPending { services.uploader.start() }
+    today = TodayModel(state: onboarding.state, now: Date())
     onboarding.onOpenToday = { [weak self] in self?.showToday() }
+  }
+
+  /// One read of both permissions into the saved state. At launch, a Screen Recording grant found on screen 2 means
+  /// macOS's own "Quit & Reopen" relaunched Offload: setup resumes at screen 3 with "Screen reading is on."
+  func readPermissions(atLaunch: Bool) {
+    permissions.tick()
+    let ax = permissions.ticker.isGranted(.accessibility)
+    let sr = permissions.ticker.isGranted(.screenRecording)
+    if atLaunch, route == .onboarding(.permissions), sr, !onboarding.state.screenRecording {
+      onboarding.performSync(.screenRecordingOnAtLaunch)
+      route = .onboarding(.lastTenMinutes)
+    }
+    onboarding.performSync(.permissionsRead(accessibility: ax, screenRecording: sr))
+  }
+
+  /// Row 11.3: in normal running both permissions are checked every 5 s, so Today's mode and banners stay true.
+  public func startBackgroundChecks() {
+    backgroundChecks?.cancel()
+    backgroundChecks = Task { @MainActor [weak self] in
+      while !Task.isCancelled {
+        try? await Task.sleep(nanoseconds: UInt64(PermissionsModel.backgroundInterval * 1_000_000_000))
+        guard let self, !Task.isCancelled else { return }
+        let before = self.onboarding.state.mode
+        self.readPermissions(atLaunch: false)
+        if self.onboarding.state.mode != before { self.today = TodayModel(state: self.onboarding.state, now: Date()) }
+      }
+    }
   }
 
   /// The app as shipped in this build: real permission checks; sign-in, upload, profile and connections are local
@@ -65,6 +98,7 @@ public final class AppModel: ObservableObject {
       sampleWeek: sampleWeek
     )
     app.trackFrontmostApp()
+    app.startBackgroundChecks()
     return app
   }
 
@@ -78,9 +112,17 @@ public final class AppModel: ObservableObject {
                         ownBundleID: Bundle.main.bundleIdentifier, current: neverWatch.currentExclusions())
   }
 
-  /// "Don't watch <app>" from the menu bar: applied on this Mac at once, sent to the account only when sending.
+  /// "Don't watch <app>" from the menu bar: applied on this Mac at once, sent to the account only when sending. The
+  /// menu reads the store through this model, so it is told to redraw and the entry goes away.
   public func dontWatch(_ exclusion: Exclusion) async {
     await onboarding.perform(.neverWatch(add: [exclusion]))
+    objectWillChange.send()
+  }
+
+  /// The app in front other than Offload.
+  public func noteFrontmost(bundleID: String, name: String) {
+    guard bundleID != Bundle.main.bundleIdentifier else { return }
+    frontmost = (bundleID, name)
   }
 
   public func showNeverWatch() { showingNeverWatch = true }
@@ -89,7 +131,7 @@ public final class AppModel: ObservableObject {
   public func trackFrontmostApp() {
     let own = Bundle.main.bundleIdentifier
     if let app = NSWorkspace.shared.frontmostApplication, let id = app.bundleIdentifier, id != own {
-      frontmost = (id, app.localizedName ?? id)
+      noteFrontmost(bundleID: id, name: app.localizedName ?? id)
     }
     frontmostObserver = NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
@@ -97,7 +139,7 @@ public final class AppModel: ObservableObject {
       guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
             let id = app.bundleIdentifier, id != own else { return }
       let name = app.localizedName ?? id
-      Task { @MainActor [weak self] in self?.frontmost = (id, name) }
+      Task { @MainActor [weak self] in self?.noteFrontmost(bundleID: id, name: name) }
     }
   }
 
@@ -123,8 +165,12 @@ public final class AppModel: ObservableObject {
       onboarding.jump(to: onboarding.state.signedIn ? .whatLeaves : .signIn)
       route = .onboarding(onboarding.state.screen)
     default:
-      onboarding.jump(to: .permissions)
-      route = .onboarding(.permissions)
+      // "Turn on": ask for the missing permission right here (system prompt once, then its Privacy pane). Setup is
+      // not walked again.
+      let kind: PermissionKind = onboarding.state.accessibility ? .screenRecording : .accessibility
+      if permissions.openSettings(for: kind) == .systemPrompt {
+        onboarding.performSync(.promptedInSettings(kind))
+      }
     }
   }
 

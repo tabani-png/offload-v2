@@ -29,7 +29,8 @@ public final class LiveRelauncher: Relauncher {
     }
     let config = NSWorkspace.OpenConfiguration()
     config.createsNewApplicationInstance = true
-    NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
+    // @Sendable: AppKit calls this on a background queue; it hops to the main actor itself.
+    NSWorkspace.shared.openApplication(at: url, configuration: config) { @Sendable _, error in
       let ok = error == nil
       Task { @MainActor in
         if ok { NSApp.terminate(nil) }

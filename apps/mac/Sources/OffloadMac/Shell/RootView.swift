@@ -82,10 +82,13 @@ struct Notice: View {
 /// observer (m3-02).
 public struct MenuBarContent: View {
   @ObservedObject var app: AppModel
+  /// Observed too, so the menu follows setup and Never watch changes made anywhere.
+  @ObservedObject private var onboarding: OnboardingModel
   let openWindow: () -> Void
 
   public init(app: AppModel, openWindow: @escaping () -> Void) {
     self.app = app
+    self.onboarding = app.onboarding
     self.openWindow = openWindow
   }
 
