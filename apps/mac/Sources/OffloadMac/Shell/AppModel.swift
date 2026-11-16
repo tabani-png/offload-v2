@@ -7,26 +7,42 @@ import SwiftUI
 public final class AppModel: ObservableObject {
   @Published public private(set) var route: LaunchRoute
   @Published public private(set) var today: TodayModel
+  /// The Never watch sheet (menu bar "Never watch an app or site…"), available in every mode.
+  @Published public var showingNeverWatch = false
+  /// The app in front other than Offload, for the menu bar's "Don't watch <app>".
+  @Published public private(set) var frontmost: (bundleID: String, name: String)?
+  /// Shown on the move sheet when copying to Applications failed.
+  @Published public private(set) var moveError: String?
   public let onboarding: OnboardingModel
   public let permissions: PermissionsModel
   public let events: LocalEventSource
   public let sampleWeek: SampleWeekFlag
   public let neverWatch: NeverWatchStore
 
+  private var frontmostObserver: NSObjectProtocol?
+
+  /// `currentNoticeVersion` is the server's "What leaves your Mac" version from `GET /v1/me` (nil until sign-in
+  /// exists, m1-04).
   public init(options: LaunchOptions, bundlePath: String, bufferReadable: Bool, store: OnboardingStore,
-              services: OnboardingServices, probe: PermissionProbe, events: LocalEventSource, sampleWeek: SampleWeekFlag) {
+              services: OnboardingServices, probe: PermissionProbe, events: LocalEventSource, sampleWeek: SampleWeekFlag,
+              currentNoticeVersion: String? = nil) {
     let onboarding = OnboardingModel(store: store, services: services)
     self.onboarding = onboarding
-    self.permissions = PermissionsModel(probe: probe, screenRecordingConfirmed: onboarding.state.screenRecordingConfirmed)
+    self.permissions = PermissionsModel(probe: probe, screenRecordingConfirmed: onboarding.state.screenRecordingConfirmed,
+                                        listedInSettings: onboarding.state.listedInSettings)
     self.events = events
     self.sampleWeek = sampleWeek
     self.neverWatch = services.neverWatch
     let route = LaunchRoute.decide(options: options, state: onboarding.state, bundlePath: bundlePath,
-                                   bufferReadable: bufferReadable, currentNoticeVersion: nil)
+                                   bufferReadable: bufferReadable, currentNoticeVersion: currentNoticeVersion)
     self.route = route
     self.today = TodayModel(state: onboarding.state, now: Date())
     if case .onboarding(let screen) = route, options.forceOnboarding {
       onboarding.jump(to: screen)
+    } else if route == .onboarding(.whatLeaves), onboarding.state.uploadConsent,
+              let current = currentNoticeVersion, current != onboarding.state.consentedNoticeVersion {
+      // Row 11.11: uploads pause until the new notice is accepted.
+      onboarding.reconsentNeeded()
     }
     // Capture resumes after a relaunch once screen 2 was resolved with a permission on.
     if onboarding.state.captureStarted { services.capture.start() }
@@ -43,11 +59,46 @@ public final class AppModel: ObservableObject {
       connections: UnavailableConnectionService(), loginItem: LiveLoginItem(), relauncher: LiveRelauncher(),
       sampleWeek: sampleWeek
     )
-    return AppModel(
+    let app = AppModel(
       options: LaunchOptions.parse(arguments: arguments), bundlePath: Bundle.main.bundlePath, bufferReadable: true,
       store: UserDefaultsOnboardingStore(), services: services, probe: LivePermissionProbe(), events: NoLocalEvents(),
       sampleWeek: sampleWeek
     )
+    app.trackFrontmostApp()
+    return app
+  }
+
+  /// True only while the observer really captures (m3-02); the menu bar and screen 13 say so honestly.
+  public var isCapturing: Bool { onboarding.services.capture.isRunning }
+
+  public var menuLine: String { MenuBarStatus.line(isCapturing: isCapturing, waiting: 0) }
+
+  public var menuNeverWatchItem: MenuNeverWatchItem? {
+    MenuNeverWatch.item(frontmostBundleID: frontmost?.bundleID, frontmostName: frontmost?.name,
+                        ownBundleID: Bundle.main.bundleIdentifier, current: neverWatch.currentExclusions())
+  }
+
+  /// "Don't watch <app>" from the menu bar: applied on this Mac at once, sent to the account only when sending.
+  public func dontWatch(_ exclusion: Exclusion) async {
+    await onboarding.perform(.neverWatch(add: [exclusion]))
+  }
+
+  public func showNeverWatch() { showingNeverWatch = true }
+
+  /// Follows the app in front (not Offload), for the menu bar entry.
+  public func trackFrontmostApp() {
+    let own = Bundle.main.bundleIdentifier
+    if let app = NSWorkspace.shared.frontmostApplication, let id = app.bundleIdentifier, id != own {
+      frontmost = (id, app.localizedName ?? id)
+    }
+    frontmostObserver = NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+    ) { [weak self] note in
+      guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+            let id = app.bundleIdentifier, id != own else { return }
+      let name = app.localizedName ?? id
+      Task { @MainActor [weak self] in self?.frontmost = (id, name) }
+    }
   }
 
   public var isOnboarding: Bool {
@@ -91,25 +142,11 @@ public final class AppModel: ObservableObject {
     route = .onboarding(.install)
   }
 
-  /// Screen 0 "Move and reopen": copies Offload into /Applications (or uses the copy already there) and opens it.
+  /// Screen 0 "Move and reopen" (see AppMover).
   public func moveToApplications() {
-    let fm = FileManager.default
-    let src = Bundle.main.bundleURL
-    let dst = URL(fileURLWithPath: "/Applications").appendingPathComponent(src.lastPathComponent)
-    do {
-      if !fm.fileExists(atPath: dst.path) { try fm.copyItem(at: src, to: dst) }
-    } catch {
-      quit()
-      return
-    }
-    let config = NSWorkspace.OpenConfiguration()
-    config.createsNewApplicationInstance = true
-    NSWorkspace.shared.openApplication(at: dst, configuration: config) { _, error in
-      let ok = error == nil
-      Task { @MainActor in
-        if ok { NSApp.terminate(nil) }
-      }
-    }
+    let outcome = AppMover.move(source: Bundle.main.bundleURL, applications: URL(fileURLWithPath: "/Applications"),
+                                ops: LiveAppFileOps())
+    if case .failed(let message) = outcome { moveError = message }
   }
 
   public func quit() { NSApp.terminate(nil) }

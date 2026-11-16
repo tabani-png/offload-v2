@@ -14,7 +14,7 @@ public struct MainWindowView: View {
     Group {
       switch app.route {
       case .moveToApplications:
-        Notice(title: OnboardingCopy.moveTitle, bodyText: OnboardingCopy.moveBody,
+        Notice(title: OnboardingCopy.moveTitle, bodyText: app.moveError ?? OnboardingCopy.moveBody,
                primary: OnboardingCopy.movePrimary, secondary: OnboardingCopy.moveSecondary,
                onPrimary: { app.moveToApplications() }, onSecondary: { app.quit() })
       case .startFresh:
@@ -28,6 +28,9 @@ public struct MainWindowView: View {
         TodayView(model: app.today, onBanner: { app.tapBanner($0) }, onDismiss: { app.dismissBanner($0) })
       }
     }
+    // The paper canvas has no dark palette yet, so the window stays light (system controls included) rather than
+    // mixing dark-mode text into light surfaces. See the SPEC's Scope changes.
+    .preferredColorScheme(.light)
     .sheet(isPresented: $sampleWeek.showing) {
       VStack(spacing: 0) {
         SampleWeekView()
@@ -37,6 +40,12 @@ public struct MainWindowView: View {
           .padding(Tokens.Space.s16)
       }
       .background(Theme.paper)
+      .preferredColorScheme(.light)
+    }
+    .sheet(isPresented: $app.showingNeverWatch) {
+      NeverWatchSheet(model: app.onboarding, resolveApp: { InstalledApps.bundleID(forName: $0) },
+                      done: { app.showingNeverWatch = false })
+        .preferredColorScheme(.light)
     }
   }
 }
@@ -69,7 +78,8 @@ struct Notice: View {
   }
 }
 
-/// The menu bar item: the buddy's line, open, continue setup, never watch, quit. Pause lands with the observer.
+/// The menu bar item: an honest status line, open, continue setup, never watch, quit. Pause arrives with the
+/// observer (m3-02).
 public struct MenuBarContent: View {
   @ObservedObject var app: AppModel
   let openWindow: () -> Void
@@ -80,8 +90,7 @@ public struct MenuBarContent: View {
   }
 
   public var body: some View {
-    let mood = BuddyMood.of(observer: app.onboarding.state.captureStarted ? .noData : .paused, waiting: 0)
-    Text(app.onboarding.state.captureStarted ? mood.line : OnboardingCopy.menuNotWatching)
+    Text(app.menuLine)
     Divider()
     Button(OnboardingCopy.menuOpen) { openWindow() }
     if !app.onboarding.state.completed {
@@ -91,18 +100,26 @@ public struct MenuBarContent: View {
       }
     }
     Divider()
+    if let item = app.menuNeverWatchItem {
+      Button(item.title) { Task { await app.dontWatch(item.exclusion) } }
+    }
+    Button(OnboardingCopy.menuNeverWatchMore) {
+      app.showNeverWatch()
+      openWindow()
+    }
+    Divider()
     Button(OnboardingCopy.menuQuit) { app.quit() }
       .keyboardShortcut("q")
   }
 }
 
-/// The menu bar mark: the buddy's block, lifted by mood.
+/// The menu bar mark: the buddy's block, lifted only while capture really runs.
 public struct MenuBarLabel: View {
   @ObservedObject var app: AppModel
   public init(app: AppModel) { self.app = app }
   public var body: some View {
-    let mood = BuddyMood.of(observer: app.onboarding.state.captureStarted ? .watching : .paused, waiting: 0)
+    let mood = MenuBarStatus.mood(isCapturing: app.isCapturing, waiting: 0)
     Image(systemName: mood == .quiet ? "square.bottomhalf.filled" : "square.tophalf.filled")
-      .accessibilityLabel("Offload, \(mood.line)")
+      .accessibilityLabel("Offload, \(app.menuLine)")
   }
 }
