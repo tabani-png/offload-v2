@@ -41,11 +41,20 @@ jobs:
           uname -m
       - name: names
         id: names
+        # On pull_request, GITHUB_SHA is GitHub's merge commit (what is built and stamped); the summary also names
+        # the pull request head, so a tester's --version line can be matched to the PR.
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           zip="$(bash apps/mac/TestBuild/build-app.sh artifact-name "$GITHUB_SHA")"
           short="${zip#Offload-mac-}"
           echo "short=${short%.zip}" >> "$GITHUB_OUTPUT"
           echo "dir=$RUNNER_TEMP/testbuild" >> "$GITHUB_OUTPUT"
+          if [ -n "$PR_HEAD" ]; then
+            echo "Built merge commit ${GITHUB_SHA} of pull request head ${PR_HEAD}." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Built commit ${GITHUB_SHA}." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: build Offload.app (release, ad hoc signed, zipped)
         id: build
         timeout-minutes: 30
