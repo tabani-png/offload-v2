@@ -9,10 +9,10 @@ human_gated: true
 model_tier: opus
 size: L
 parallel_group: M3-C
-owns: [apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M304/**]
+owns: [apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Tests/OffloadMacTests/M304/**]
 verify: bash slices/m3-04-mac-onboarding/verify.sh
 min_tests: 80
-paths_in_scope: [apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Package.swift, apps/mac/README.md, docs/GLOSSARY.md, docs/ONBOARDING.md, slices/m3-04-mac-onboarding/**]
+paths_in_scope: [apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Package.swift, apps/mac/README.md, docs/GLOSSARY.md, docs/ONBOARDING.md, docs/SECURITY_PRIVACY.md, slices/m3-04-mac-onboarding/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Packaging/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift]
 red_tests: [SHELL, ONBOARDING, MODE, REASK, PERMS, NOW, NEVERWATCH, COPY, TOKENS, TIME, META, TYPE, BUDDY]
 ---
@@ -178,3 +178,32 @@ exits 0; with `REQUIRE_MAC=1` (CI `mac` job) a skip fails. The CI `mac` job's pl
     the Mac.
   - NOTICE (m3-03's file) must move the clicky entry from "Planned" to ported before this slice can be `done`
     (AGENTS Definition of done item 5).
+- Review 2 (logs/m3-04-mac-onboarding.review2.md) changes:
+  - `owns` no longer lists `apps/mac/Sources/OffloadMacApp/**`: m3-09 edits that file too (its SPEC lists it in
+    `paths_in_scope`, commit `0e078b4`), so it is shared, not owned. verify.sh now matches this slice's commits on the
+    subject line only, and fails when a commit of another slice (`<slice-id>: ` subject) changes a path in `owns`.
+  - Launch: the uploader starts when the person is sending and no new notice waits; both permissions are read at
+    every launch (row 11.4) and every 5 s in normal running (row 11.3); a launch on screen 2 that finds Screen
+    Recording on resumes at screen 3 (row 11.1, macOS's own "Quit & Reopen").
+  - Start sending also sends what was kept on the Mac before consent: the person's Never watch entries
+    (`POST /v1/exclusions`) and the answered profile fields (`PATCH /v1/profile`). Nothing is sent if the consent call
+    fails.
+  - Screen 11 Import stays on the screen and records no import until m3-05 builds it.
+  - "Move and reopen" copies beside the destination, swaps it in (`replaceItemAt`), clears `com.apple.quarantine` and
+    opens the copy. Clearing quarantine follows LetsMove: the person already opened this copy, which is when
+    Gatekeeper checked it. Human-gated: the owner checks it on a real Mac with the m3-09 test build.
+  - "Private windows" (locked chip) relies on window-title markers ("Private Browsing", "InPrivate", "Incognito").
+    Safari private windows and Chrome Incognito on macOS may show none. **m3-02 dependency**: observer-side
+    private-window detection plus the built-in list, so screen 1's and screen 5's promise is kept on the Mac.
+  - The onboarding state (including the Never watch list) is a plain property list in `UserDefaults`;
+    SECURITY_PRIVACY section 6 now says so, and it moves into the sealed store with m3-02.
+  - Type uses fixed point sizes from the token scale, so it does not follow a system text size; macOS 14 SwiftUI has
+    no Dynamic Type for these fonts. The custom button styles draw a focus ring from `isFocused`. Both are checked by
+    the owner on a real Mac.
+  - MIGRATION 5.5 `ahaAsksOnlyOnceScreenRecordingIsOnAndStopsWhenItHasSomething` is carried as
+    `NOW: the pointer flies once, on the first line with a full minute, and refreshes every 5 s`. Two rules change by
+    ONBOARDING section 5: the summary refreshes every 5 s (not 15 s), and it is not gated on Screen Recording, because
+    it reads the local buffer, which Accessibility capture fills too.
+  - Still deferred (ONBOARDING section 11): row 11.2's banner and the one notification when macOS pauses screen reading
+    (needs the observer's frame-failure signal, m3-02, which calls `PermissionsModel.screenCaptureFailed`); the
+    notifications of 10.2 (first weekly review); rows 11.5, 11.7, 11.9, 11.10 and 11.12 (their backends).
