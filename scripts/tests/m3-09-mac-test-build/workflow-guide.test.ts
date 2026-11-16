@@ -103,6 +103,22 @@ test("ARTIFACT: build-app.sh is Bash 3.2 safe, strict, and never traces", () => 
   expect(Bun.spawnSync(["bash", "-n", script]).exitCode).toBe(0);
 });
 
+test("ARTIFACT: pull requests build only when the app or this workflow changed; pushes and manual runs always build", () => {
+  const w = load();
+  expect(w.on.pull_request.paths).toEqual(["apps/mac/**", ".github/workflows/mac-artifact.yml"]);
+  expect(w.on.push.paths).toBeUndefined();
+  expect(w.on.workflow_dispatch?.paths).toBeUndefined();
+});
+
+test("ARTIFACT: a pull request build names the pull request head next to the merge commit it built", () => {
+  const names = steps().find((x) => x.id === "names")!;
+  expect(String(names.env?.["PR_HEAD"])).toBe("${{ github.event.pull_request.head.sha }}");
+  expect(names.run).toContain("GITHUB_STEP_SUMMARY");
+  expect(names.run).toContain("$PR_HEAD");
+  // Event values reach run: text only through env, never as ${{ }} inside the script.
+  for (const x of steps()) expect(x.run ?? "").not.toContain("github.event");
+});
+
 // ---- GUIDE ---------------------------------------------------------------
 
 test("GUIDE: the install guide covers download, first open, permissions, what to expect, logs and uninstall", () => {
@@ -118,6 +134,42 @@ test("GUIDE: the install guide covers download, first open, permissions, what to
   expect(g).toContain("--version");
   expect(g).toContain("ai.offload.mac.dev");
   expect(g).toContain("tccutil reset");
+});
+
+test("GUIDE: uninstall removes the bundle id folders DEPLOYMENT section 2 names, not a plain Offload folder", () => {
+  const g = readFileSync(guide, "utf8");
+  expect(g).toContain("~/Library/Application\\ Support/ai.offload.mac.dev");
+  expect(g).not.toMatch(/Application\\? Support\/Offload\b/);
+});
+
+test("GUIDE: on macOS 15 and later the first open goes through Open Anyway; right-click Open is for macOS 14", () => {
+  const g = readFileSync(guide, "utf8");
+  const first = g.slice(g.indexOf("## 2."), g.indexOf("## 3."));
+  expect(first).toContain("macOS 15");
+  expect(first.indexOf("Open Anyway")).toBeGreaterThanOrEqual(0);
+  expect(first.indexOf("Open Anyway")).toBeLessThan(first.search(/right-click/i));
+  expect(first).toMatch(/macOS 14[^\n]*right-click|right-click[^\n]*macOS 14/i);
+});
+
+test("GUIDE: the download step works for browsers that keep the outer zip", () => {
+  const g = readFileSync(guide, "utf8");
+  const dl = g.slice(g.indexOf("## 1."), g.indexOf("## 2."));
+  expect(dl).toContain("Safari");
+  expect(dl).toMatch(/zip of the same name|inner zip|zip inside/i);
+});
+
+test("GUIDE: the guide says watching and Never watch start with a later build, and claims no capture now", () => {
+  const g = readFileSync(guide, "utf8");
+  expect(g).not.toMatch(/shows your real apps/);
+  expect(g).not.toMatch(/are always excluded;/);
+  expect(g).toMatch(/take effect when capture lands/);
+  expect(g).toMatch(/[Ww]atching starts with a later (update|build)/);
+});
+
+test("GUIDE: the guide says a pull request build carries GitHub's merge commit", () => {
+  const g = readFileSync(guide, "utf8");
+  expect(g).toMatch(/pull request/i);
+  expect(g).toMatch(/merge commit/);
 });
 
 test("GUIDE: the guide links DEPLOYMENT section 5 for the notarized build", () => {
