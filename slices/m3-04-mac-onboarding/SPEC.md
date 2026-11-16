@@ -11,7 +11,7 @@ size: L
 parallel_group: M3-C
 owns: [apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M304/**]
 verify: bash slices/m3-04-mac-onboarding/verify.sh
-min_tests: 60
+min_tests: 80
 paths_in_scope: [apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Package.swift, apps/mac/README.md, docs/GLOSSARY.md, docs/ONBOARDING.md, slices/m3-04-mac-onboarding/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Packaging/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift]
 red_tests: [SHELL, ONBOARDING, MODE, REASK, PERMS, NOW, NEVERWATCH, COPY, TOKENS, TIME, META, TYPE, BUDDY]
@@ -94,9 +94,13 @@ signed bundle (m3-03).
   (m3-02), observer reading `ExclusionSource` and filling `LocalEventSource` (m3-02), profile PATCH (M5), connections
   and instant read (M2/M5), ConnectionGroups (m5-05), recordings import (m3-05), Today content and weekly review
   (m5-05), snapshot tests per screen light and dark (needs the m3-03 bundle; logic is tested here), notifications
-  for missing permissions (`ReaskPolicy` decides; delivery lands with the first weekly review), "Move and reopen"
-  file move (sheet and decision here; the move itself with the m3-03 bundle), Sample week data beyond a labelled
-  synthetic headline, PERF test (manual, ROADMAP M3).
+  for missing permissions (`ReaskPolicy` decides; delivery lands with the first weekly review), Pause in the menu bar
+  item (needs the observer, m3-02), a dark palette (the window is pinned to light), Settings screens, Sample week data
+  beyond a labelled synthetic headline, PERF test (manual, ROADMAP M3).
+- **Review 1 additions**: "Move and reopen" is built after all (`Shell/AppMover.swift`, tested with fake file steps):
+  an older `/Applications/Offload.app` goes to the Trash, the new copy is opened, a failure says to drag it in Finder.
+  The menu bar item has "Don't watch <app in front>" and "Never watch an app or site…" (the same fields as screen 9),
+  so Never watch works in Local mode, which is every person's mode until sign-in lands.
 
 ## Red tests (write these first, run them, see them fail)
 Folder `apps/mac/Tests/OffloadMacTests/M304/`, Swift Testing, every test `@Test("TAG: ...")` inside
@@ -146,3 +150,31 @@ exits 0; with `REQUIRE_MAC=1` (CI `mac` job) a skip fails. The CI `mac` job's pl
 - TIME: `TimeHeadline` is a reduced port (no s23 `TimeScreen` sections, which are gone); same rules.
 - ConnectionGroups is not ported here: it belongs with the Connections screen in m5-05.
 - `docs/GLOSSARY.md` gains "Local now summary" and "Never watch" (used by ONBOARDING, missing from the glossary).
+- Review 1 (logs/m3-04-mac-onboarding.review1.md) changes:
+  - verify.sh: `BASE` is `7407300` (the branch was rebased onto the W1-A specs). The branch also stacks m3-09, so the
+    scope check reads only commits whose subject starts with `m3-04-mac-onboarding: ` and runs on every platform. The
+    pass count comes from Swift Testing's `Test run with N tests ... passed` summary, because the console printed a
+    `passed` line for only 14 of 64 passing tests in CI run 43652387723. Still to do before `done`: one run on macOS
+    with `REQUIRE_MAC=1` (ci.yml, m3-03's file, runs only m3-02's verify).
+  - Light and dark (ONBOARDING section 1): the main window and its sheets are pinned to light
+    (`.preferredColorScheme(.light)`) until a dark paper palette is designed; system controls would otherwise draw
+    dark-mode text on the light canvas. Dark mode is deferred to the design-system follow-up.
+  - The screen 13 menu bar pointer reads "Tell it not to watch an app, from here." until Pause exists (m3-02); the
+    ONBOARDING text keeps the full line for the finished product. Screen 13 in Local mode says capture starts with a
+    later update while `CaptureControl.isRunning` is false, and the menu bar says "not watching yet.".
+  - A confirmed Screen Recording grant survives up to 2 false checks in a row, not forever: 3 false checks or a failed
+    capture (`PermissionTicker.screenCaptureFailed`, for m3-02's frame-failure signal) drop it, and the loss allows one
+    more notice (10.3).
+  - `PATCH /v1/profile` is sent only while sending; answers given before consent stay in the local state.
+  - Screen 5's "every batch sent from this Mac in the last 7 days" uses the 7-day local egress ledger (ADR 0035), not
+    `OFFLOAD_TEXT_TTL_DAYS`. "Read the privacy details" links to the public repo's `docs/SECURITY_PRIVACY.md` until
+    Offload's own policy exists (OQ-17).
+  - "Personal Chrome profile" (Q5 optional chip) is not offered: DATA_MODEL `exclusions` kinds (`bundle_id`, `host`,
+    `title_contains`) cannot scope an exclusion to one browser profile. It needs a profile-aware kind in
+    `packages/contracts` and observer support (m3-02).
+  - "Banking sites" (locked chip) carries no entries of its own: it relies on the built-in list
+    `packages/masking/src/exclusions.builtin.json` that m3-02 ports. **m3-02 dependency**: until that list is loaded
+    into `NeverWatchStore`'s built-ins, the screen 5 promise "banking apps … are skipped entirely" is not covered on
+    the Mac.
+  - NOTICE (m3-03's file) must move the clicky entry from "Planned" to ported before this slice can be `done`
+    (AGENTS Definition of done item 5).
