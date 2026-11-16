@@ -10,9 +10,14 @@ Needs a Mac with Apple silicon and macOS 14 or later.
 
 1. Open the repository on GitHub, then **Actions**, then the **mac-artifact** workflow.
 2. Click the newest green run for the branch you want to test.
-3. Under **Artifacts**, download `Offload-mac-<commit>`. Your browser unzips it into a folder holding
-   `Offload-mac-<commit>.zip` and this guide.
-4. Double-click `Offload-mac-<commit>.zip`. Move the `Offload.app` it makes into **Applications**.
+3. Under **Artifacts**, download `Offload-mac-<commit>`. GitHub always wraps an artifact in a zip:
+   - Safari unzips it for you, into a folder holding `Offload-mac-<commit>.zip` and this guide.
+   - Other browsers save `Offload-mac-<commit>.zip` with a zip of the same name inside. Double-click the outer one
+     first to get the folder.
+4. Double-click the inner `Offload-mac-<commit>.zip`. Move the `Offload.app` it makes into **Applications**.
+
+Builds of a pull request carry GitHub's merge commit for that pull request, not the pull request's own last commit.
+The run's summary page names both.
 
 Open it from Applications, not from Downloads: macOS moves apps it does not trust to a hidden temporary place, and
 permissions granted there do not stick.
@@ -21,10 +26,12 @@ permissions granted there do not stick.
 
 The build is signed ad hoc, not by an Apple Developer ID yet, so macOS blocks the first open. That is expected.
 
-- Right-click `Offload.app` in Applications, choose **Open**, then **Open** again.
-- If there is no Open button: System Settings, Privacy & Security, scroll to Security, click **Open Anyway**, then
-  open Offload again.
-- Or in Terminal: `xattr -dr com.apple.quarantine /Applications/Offload.app`
+- **macOS 15 and later**: open Offload once and close the warning. Then System Settings, Privacy & Security,
+  scroll to Security, click **Open Anyway** next to the Offload line, confirm, and open Offload again. Right-click
+  Open no longer gets past this warning on macOS 15.
+- **macOS 14**: right-click `Offload.app` in Applications, choose **Open**, then **Open** again. If there is no Open
+  button, use **Open Anyway** as above.
+- Or, on any version, in Terminal: `xattr -dr com.apple.quarantine /Applications/Offload.app`
 
 Check which build you have:
 
@@ -51,10 +58,11 @@ both switches off and on again after installing a newer build. Reset them with t
 ## 4. What to expect
 
 - A small mark in the menu bar, and the setup window. Setup takes about five minutes and every step can be skipped.
-- After permissions, keep working for a minute: the "last 10 minutes" line shows your real apps, counted on this Mac.
-  Nothing has been sent.
+- Watching starts with a later build. In this one the "last 10 minutes" screen has nothing to count, and the last
+  setup screen says your choices are saved on this Mac. Nothing is recorded and nothing is sent.
 - Sign-in and sending are not in this build yet. Setup says so and offers to keep Offload on this Mac (Local mode).
-- Never watch: 1Password, banking sites and private windows are always excluded; you can add apps and sites.
+- Never watch shows 1Password, banking sites and private windows as always excluded, and you can add apps and
+  sites. The exclusions take effect when capture lands.
 - Today opens as an honest empty state. It fills once capture and upload land in later builds.
 - To see setup again: `/Applications/Offload.app/Contents/MacOS/Offload --onboarding`, or a single screen with
   `--onboarding-screen <n>` (0 to 13).
@@ -78,13 +86,15 @@ Quit Offload from the menu bar mark, drag it from Applications to the Bin, then 
 
 ```
 defaults delete ai.offload.mac.dev
-rm -rf ~/Library/Application\ Support/Offload ~/Library/Caches/ai.offload.mac.dev
+rm -rf ~/Library/Application\ Support/ai.offload.mac.dev ~/Library/Caches/ai.offload.mac.dev
 tccutil reset Accessibility ai.offload.mac.dev
 tccutil reset ScreenCapture ai.offload.mac.dev
 ```
 
-`defaults delete` forgets setup progress, so the next open starts setup from the first screen. The two `tccutil`
-lines remove the permission rows. Nothing of this build is stored in the cloud.
+`defaults delete` forgets setup progress, so the next open starts setup from the first screen. The folders are named
+after the bundle id ([DEPLOYMENT section 2](../../../docs/DEPLOYMENT.md#2-identity-bundle-id-team-id-and-permissions));
+this build writes nothing there yet, later builds keep the local buffer there. The two `tccutil` lines remove the
+permission rows. Nothing of this build is stored in the cloud.
 
 ## 7. Known limits of this build
 
