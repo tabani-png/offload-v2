@@ -6,6 +6,12 @@ import Foundation
 /// Screen 4: browser sign-in and device enrollment (m1-04, the m3-02 enrollment client).
 @MainActor public protocol AccountService: AnyObject {
   func signIn() async -> SignInResult
+  /// "Open the page again" while waiting for the browser.
+  func reopenPage()
+}
+
+extension AccountService {
+  public func reopenPage() {}
 }
 
 /// Screen 5: `POST /v1/me/consents` with notice `what-leaves-your-mac` (m3-02).
@@ -26,6 +32,8 @@ extension Uploader {
 /// The observer (m3-02). Started when screen 2 is resolved with a permission on.
 @MainActor public protocol CaptureControl: AnyObject {
   func start()
+  /// True only while the observer really captures; the menu bar and screen 13 say "not watching" otherwise.
+  var isRunning: Bool { get }
 }
 
 /// `PATCH /v1/profile` (M5). Only answered fields are sent.
@@ -145,10 +153,11 @@ public enum ConnectionCatalog {
   public func start() {}
 }
 
-/// No observer until m3-02: starting capture does nothing.
+/// No observer until m3-02: starting capture does nothing, and it says it is not running.
 @MainActor public final class NoCapture: CaptureControl {
   public init() {}
   public func start() {}
+  public var isRunning: Bool { false }
 }
 
 /// Answers stay in the saved onboarding state until `PATCH /v1/profile` exists (M5).

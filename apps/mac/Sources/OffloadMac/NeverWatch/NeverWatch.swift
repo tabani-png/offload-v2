@@ -105,7 +105,7 @@ public struct NeverWatchChip: Equatable, Sendable, Identifiable {
     ]),
   ]
 
-  /// Optional chips. "Personal Chrome profile" waits for a profile-aware exclusion kind (see the SPEC).
+  /// Optional chips. "Personal Chrome profile" waits for a profile-aware exclusion kind (SPEC, Scope changes).
   public static let optional: [NeverWatchChip] = [
     NeverWatchChip(id: "messages", label: "Messages", isLocked: false, exclusions: [Exclusion(kind: .bundleID, value: "com.apple.MobileSMS")]),
     NeverWatchChip(id: "whatsapp", label: "WhatsApp", isLocked: false, exclusions: [Exclusion(kind: .bundleID, value: "net.whatsapp.WhatsApp")]),

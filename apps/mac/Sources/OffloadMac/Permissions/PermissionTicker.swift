@@ -6,13 +6,18 @@ import Foundation
 public struct PermissionTicker: Equatable, Sendable {
   /// Seconds between checks while screen 2 is open.
   public static let interval: Double = 1.5
+  /// A confirmed Screen Recording grant survives one false preflight (ONBOARDING section 4), not a real revocation:
+  /// this many false checks in a row drop it.
+  public static let falseReadsBeforeLoss = 3
 
   /// nil until the first read.
   public private(set) var accessibility: Bool?
   /// The raw preflight answer of the last read.
   public private(set) var screenPreflight: Bool?
-  /// A Screen Recording grant was seen once; it survives a false preflight (persisted in the onboarding state).
+  /// A Screen Recording grant was seen; it survives a false preflight (persisted in the onboarding state) until
+  /// `falseReadsBeforeLoss` false checks in a row or a failed capture.
   public private(set) var screenRecordingConfirmed: Bool
+  private var falseScreenReads = 0
   /// Kinds that turned on while the screen was open, for the tick.
   public private(set) var justGranted: Set<PermissionKind> = []
   /// Screen Recording turned on while open: macOS needs a quit and reopen before capture works.
@@ -41,13 +46,25 @@ public struct PermissionTicker: Equatable, Sendable {
     let before = Set(PermissionKind.allCases.filter { isGranted($0) })
     accessibility = ax
     screenPreflight = sr
-    if sr { screenRecordingConfirmed = true }
+    if sr {
+      screenRecordingConfirmed = true
+      falseScreenReads = 0
+    } else {
+      falseScreenReads += 1
+      if falseScreenReads >= Self.falseReadsBeforeLoss { screenRecordingConfirmed = false }
+    }
     let after = Set(PermissionKind.allCases.filter { isGranted($0) })
     guard !firstRead else { return [] }
     let new = after.subtracting(before)
     justGranted.formUnion(new)
     if new.contains(.screenRecording) { needsRelaunch = true }
     return new
+  }
+
+  /// Frame requests failed (the m3-02 observer reports it): the grant is gone, whatever one preflight said.
+  public mutating func screenCaptureFailed() {
+    screenRecordingConfirmed = false
+    falseScreenReads = Self.falseReadsBeforeLoss
   }
 
   /// "Show Offload in Finder": only when a row is missing and Offload is not in that row's Settings list, so the

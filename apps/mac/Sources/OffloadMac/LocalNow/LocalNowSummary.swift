@@ -64,6 +64,8 @@ public struct LocalNowSummary: Equatable, Sendable {
   /// The span the line covers: the requested minutes, or less when capture has run for less.
   public var minutes: Int
   public var activeMinutes: Int
+  /// Active time in the window, all apps together.
+  public var activeMs: Int64
   public var top: [NowApp]
   public var switches: Int
   public var switchesPerMinute: Double
@@ -77,6 +79,8 @@ public struct LocalNowSummary: Equatable, Sendable {
   static let minuteMs: Int64 = 60_000
 
   public var isEmpty: Bool { top.isEmpty }
+  /// "Nothing seen yet" until there is at least one active minute in the window (ONBOARDING section 5).
+  public var hasActiveMinute: Bool { activeMs >= Self.minuteMs }
   /// The pointer flies only once some app has a full minute of active time.
   public var hasFullMinute: Bool { top.contains { $0.activeMs >= Self.minuteMs } }
 
@@ -123,12 +127,13 @@ public struct LocalNowSummary: Equatable, Sendable {
     return LocalNowSummary(
       minutes: span,
       activeMinutes: wholeMinutes(activeMs),
+      activeMs: activeMs,
       top: Array(top),
       switches: switches,
       switchesPerMinute: Double(switches) / Double(span),
       headline: headlineText(span: span),
-      line: lineText(span: span, top: Array(top), switches: switches),
-      remark: remarkText(top: Array(top)),
+      line: activeMs >= minuteMs ? lineText(span: span, top: Array(top), switches: switches) : nothingSeen,
+      remark: activeMs >= minuteMs ? remarkText(top: Array(top)) : "",
       computedBy: "code"
     )
   }
@@ -137,8 +142,10 @@ public struct LocalNowSummary: Equatable, Sendable {
     span == 1 ? "Here's your last minute." : "Here's your last \(span) minutes."
   }
 
+  static let nothingSeen = "Nothing seen yet. Keep working for a minute."
+
   static func lineText(span: Int, top: [NowApp], switches: Int) -> String {
-    guard !top.isEmpty else { return "Nothing seen yet. Keep working for a minute." }
+    guard !top.isEmpty else { return nothingSeen }
     let apps = top.map { "\($0.appName) \($0.minutes)m" }
     let sw = switches == 1 ? "1 switch" : "\(switches) switches"
     return (["\(span) min"] + apps + [sw]).joined(separator: " · ")
@@ -247,7 +254,10 @@ public struct LastTenMinutesState: Equatable, Sendable {
     return now.timeIntervalSince(lastRefresh) >= Self.refreshEvery
   }
 
-  public var seesSomething: Bool { summary.map { !$0.isEmpty } ?? false }
+  public var seesSomething: Bool { summary?.hasActiveMinute ?? false }
+
+  /// The remark appears with the pointer, once some app has a full active minute.
+  public var showsRemark: Bool { pointerFlown }
 
   public func showsAccessLaterLine(now: Date) -> Bool {
     !seesSomething && now.timeIntervalSince(openedAt) >= Self.nothingGrace

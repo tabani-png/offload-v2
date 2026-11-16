@@ -24,6 +24,10 @@ public enum OnboardingAction: Equatable, Sendable {
   case setOpenAtLogin(Bool)
   /// `GET /v1/me` says the "What leaves your Mac" notice has a new version (row 11.11).
   case reconsentNeeded
+  /// Recording the upload consent failed: nothing may be sent, so screen 5 comes back.
+  case consentFailed
+  /// The row's system prompt was shown, so Offload is now in that System Settings list.
+  case promptedInSettings(PermissionKind)
 }
 
 /// What the app must do after an action. Values, so tests assert them without I/O.
@@ -96,10 +100,24 @@ public struct OnboardingFlow: Equatable, Sendable {
       return [.showSampleWeek]
 
     case let .permissionsRead(ax, sr):
+      // `sr` is the ticker's answer, with the confirmed-grant rule already applied (PermissionTicker). A grant that
+      // goes from on to off is a loss: one more notification is allowed (10.3).
+      if state.accessibility && !ax { state.reask.grantLost(.accessibility) }
+      if state.screenRecording && !sr { state.reask.grantLost(.screenRecording) }
       state.accessibility = ax
-      if sr { state.screenRecordingConfirmed = true }
-      state.screenRecording = ScreenPermissionGate.treatAsGranted(now: sr, previouslyConfirmed: state.screenRecordingConfirmed)
+      state.screenRecording = sr
+      state.screenRecordingConfirmed = sr
       return []
+
+    case .promptedInSettings(let kind):
+      state.listedInSettings.insert(kind)
+      return []
+
+    case .consentFailed:
+      state.uploadConsent = false
+      if state.history.last == .whatLeaves { state.history.removeLast() }
+      state.screen = .whatLeaves
+      return [.pauseUploader]
 
     case .quitAndReopen:
       // Save the place: the relaunch resumes at screen 3 with "Screen reading is on."
@@ -135,6 +153,7 @@ public struct OnboardingFlow: Equatable, Sendable {
     case .reconsentNeeded:
       guard state.uploadConsent else { return [] }
       state.uploadConsent = false
+      state.reconsentPending = true
       state.screen = .whatLeaves
       return [.pauseUploader]
 
@@ -183,11 +202,13 @@ public struct OnboardingFlow: Equatable, Sendable {
       state.uploadConsent = true
       state.consentedNoticeVersion = version
       state.includeEarlierDays = false
+      state.reconsentPending = false
       if state.completed { state.screen = .done } else { advance() }
       return [.recordConsent(noticeVersion: version), .startUploader]
 
     case (.whatLeaves, .keepOnThisMac):
       state.uploadConsent = false
+      state.reconsentPending = false
       if state.completed { state.screen = .done } else { go(.done) }
       return []
 
@@ -196,30 +217,30 @@ public struct OnboardingFlow: Equatable, Sendable {
       advance()
       guard !role.isEmpty else { return [] }
       state.profile.role = role
-      return [.patchProfile(ProfileUpdate(role: role))]
+      return patch(ProfileUpdate(role: role))
 
     case (.goals, .answer(.goals(let g))):
       let goals = Goals.clean(g)
       advance()
       guard !goals.isEmpty else { return [] }
       state.profile.goals = goals
-      return [.patchProfile(ProfileUpdate(goals: goals))]
+      return patch(ProfileUpdate(goals: goals))
 
     case (.drains, .answer(.drains(let d))):
       advance()
       guard !d.isEmpty else { return [] }
       state.profile.drains = d
-      return [.patchProfile(ProfileUpdate(drains: d))]
+      return patch(ProfileUpdate(drains: d))
 
     case (.rhythm, .answer(.rhythm(let r))):
       state.profile.rhythm = r
       advance()
-      return [.patchProfile(ProfileUpdate(rhythm: r))]
+      return patch(ProfileUpdate(rhythm: r))
 
     case (.handsOn, .answer(.autonomy(let a))):
       state.profile.autonomy = a
       advance()
-      return [.patchProfile(ProfileUpdate(autonomy: a))]
+      return patch(ProfileUpdate(autonomy: a))
 
     case (.recordings, .importRecordings):
       state.recordingsImportStarted = true
@@ -228,7 +249,8 @@ public struct OnboardingFlow: Equatable, Sendable {
 
     case (.done, .next):
       state.completed = true
-      state.setupCompletedAt = now
+      // The first setup date anchors "7 days after setup" (10.2); a re-consent visit does not move it.
+      if state.setupCompletedAt == nil { state.setupCompletedAt = now }
       return [.setLoginItem(state.openAtLogin), .openToday]
 
     case (.role, .next), (.goals, .next), (.drains, .next), (.rhythm, .next), (.handsOn, .next),
@@ -246,4 +268,9 @@ public struct OnboardingFlow: Equatable, Sendable {
 
 extension OnboardingFlow {
   mutating func setReask(_ reask: ReaskState) { state.reask = reask }
+
+  /// Answers are kept on the Mac; `PATCH /v1/profile` only once the person is sending (screen 5 accepted).
+  func patch(_ update: ProfileUpdate) -> [OnboardingEffect] {
+    state.sending ? [.patchProfile(update)] : []
+  }
 }
