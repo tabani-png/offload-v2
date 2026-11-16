@@ -224,7 +224,7 @@ extension M304 {
   // MARK: Finding 8: Move and reopen
 
   @Test("SHELL: Move and reopen replaces an older copy, opens the new one, and says so when the copy fails")
-  @MainActor func moveToApplications() {
+  @MainActor func moveAndReopen() {
     let src = URL(fileURLWithPath: "/Volumes/Offload/Offload.app")
     let apps = URL(fileURLWithPath: "/Applications")
     let ops = FakeFileOps()
