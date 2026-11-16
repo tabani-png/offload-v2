@@ -9,12 +9,12 @@ human_gated: true
 model_tier: opus
 size: S
 parallel_group: M3-C
-owns: [.github/workflows/mac-artifact.yml, apps/mac/TestBuild/**, scripts/tests/m3-09-mac-test-build/**]
+owns: [.github/workflows/mac-artifact.yml, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Tests/OffloadMacTests/M309/**, scripts/tests/m3-09-mac-test-build/**]
 verify: bash slices/m3-09-mac-test-build/verify.sh
 min_tests: 24
-paths_in_scope: [.github/workflows/mac-artifact.yml, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/README.md, docs/DEPLOYMENT.md, scripts/tests/m3-09-mac-test-build/**, slices/m3-09-mac-test-build/**]
-paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, NOTICE, .github/workflows/ci.yml, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/Sources/OffloadMac/**, apps/mac/Tests/**]
-red_tests: [PLIST, STAMP, ASSEMBLE, ADHOC, SMOKE, PINNED, ARTIFACT, GUIDE]
+paths_in_scope: [.github/workflows/mac-artifact.yml, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Tests/OffloadMacTests/M309/**, apps/mac/README.md, docs/DEPLOYMENT.md, scripts/tests/m3-09-mac-test-build/**, slices/m3-09-mac-test-build/**]
+paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, NOTICE, .github/workflows/ci.yml, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Tests/OffloadMacTests/M303/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift]
+red_tests: [PLIST, STAMP, ASSEMBLE, ADHOC, SMOKE, PINNED, ARTIFACT, GUIDE, VERSION]
 ---
 
 # m3-09-mac-test-build

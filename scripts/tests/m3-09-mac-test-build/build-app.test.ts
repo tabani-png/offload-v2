@@ -116,15 +116,26 @@ test("ASSEMBLE: without build inputs the build number is 1 and the commit 000000
   expect(v.OffloadCommit).toBe("0000000");
 });
 
-test("ASSEMBLE: SwiftPM resource bundles beside the binary go into Contents/Resources and no bun or brain is bundled", () => {
+test("ASSEMBLE: a SwiftPM resource bundle beside the binary stops the build, because Bundle.module would not find it", () => {
+  // SwiftPM's generated Bundle.module looks at the .app root and the build machine's path, never Contents/Resources,
+  // and codesign refuses files at the .app root, so an installed copy would crash on first use (review 1 finding 11).
   const d = tmp();
   const bindir = join(d, "release");
   mkdirSync(join(bindir, "OffloadMac_OffloadMac.bundle"), { recursive: true });
   writeFileSync(join(bindir, "OffloadMac_OffloadMac.bundle/a.json"), "{}");
   const bin = fakeBinary(bindir, "x", join(d, "env.txt"));
-  const app = join(d, "out", "Offload.app");
-  expect(run(["assemble", bin, join(d, "out")]).code).toBe(0);
-  expect(existsSync(join(app, "Contents/Resources/OffloadMac_OffloadMac.bundle/a.json"))).toBe(true);
+  const r = run(["assemble", bin, join(d, "out")]);
+  expect(r.code).toBe(1);
+  expect(r.err).toContain("OffloadMac_OffloadMac.bundle");
+  expect(r.err).toContain("Bundle.module");
+  expect(existsSync(join(d, "out", "Offload.app"))).toBe(false);
+});
+
+test("ASSEMBLE: the bundle carries the license and the third-party notices and no bun or brain", () => {
+  const { app, r } = assembled();
+  expect(r.code).toBe(0);
+  expect(readFileSync(join(app, "Contents/Resources/LICENSE.txt"), "utf8")).toBe(readFileSync(join(repo, "LICENSE"), "utf8"));
+  expect(readFileSync(join(app, "Contents/Resources/THIRD_PARTY_NOTICES.txt"), "utf8")).toBe(readFileSync(join(repo, "NOTICE"), "utf8"));
   expect(existsSync(join(app, "Contents/Helpers"))).toBe(false);
   expect(existsSync(join(app, "Contents/Resources/offload"))).toBe(false);
 });
@@ -197,6 +208,37 @@ test("ADHOC: check fails a bundle whose executable is missing", () => {
   expect(r.out).toContain("MacOS/Offload");
 });
 
+test("ADHOC: check fails a Mach-O file under Resources (DEPLOYMENT 3.1)", () => {
+  const { bin } = fakeTools();
+  const { app } = assembled();
+  writeFileSync(join(app, "Contents/Resources/helper"), Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0x00, 0x00, 0x01]));
+  run(["sign", app], {}, bin);
+  const r = run(["check", app], {}, bin);
+  expect(r.code).toBe(1);
+  expect(r.out).toContain("Mach-O under Resources");
+  expect(r.out).toContain("helper");
+});
+
+test("ADHOC: check fails a bundle without its third-party notices file", () => {
+  const { bin } = fakeTools();
+  const { app } = assembled();
+  Bun.spawnSync(["rm", join(app, "Contents/Resources/THIRD_PARTY_NOTICES.txt")]);
+  run(["sign", app], {}, bin);
+  const r = run(["check", app], {}, bin);
+  expect(r.code).toBe(1);
+  expect(r.out).toContain("THIRD_PARTY_NOTICES.txt");
+});
+
+test("ADHOC: check fails a bundle over the size budget", () => {
+  const { bin } = fakeTools();
+  const { app } = assembled();
+  run(["sign", app], {}, bin);
+  expect(run(["check", app], {}, bin).code).toBe(0);
+  const r = run(["check", app], { BUNDLE_MAX_MB: "0" }, bin);
+  expect(r.code).toBe(1);
+  expect(r.out).toContain("size budget");
+});
+
 // ---- SMOKE ---------------------------------------------------------------
 
 function smokeApp(line: (v: string) => string, code = 0) {
@@ -215,10 +257,13 @@ function smokeApp(line: (v: string) => string, code = 0) {
 
 test("SMOKE: the installed copy runs --version with an empty environment and a temp HOME, and passes", () => {
   const { app, envFile, tools } = smokeApp((v) => `Offload ${v} (9) 0123456 ${BUNDLE_ID}`);
-  const r = run(["smoke", app], {}, tools);
+  // Markers in the caller's environment must not reach the app (review 1 finding 4: only env -i keeps them out).
+  const r = run(["smoke", app], { OFFLOAD_PROBE: "1", SMOKE_LEAK_MARKER: "leaked" }, tools);
   expect(r.out + r.err).not.toContain("FAIL");
   expect(r.code).toBe(0);
   const env = readFileSync(envFile, "utf8");
+  expect(env).not.toContain("OFFLOAD_PROBE");
+  expect(env).not.toContain("leaked");
   expect(env).toContain("PATH=/usr/bin:/bin:/usr/sbin:/sbin");
   const home = env.match(/^HOME=(.*)$/m)?.[1] ?? "";
   expect(home).not.toBe(process.env["HOME"] ?? "");
