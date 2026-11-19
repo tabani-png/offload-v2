@@ -9,7 +9,7 @@ human_gated: true
 model_tier: opus
 size: L
 parallel_group: M3-C
-owns: [apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Tests/OffloadMacTests/M304/**]
+owns: [apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Sources/OffloadMac/Onboarding/OnboardingFlow.swift, apps/mac/Sources/OffloadMac/Onboarding/OnboardingState.swift, apps/mac/Sources/OffloadMac/Onboarding/OnboardingStore.swift, apps/mac/Sources/OffloadMac/Onboarding/OnboardingCopy.swift, apps/mac/Sources/OffloadMac/Onboarding/Profile.swift, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Tests/OffloadMacTests/M304/**]
 verify: bash slices/m3-04-mac-onboarding/verify.sh
 min_tests: 80
 paths_in_scope: [apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Package.swift, apps/mac/README.md, docs/GLOSSARY.md, docs/ONBOARDING.md, docs/SECURITY_PRIVACY.md, slices/m3-04-mac-onboarding/**]
@@ -207,3 +207,7 @@ exits 0; with `REQUIRE_MAC=1` (CI `mac` job) a skip fails. The CI `mac` job's pl
   - Still deferred (ONBOARDING section 11): row 11.2's banner and the one notification when macOS pauses screen reading
     (needs the observer's frame-failure signal, m3-02, which calls `PermissionsModel.screenCaptureFailed`); the
     notifications of 10.2 (first weekly review); rows 11.5, 11.7, 11.9, 11.10 and 11.12 (their backends).
+- m3-05 (recordings import) hooks screen 11 into this slice's files, so `owns` lists files instead of the `Shell/**`
+  and `Onboarding/**` folders: `Shell/AppModel.swift`, `Onboarding/Services.swift`, `Onboarding/OnboardingModel.swift`
+  and `Onboarding/OnboardingView.swift` are shared with m3-05 (its SPEC, Scope changes). Every new file in those
+  folders must be added to `owns` here or to the slice that writes it.
