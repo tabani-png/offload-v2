@@ -90,7 +90,7 @@ public final class AppModel: ObservableObject {
       account: UnavailableAccountService(), consent: LocalConsentService(), uploader: NoUploader(), capture: NoCapture(),
       profile: LocalProfileService(), neverWatch: NeverWatchStore(), exclusions: LocalExclusionService(),
       connections: UnavailableConnectionService(), loginItem: LiveLoginItem(), relauncher: LiveRelauncher(),
-      sampleWeek: sampleWeek
+      sampleWeek: sampleWeek, recordings: RecordingsImportModel.live()
     )
     let app = AppModel(
       options: LaunchOptions.parse(arguments: arguments), bundlePath: Bundle.main.bundlePath, bufferReadable: true,
@@ -101,6 +101,9 @@ public final class AppModel: ObservableObject {
     app.startBackgroundChecks()
     return app
   }
+
+  /// Screen 11 and Settings, Recordings (m3-05).
+  public var recordings: RecordingsImportModel? { onboarding.services.recordings }
 
   /// True only while the observer really captures (m3-02); the menu bar and screen 13 say so honestly.
   public var isCapturing: Bool { onboarding.services.capture.isRunning }

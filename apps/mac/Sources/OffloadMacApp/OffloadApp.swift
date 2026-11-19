@@ -30,6 +30,12 @@ struct OffloadApp: App {
     }
     .windowResizability(.contentMinSize)
 
+    // Settings, Recordings (m3-05). A window, not a `Settings` scene, so the menu bar item can open it in front.
+    Window(RecordingsCopy.settingsTitle, id: "settings") {
+      OffloadSettingsView(app: app)
+    }
+    .windowResizability(.contentMinSize)
+
     MenuBarExtra {
       MenuBarOpener(app: app)
     } label: {
@@ -46,6 +52,10 @@ struct MenuBarOpener: View {
   var body: some View {
     MenuBarContent(app: app) {
       openWindow(id: "main")
+      NSApp.activate()
+    }
+    Button(RecordingsCopy.menuItem) {
+      openWindow(id: "settings")
       NSApp.activate()
     }
   }
