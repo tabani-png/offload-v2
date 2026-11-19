@@ -327,7 +327,10 @@ week of capture.
   range: "12 files · .mov · 6 h 10 m · Nov 5 to 11".
 - Buttons: **Import** and **Choose folder…**. Secondary: **Skip**.
 - While importing (in a floating progress panel that keeps going after setup): "reading file 3 of 12", then "done ·
-  1,284 moments read · 9 things you repeat".
+  1,284 moments read · 9 things you repeat". Until the cloud analyses an import space (the m3-05 server half), the
+  done line stops at "done · 1,284 moments read". **Import** starts the import in the background and setup moves on
+  to screen 12; **Choose folder…** keeps the folder for next time. A folder that cannot be read says why on the
+  screen (an Offload data folder, nothing readable, gone).
 - Caption: "optional · kept in its own space · wipe it in one click".
 
 **Mechanics** (MIGRATION [section 5.7](MIGRATION.md#57-s34-import-branches-wips34-brain-wips34-mac-featrecordings-import))
@@ -337,7 +340,14 @@ week of capture.
 - A file is read only once its size has stopped changing for 3 s. A fingerprint ledger (SHA-256 only, no names or
   paths) prevents reading a file twice.
 - Recording names give the time (macOS default names with a narrow no-break space before AM/PM, `(2)` copies,
-  24-hour names, CleanShot and QuickTime); otherwise the file's modified time.
+  24-hour names, CleanShot and QuickTime); otherwise the file's modified time (minus its length, for a recording).
+  Times are kept as they are, never moved; a file whose time is in the future is skipped and named in the panel.
+- The folder may also hold screenshots (png, jpg, heic, webp, up to 3 folders deep) or be a screenwatch archive
+  (`days/DATE/log.jsonl`, rows with app, window and URL become masked focus observations).
+- Settings, Recordings (and "Recordings…" in the menu bar item) shows the same folder and Import, and each import
+  space as "Recordings from Desktop · Nov 5 to 11 · 1,284 moments read" with **Remove imported data**.
+- This build has no on-device text reading yet (it comes with capture, m3-02), so Import says so and reads nothing;
+  the folder summary is real.
 - The import space is analysed as of its last day, so last month's recordings still show their week. "Remove
   imported data" calls `POST /v1/me/forget` with `scope: "import"`.
 - Only offered after screen 5 was accepted. In Local mode it is hidden.

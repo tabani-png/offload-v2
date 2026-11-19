@@ -96,7 +96,8 @@ Conventions:
 | **Pseudonym match** | The Mac hashes candidate values from a connector and reports which pseudonym each matches ("is this the sheet?"). |
 | **Person placeholder** | A per-run placeholder from the model router's second pass for names the device missed: `<person:TAG.N>`, `<person:TAG.N.first>`, `<person:TAG.me>`. `TAG` is a random 4-letter tag per run. |
 | **Raw TTL** | How long C1 metadata lives in the cloud. Default 30 days; C1 text snapshots 7 days ([OQ-02](OPEN_QUESTIONS.md#oq-02-raw-ttl-for-masked-observations-in-the-cloud)). |
-| **Recordings import** | Optional backfill: read an existing folder of screen recordings into an **import space**, kept apart from live data and wiped as a unit. |
+| **Recordings import** | Optional backfill: read an existing folder of screen recordings (or screenshots, or a screenwatch archive) on the Mac into an **import space**, kept apart from live data and wiped as a unit. |
+| **Import space** | One recordings import: its observations carry `source = "import"` and its `import_id`, never mix with live data, and are wiped together ("Remove imported data", forget scope `import`). |
 | **Source purged** | A figure whose raw evidence passed its TTL. It keeps its value and arithmetic and shows the purge date. |
 | **Forget** / **Wipe** | Forget deletes a member's data by entity, date range, import or all. Wipe deletes a tenant and destroys its keys. |
 

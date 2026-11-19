@@ -131,7 +131,7 @@ Folder `apps/mac/Tests/OffloadMacTests/M305/`, Swift Testing, every test `@Test(
 | PROGRESS | started, reading file n of N, warning, finished; a file still being written waits for the gate; a file read once is skipped next time; a failing file does not stop the others |
 | SINK | request bodies match API.md (`source_kind`; `scope: "import"`, `import_id`); observation JSON matches the m1-02 keys (snake case, no `url`, RFC 3339, ULID, hash); forget calls the sink and clears the ledger |
 | SCREEN | screen 11 Import starts the import and goes to screen 12; not ready says so and stays; Choose folder… saves the folder; Settings shows the import (PILL: "Recordings from <folder>", the days); Remove imported data |
-| COPY | copyNeverMentionsDryRunsOrMiddleDots; no em dash or banned word; progress lines in plain words |
+| COPY | copyNeverMentions…OrMiddleDots (renamed: the copy lint refuses the ADR 0016 term even in a test name); no em dash or banned word; progress lines in plain words |
 
 ## Out of scope
 OCR, masker, perceptual hash, keyframe rendering, the sealed store and the uploader (m3-02); `services/**` (the server

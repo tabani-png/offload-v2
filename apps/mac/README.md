@@ -20,3 +20,11 @@ Layout of `Sources/OffloadMac` (slice m3-04): `Shell/` launch route, app model, 
 the screen-by-screen flow (pure state machine, copy, injected services, views); `Permissions/` the Accessibility and
 Screen Recording checks; `LocalNow/` the local now summary; `NeverWatch/` the exclusions the observer reads; `Today/`;
 `Design/` tokens and shared rules. Tests: `Tests/OffloadMacTests/M304/`.
+
+Recordings import (slice m3-05): `Sources/OffloadImport` reads a folder of screen recordings, screenshots or a
+screenwatch archive on the Mac (stable file gate, recording names, fingerprint ledger, frames at most every 5 s and
+1280 px, OCR, masker, exclusions, keyframe throttle) into masked observations for an import space, through the
+`ImportSink` protocol. OCR, the masker and the uploader-backed sink come with m3-02 and the server half; until then the
+app shows the folder summary and Import says it cannot read yet. `Sources/OffloadMac/Recordings/` holds screen 11's
+body, Settings, Recordings ("Recordings…" in the menu bar item) and the floating progress panel. Tests:
+`Tests/OffloadMacTests/M305/`.
