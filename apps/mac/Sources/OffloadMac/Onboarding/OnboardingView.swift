@@ -758,10 +758,17 @@ struct RecordingsScreen: View {
   let spec: ScreenSpec
   var body: some View {
     VStack(alignment: .leading, spacing: Tokens.Space.s16) {
+      if let recordings = model.services.recordings { RecordingsScreenBody(model: recordings) }
       if let caption = spec.caption { CaptionLine(caption) }
       Spacer(minLength: 0)
       ScreenButtons(screen: .recordings, spec: spec, primary: { await model.perform(.importRecordings) },
-                    secondary: { await model.perform(.importRecordings) }, skip: { await model.perform(.skip) },
+                    secondary: {
+                      if let recordings = model.services.recordings {
+                        recordings.chooseFolder()
+                      } else {
+                        await model.perform(.importRecordings)
+                      }
+                    }, skip: { await model.perform(.skip) },
                     back: { await model.perform(.back) })
     }
   }

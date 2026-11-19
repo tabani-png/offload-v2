@@ -77,8 +77,17 @@ public final class OnboardingModel: ObservableObject {
       case .showSampleWeek:
         services.sampleWeek.show()
       case .startRecordingsImport:
-        // Recordings import lands in m3-05.
-        notice = OnboardingCopy.recordingsNotReady
+        // m3-05: the import runs in the background with its own panel, so setup goes on to screen 12. When it cannot
+        // start (no on-device text reading in this build, or a refused folder) the screen stays and says why.
+        if let recordings = services.recordings {
+          if recordings.startImport() {
+            await perform(.next)
+          } else {
+            notice = recordings.notice ?? OnboardingCopy.recordingsNotReady
+          }
+        } else {
+          notice = OnboardingCopy.recordingsNotReady
+        }
       case .openToday:
         onOpenToday?()
       }

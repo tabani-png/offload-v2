@@ -87,11 +87,13 @@ public enum ConnectResult: Equatable, Sendable {
   public var loginItem: LoginItemService
   public var relauncher: Relauncher
   public var sampleWeek: SampleWeekPresenter
+  /// Screen 11 and Settings, Recordings (m3-05). Nil: Import says it is not ready and reads nothing.
+  public var recordings: RecordingsImportModel?
 
   public init(account: AccountService, consent: ConsentService, uploader: Uploader, capture: CaptureControl,
               profile: ProfileService, neverWatch: NeverWatchStore, exclusions: ExclusionService,
               connections: ConnectionService, loginItem: LoginItemService, relauncher: Relauncher,
-              sampleWeek: SampleWeekPresenter) {
+              sampleWeek: SampleWeekPresenter, recordings: RecordingsImportModel? = nil) {
     self.account = account
     self.consent = consent
     self.uploader = uploader
@@ -103,6 +105,7 @@ public enum ConnectResult: Equatable, Sendable {
     self.loginItem = loginItem
     self.relauncher = relauncher
     self.sampleWeek = sampleWeek
+    self.recordings = recordings
   }
 }
 
