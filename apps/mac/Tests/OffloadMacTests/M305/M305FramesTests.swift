@@ -20,7 +20,7 @@ func m305TinyVideo(in dir: URL, seconds: Int, fps: Int32 = 5, width: Int = 1600,
   let settings: [String: Any] = [AVVideoCodecKey: AVVideoCodecType.jpeg, AVVideoWidthKey: width, AVVideoHeightKey: height]
   let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
   input.expectsMediaDataInRealTime = false
-  let attributes: [String: Any] = [kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32ARGB),
+  let attributes: [String: Any] = [kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
                                    kCVPixelBufferWidthKey as String: width,
                                    kCVPixelBufferHeightKey as String: height]
   let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: attributes)
@@ -30,7 +30,7 @@ func m305TinyVideo(in dir: URL, seconds: Int, fps: Int32 = 5, width: Int = 1600,
   for i in 0..<(seconds * Int(fps)) {
     while !input.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.005) }
     var buffer: CVPixelBuffer?
-    _ = CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32ARGB, nil, &buffer)
+    _ = CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, nil, &buffer)
     guard let buffer else { throw M305VideoError() }
     _ = CVPixelBufferLockBaseAddress(buffer, [])
     if let base = CVPixelBufferGetBaseAddress(buffer) {
@@ -42,6 +42,7 @@ func m305TinyVideo(in dir: URL, seconds: Int, fps: Int32 = 5, width: Int = 1600,
     }
   }
   input.markAsFinished()
+  writer.endSession(atSourceTime: CMTime(value: CMTimeValue(seconds) * CMTimeValue(fps), timescale: fps))
   let done = DispatchSemaphore(value: 0)
   writer.finishWriting { done.signal() }
   done.wait()

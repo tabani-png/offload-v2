@@ -12,7 +12,7 @@ import Testing
 
 /// A fixed clock: Thu 19 Nov 2026 12:00 UTC.
 enum M305Clock {
-  static let now = Date(timeIntervalSince1970: 1_795_262_400)
+  static let now = Date(timeIntervalSince1970: 1_795_089_600)
   static let utc = TimeZone(identifier: "UTC")!
 
   static func date(_ y: Int, _ mo: Int, _ d: Int, _ h: Int = 0, _ mi: Int = 0, _ s: Int = 0) -> Date {
