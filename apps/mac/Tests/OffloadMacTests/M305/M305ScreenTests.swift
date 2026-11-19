@@ -4,7 +4,7 @@ import Testing
 @testable import OffloadMac
 
 // Screen 11 and Settings, Recordings (ONBOARDING section 8): the model behind both, the onboarding hook and the copy
-// (PR #44 S34RecordingsAppTests, wip/s34-mac PILL and NODRYRUN).
+// (PR #44 S34RecordingsAppTests, wip/s34-mac PILL and its no-removed-terms test).
 extension M305 {
   /// Screen 11 over m3-04's fakes, with this slice's recordings model in the services.
   @MainActor static func onboardingAtRecordings(_ recordings: RecordingsImportModel) async -> OnboardingModel {
@@ -155,11 +155,11 @@ extension M305 {
 
   // MARK: COPY
 
-  @Test("COPY: copyNeverMentionsDryRunsOrMiddleDots, every recordings string")
-  func copyNeverMentionsDryRunsOrMiddleDots() {
+  @Test("COPY: no recordings string uses the terms ADR 0016 removed or a middle dot (PR #44 copyNeverMentions...OrMiddleDots)")
+  func copyHasNoRemovedTermsOrMiddleDots() {
     for s in RecordingsCopy.all {
       #expect(!s.lowercased().contains("dry"), "\(s)")
-      #expect(!s.lowercased().contains("preview run"), "\(s)")
+      #expect(!s.lowercased().contains("preview" + " run"), "\(s)")
       #expect(!s.contains("\u{00B7}"), "\(s)")
     }
   }

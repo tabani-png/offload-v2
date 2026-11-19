@@ -229,13 +229,16 @@ final class FakeClock: ImportClock, @unchecked Sendable {
     return t
   }
   func sleep(seconds: TimeInterval) async {
+    let (n, at) = advance(seconds)
+    onSleep?(n, at)
+  }
+  /// Synchronous, because NSLock may not be used directly from an async function.
+  private func advance(_ seconds: TimeInterval) -> (Int, Date) {
     lock.lock()
+    defer { lock.unlock() }
     t = t.addingTimeInterval(seconds)
     count += 1
-    let n = count
-    let at = t
-    lock.unlock()
-    onSleep?(n, at)
+    return (count, t)
   }
   var sleeps: Int {
     lock.lock()
