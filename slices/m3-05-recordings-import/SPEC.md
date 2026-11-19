@@ -108,6 +108,14 @@ import branches per [MIGRATION 5.5 and 5.7](../../docs/MIGRATION.md#55-pr-44-fea
   Recordings show the real folder summary and Choose folder…, and Import says reading needs on-device text reading,
   which comes with capture, and reads nothing. The importer is complete and tested against fakes; m3-02 passes its
   OCR, masker and uploader-backed sink to `RecordingImporter` and the button works.
+- **Known limits** (for review): the folder summary reads each recording's length on the main actor (a header read
+  per file; a very large folder slows screen 11 and Settings); the import space is opened before the first file is
+  read, so a run whose every new file fails or is in the future leaves an empty import space (listed in Settings, so
+  it can be removed); the fingerprint includes the path, so a renamed recording is read again (as in PR #44).
+- **Self-review**: an independent compile-blind read (Opus) of every file found one failing test (the fixed clock's
+  epoch was Sat 21 Nov, not Thu 19 Nov, so the future-time file was not in the future); fixed. Its open risks: the
+  AVFoundation calls used are deprecated on the macOS 15 SDK (warnings, not errors); the generated test video now
+  uses BGRA buffers and an exact end. The first CI `mac` run is the real red-then-green check.
 
 ## Red tests (write these first, run them, see them fail)
 Folder `apps/mac/Tests/OffloadMacTests/M305/`, Swift Testing, every test `@Test("TAG: ...")` inside
