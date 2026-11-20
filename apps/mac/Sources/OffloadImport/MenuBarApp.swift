@@ -56,6 +56,9 @@ public enum MenuBarApp {
     "whatsapp": "net.whatsapp.WhatsApp", "telegram": "ru.keepcoder.Telegram", "claude": "com.anthropic.claudefordesktop",
     "chatgpt": "com.openai.chat", "1password": "com.1password.1password", "1password 7": "com.agilebits.onepassword7",
     "bitwarden": "com.bitwarden.desktop", "keychain access": "com.apple.keychainaccess", "passwords": "com.apple.Passwords",
+    // m3-04's optional Never watch chips and the built-in banking apps (review 2).
+    "photos": "com.apple.Photos", "moneymoney": "com.moneymoney-app.retail", "quicken": "com.quicken.Quicken",
+    "microsoft authenticator": "com.microsoft.azureauthenticator", "yubico authenticator": "com.yubico.yubioath",
   ]
 
   /// The bundle id for an app name, or `recording.<slug>`; `recording.unknown` when there is no name.

@@ -58,6 +58,23 @@ final class KeyablePanel: NSPanel {
   public func hide() { panel?.orderOut(nil) }
 }
 
+/// Display names of installed apps (`CFBundleDisplayName`, else `CFBundleName`, else the bundle's file name), for
+/// `NeverWatchImportExclusions`. Looked up on the main actor when an import starts; the importer then reads a frozen,
+/// Sendable table off the main actor. An app added to Never watch during an import is still matched by bundle id.
+public enum LiveAppNames {
+  @MainActor public static func resolver(for bundleIDs: [String]) -> @Sendable (String) -> String? {
+    var names: [String: String] = [:]
+    for id in bundleIDs {
+      guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { continue }
+      let info = Bundle(url: url)?.infoDictionary
+      names[id] = (info?["CFBundleDisplayName"] as? String) ?? (info?["CFBundleName"] as? String)
+        ?? url.deletingPathExtension().lastPathComponent
+    }
+    let frozen = names
+    return { frozen[$0] }
+  }
+}
+
 extension RecordingsImportModel {
   /// The app as shipped in this build: the real folder, summary and picker, and no importer yet, because the
   /// on-device OCR and masker arrive with capture (m3-02). Import says so and reads nothing.
