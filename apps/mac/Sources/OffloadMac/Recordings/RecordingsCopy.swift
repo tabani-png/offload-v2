@@ -6,6 +6,7 @@ import OffloadImport
 
 public enum RecordingsCopy {
   public static let notReady = "Reading recordings needs on-device text reading, which comes with screen capture in a later update. Nothing was read."
+  public static let needsSending = "Importing recordings starts once you're signed in and sending. Nothing was read."
   public static let settingsTitle = "Recordings"
   public static let settingsHelp = "Pick the folder your screen recordings are saved in. Offload reads them on this Mac into their own space, kept apart from what it watches live, and never changes the files."
   public static let menuItem = "Recordings…"
@@ -105,7 +106,7 @@ public enum RecordingsCopy {
                                first: Date(timeIntervalSince1970: 1_794_000_000), last: Date(timeIntervalSince1970: 1_794_500_000))
     let report = ImportReport(space: nil, filesRead: 11, skipped: 0, failed: 1, stillWriting: 0, moments: 1284,
                               observations: 0, firstDay: nil, lastDay: nil)
-    return [notReady, settingsTitle, settingsHelp, menuItem, folderLabel, noImports, removeImported, removeFailed,
+    return [notReady, needsSending, settingsTitle, settingsHelp, menuItem, folderLabel, noImports, removeImported, removeFailed,
             panelTitle, close, starting, noNew, done, reading(file: 3, of: 12),
             warning(.stillWriting(files: 1)), warning(.stillWriting(files: 2)), warning(.unreadable(file: "a.mov")),
             warning(.futureTime(file: "a.mov"))]
