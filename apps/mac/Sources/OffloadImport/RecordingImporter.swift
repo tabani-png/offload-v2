@@ -117,9 +117,10 @@ public struct RecordingImporter: Sendable {
 
   /// Imports `folder`. Returns the report (also sent as `.finished`), or nil when the folder was refused or the
   /// import space could not be opened.
-  @discardableResult
+  ///
   /// `exclusions` replaces the importer's own source for this run (the app builds it when the import starts, with the
   /// Never watch list's app names looked up then).
+  @discardableResult
   public func run(folder: URL, exclusions override: (any ImportExclusionSource)? = nil,
                   progress: (ImportProgress) -> Void) async -> ImportReport? {
     let exclusions = override ?? self.exclusions
