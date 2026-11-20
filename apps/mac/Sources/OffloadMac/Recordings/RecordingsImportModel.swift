@@ -195,7 +195,12 @@ public final class RecordingsImportModel: ObservableObject {
   /// The import became offered (or not): read the folder once if it was not read while offered. Screen 11 and
   /// Settings call it when `isOffered` changes (review 3: the rule lives here, not in the view).
   public func offerChanged() async {
-    guard isOffered, !readWhileOffered else { return }
+    // Withdrawn: `refresh()` reads nothing and clears the summary, so the folder is read again when offered again.
+    guard isOffered else {
+      await refresh()
+      return
+    }
+    guard !readWhileOffered else { return }
     await refresh()
   }
 

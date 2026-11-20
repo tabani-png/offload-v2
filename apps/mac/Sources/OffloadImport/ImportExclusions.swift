@@ -50,10 +50,10 @@ public enum ImportExclusions {
     // The banking apps of `bundleIDs`, by the names their menu bars show (review 2).
     "moneymoney", "banktivity", "banktivity 7", "banktivity 8", "quicken",
   ]
-  /// Password managers, authenticators and banking apps by bundle id (s34 `folder.ts` DENY_BUNDLES).
   /// The built-in bundle ids, for looking up their (localized) names on the Mac.
   public static var builtInBundleIDs: [String] { bundleIDs.sorted() }
 
+  /// Password managers, authenticators and banking apps by bundle id (s34 `folder.ts` DENY_BUNDLES).
   static let bundleIDs: Set<String> = [
     "com.1password.1password", "com.agilebits.onepassword7", "com.agilebits.onepassword-osx", "com.bitwarden.desktop",
     "org.keepassxc.keepassxc", "com.lastpass.lastpass", "com.dashlane.dashlanephonefinal", "com.apple.passwords",
