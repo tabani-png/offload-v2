@@ -152,7 +152,8 @@ extension M305 {
     let ui = M305UI()
     ui.store.folder = folder
     let model = ui.model(importer: fakes, suggested: folder)
-    #expect(await model.startImport())
+    let started = await model.startImport()
+    #expect(started)
     await model.waitForImport()
     let record = try #require(model.imports.first)
     #expect(!fakes.ledger.entries.isEmpty)

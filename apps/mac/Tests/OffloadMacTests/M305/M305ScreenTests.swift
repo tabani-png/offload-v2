@@ -103,7 +103,8 @@ extension M305 {
     let model = ui.model(importer: M305Importer(), suggested: empty)
     await model.refresh()
     #expect(model.refusal?.hasPrefix("No screen recordings found in Stuff.") == true)
-    #expect(!(await model.startImport()))
+    let started = await model.startImport()
+    #expect(!started)
     #expect(model.notice == model.refusal)
     #expect(ui.panel.shown == 0)
   }
@@ -193,19 +194,24 @@ extension M305 {
     for a in M304Path.toWhatLeaves { await onboarding.perform(a) }
     #expect(onboarding.flow.screen == .whatLeaves)
     #expect(!recordings.isOffered)
-    #expect(!(await recordings.startImport()))
+    let startedBefore = await recordings.startImport()
+    #expect(!startedBefore)
     #expect(recordings.notice == RecordingsCopy.needsSending)
     #expect(fakes.sink.spaces.isEmpty)
     #expect(ui.panel.shown == 0)
     // Local mode ("Keep it on this Mac") is the same.
     await onboarding.perform(.keepOnThisMac)
     #expect(!recordings.isOffered)
-    #expect(!(await recordings.startImport()))
+    let startedLocal = await recordings.startImport()
+    #expect(!startedLocal)
     // Once sending, it is offered.
     let sending = ui.model(importer: fakes, suggested: folder)
     let model = await M305.onboardingAtRecordings(sending)
-    #expect(model.flow.screen == .recordings)
-    #expect(sending.isOffered)
+    // The offer rule holds the onboarding model weakly; keep it alive across the check.
+    withExtendedLifetime(model) {
+      #expect(model.flow.screen == .recordings)
+      #expect(sending.isOffered)
+    }
   }
 
   @Test("SCREEN: the model is not offered until something says the person is sending (fails closed)")
@@ -214,7 +220,8 @@ extension M305 {
       store: MemoryRecordingsFolderStore(), picker: FakeFolderPicker(), panel: FakeImportPanel(), importer: M305Importer().importer(),
       sink: nil, ledger: nil, durations: { _ in nil }, suggestedFolder: URL(fileURLWithPath: "/nowhere"), protected: [])
     #expect(!model.isOffered)
-    #expect(!(await model.startImport()))
+    let started = await model.startImport()
+    #expect(!started)
   }
 
   @Test("SCREEN: the Import button is free again as soon as the import has finished")

@@ -253,8 +253,9 @@ extension M305 {
     #expect(M305.of(.focus, r).map(\.appName) == ["Screen"])
     #expect(M305.of(.focus, r).map(\.appBundleID) == ["recording.unknown"])
     #expect(masker.calls.contains("Report 2026"))
-    let json = String(decoding: try JSONEncoder().encode(r.observations), as: UTF8.self)
-    #expect(!json.contains("2026"))
+    // Every ts holds the year, so the check is on the fields the name could have reached.
+    #expect(r.observations.allSatisfy { !($0.appName ?? "").contains("2026") && !($0.appBundleID ?? "").contains("2026") })
+    #expect(r.observations.allSatisfy { !($0.appName ?? "").contains("Report") })
   }
 
   @Test("EXCLUDE: a banking host or a private window seen in a recording gets no text and no keyframe (built-ins)")
