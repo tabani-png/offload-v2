@@ -63,11 +63,12 @@ public enum RecordingsCopy {
 
   /// "Nov 5", "Nov 5 to 11", "Oct 30 to Nov 2"; nil without dates.
   public static func dateRange(_ first: Date?, _ last: Date?, timeZone: TimeZone = .current) -> String? {
-    guard let first = first ?? last, let last = last ?? first else { return nil }
+    // Distinct names: rebinding `first` would make `last ?? first` read the unwrapped Date, which does not compile.
+    guard let from = first ?? last, let to = last ?? first else { return nil }
     var cal = Calendar(identifier: .gregorian)
     cal.timeZone = timeZone
-    let a = cal.dateComponents([.year, .month, .day], from: min(first, last))
-    let b = cal.dateComponents([.year, .month, .day], from: max(first, last))
+    let a = cal.dateComponents([.year, .month, .day], from: min(from, to))
+    let b = cal.dateComponents([.year, .month, .day], from: max(from, to))
     let start = "\(month(a.month)) \(a.day ?? 1)"
     if a.year == b.year && a.month == b.month {
       return a.day == b.day ? start : "\(start) to \(b.day ?? 1)"
