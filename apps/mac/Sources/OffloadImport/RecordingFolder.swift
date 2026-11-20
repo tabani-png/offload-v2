@@ -31,7 +31,7 @@ public struct ImportRefusal: Error, Equatable, Sendable {
     case .offloadHome:
       return ImportRefusal(code: code, message: "\(name) is an Offload data folder, not a recordings folder. Choose the folder your screen recordings or screenshots are in.")
     case .noRecordings:
-      return ImportRefusal(code: code, message: "No screen recordings found in \(name). Offload reads screen recordings (mov, mp4), screenshots (png, jpg, heic, webp) or a screenwatch archive (days/DATE/log.jsonl).")
+      return ImportRefusal(code: code, message: "No screen recordings found in \(name). Offload reads screen recordings (mov, mp4, m4v), screenshots (png, jpg, heic, webp) or a screenwatch archive.")
     }
   }
 }
@@ -60,13 +60,14 @@ public struct FolderScan: Equatable, Sendable {
 public enum RecordingFolder {
   /// Folders below the one picked that are still read (the picked folder's own files are depth 0).
   public static let maxDepth = 3
-  static let maxFiles = 20_000
+  public static let maxFiles = 20_000
   static let dayFile = #"^\d{4}-\d{2}-\d{2}\.jsonl(\.enc)?$"#
   static let dayFolder = #"^\d{4}-\d{2}-\d{2}$"#
 
   /// What `folder` holds. `protected` are Offload's own data folders: picking one (or a folder inside one) is
   /// refused, and a folder that holds one is read without it.
-  public static func scan(_ folder: URL, protected: [URL], timeZone: TimeZone = .current) -> Result<FolderScan, ImportRefusal> {
+  public static func scan(_ folder: URL, protected: [URL], timeZone: TimeZone = .current,
+                          maxFiles: Int = RecordingFolder.maxFiles) -> Result<FolderScan, ImportRefusal> {
     let fm = FileManager.default
     let dir = folder.standardizedFileURL
     var isDir: ObjCBool = false
@@ -88,8 +89,14 @@ public enum RecordingFolder {
         return .success(FolderScan(folder: dir, sourceKind: .screenwatch, files: files))
       }
     }
+    // One day folder of a screenwatch archive (`days/DATE/`): its rows, not its thousands of screenshots.
+    let ownLog = dir.appendingPathComponent("log.jsonl")
+    if matches(dir.lastPathComponent, dayFolder), fm.fileExists(atPath: ownLog.path) {
+      let file = ScannedFile(url: ownLog, kind: .screenwatchDay, nameDate: dayDate(ownLog, timeZone: timeZone), modified: modified(ownLog))
+      return .success(FolderScan(folder: dir, sourceKind: .screenwatch, files: [file]))
+    }
     var found: [ScannedFile] = []
-    walk(dir, depth: 0, guarded: Set(guarded), into: &found, timeZone: timeZone)
+    walk(dir, depth: 0, guarded: Set(guarded), maxFiles: maxFiles, into: &found, timeZone: timeZone)
     guard !found.isEmpty else { return .failure(.make(.noRecordings, folder: dir)) }
     found.sort { a, b in
       let ta = a.nameDate ?? a.modified
@@ -109,7 +116,8 @@ public enum RecordingFolder {
     return URL(fileURLWithPath: loc, isDirectory: true)
   }
 
-  static func walk(_ dir: URL, depth: Int, guarded: Set<String>, into found: inout [ScannedFile], timeZone: TimeZone) {
+  static func walk(_ dir: URL, depth: Int, guarded: Set<String>, maxFiles: Int, into found: inout [ScannedFile],
+                   timeZone: TimeZone) {
     let fm = FileManager.default
     for name in names(in: dir).sorted() {
       if name.hasPrefix(".") || found.count >= maxFiles { continue }
@@ -120,7 +128,7 @@ public enum RecordingFolder {
         let lower = name.lowercased()
         let bundle = lower.hasSuffix(".app") || lower.hasSuffix(".photoslibrary") || lower.hasSuffix(".bundle")
         if depth < maxDepth, !bundle, lower != "node_modules", !guarded.contains(url.standardizedFileURL.path) {
-          walk(url, depth: depth + 1, guarded: guarded, into: &found, timeZone: timeZone)
+          walk(url, depth: depth + 1, guarded: guarded, maxFiles: maxFiles, into: &found, timeZone: timeZone)
         }
         continue
       }
