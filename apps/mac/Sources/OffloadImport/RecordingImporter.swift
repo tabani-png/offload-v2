@@ -183,10 +183,11 @@ public struct RecordingImporter: Sendable {
           group.append(todo[i + group.count])
         }
       }
-      for n in 0..<group.count { progress(.reading(file: i + n + 1, of: todo.count)) }
+      // Screenshots report each file as they open it; other files are one per group.
+      if todo[i].file.kind != .image { progress(.reading(file: i + 1, of: todo.count)) }
       // Read again before each file, so a Never watch entry added meanwhile applies from here on.
       let rules = exclusions.currentRules()
-      readGroup(group, space: space, rules: rules, report: &report, progress: progress)
+      readGroup(group, space: space, rules: rules, fileOffset: i, total: todo.count, report: &report, progress: progress)
       i += group.count
     }
     progress(.finished(report))
@@ -194,7 +195,8 @@ public struct RecordingImporter: Sendable {
   }
 
   private func readGroup(_ group: [(file: ScannedFile, fingerprint: String)], space: ImportSpace,
-                         rules: [ImportExclusionRule], report: inout ImportReport, progress: (ImportProgress) -> Void) {
+                         rules: [ImportExclusionRule], fileOffset: Int, total: Int, report: inout ImportReport,
+                         progress: (ImportProgress) -> Void) {
     let now = clock.now()
     let first = group[0].file
     do {
@@ -217,30 +219,45 @@ public struct RecordingImporter: Sendable {
         result = try ingestor.ingest(source, startedAt: start, importID: space.id, exclusions: rules)
         moments = result.frames
       case .image:
-        var shots: [Screenshot] = []
-        var kept: [(file: ScannedFile, fingerprint: String)] = []
-        for item in group {
+        // One span for the run, but one screenshot in memory at a time: each is opened, read, written and recorded
+        // before the next is opened (review 1: a long run of screenshots must not be held all at once).
+        var run = RecordingIngestor.Run(ingestor: ingestor, importID: space.id, exclusions: rules)
+        var firstAt: Date?
+        var lastAt: Date?
+        for (n, item) in group.enumerated() {
+          progress(.reading(file: fileOffset + n + 1, of: total))
+          let name = item.file.url.lastPathComponent
           let at = Self.time(of: item.file)
           guard at <= now.addingTimeInterval(Self.futureSlack) else {
-            progress(.warning(.futureTime(file: item.file.url.lastPathComponent)))
+            progress(.warning(.futureTime(file: name)))
             continue
           }
           do {
-            shots.append(Screenshot(frame: try readers.openImage(item.file.url), at: at))
-            kept.append(item)
+            let frame = try readers.openImage(item.file.url)
+            if firstAt == nil {
+              run.idle(.idleEnd, at: at)
+              firstAt = at
+            }
+            run.exclusions = exclusions.currentRules()
+            try run.read(frame, at: at, videoTime: at.timeIntervalSince(firstAt ?? at))
+            try write(run.drain(), space: space, report: &report)
+            try ledger.record(RecordingLedgerEntry(fingerprint: item.fingerprint, importID: space.id, ingestedAt: now,
+                                                   recordedAt: at, moments: 1))
+            report.filesRead += 1
+            report.moments += 1
+            lastAt = at
           } catch {
             report.failed += 1
-            progress(.warning(.unreadable(file: item.file.url.lastPathComponent)))
+            progress(.warning(.unreadable(file: name)))
           }
         }
-        guard !shots.isEmpty else { return }
-        result = try ingestor.ingestScreenshots(shots, importID: space.id, exclusions: rules)
-        try write(result.observations, space: space, report: &report)
-        for item in kept {
-          try ledger.record(RecordingLedgerEntry(fingerprint: item.fingerprint, importID: space.id, ingestedAt: now,
-                                                 recordedAt: Self.time(of: item.file), moments: 1))
-          report.filesRead += 1
-          report.moments += 1
+        if let lastAt {
+          run.idle(.idleStart, at: lastAt.addingTimeInterval(ingestor.config.idleThreshold))
+          do {
+            try write(run.drain(), space: space, report: &report)
+          } catch {
+            progress(.warning(.unreadable(file: first.url.lastPathComponent)))
+          }
         }
         return
       case .screenwatchDay:
