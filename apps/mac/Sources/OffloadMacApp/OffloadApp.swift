@@ -35,6 +35,9 @@ struct OffloadApp: App {
       OffloadSettingsView(app: app)
     }
     .windowResizability(.contentMinSize)
+    // Not listed in the Window menu: it opens only from the menu bar item, which shows it only while sending. A
+    // window macOS restores at launch reads no folder while the import is not offered (RecordingsImportModel.refresh).
+    .commandsRemoved()
 
     MenuBarExtra {
       MenuBarOpener(app: app)
