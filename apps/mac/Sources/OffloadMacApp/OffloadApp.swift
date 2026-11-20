@@ -54,9 +54,12 @@ struct MenuBarOpener: View {
       openWindow(id: "main")
       NSApp.activate()
     }
-    Button(RecordingsCopy.menuItem) {
-      openWindow(id: "settings")
-      NSApp.activate()
+    // Hidden in Local mode and before "Start sending" (ONBOARDING section 8).
+    if app.recordings?.isOffered == true {
+      Button(RecordingsCopy.menuItem) {
+        openWindow(id: "settings")
+        NSApp.activate()
+      }
     }
   }
 }

@@ -28,11 +28,11 @@ public struct RecordingsScreenBody: View {
       if let refusal = model.refusal {
         Text(refusal).textStyle(Tokens.TypeScale.callout).foregroundStyle(Theme.ink2)
       }
-      if let notice = model.notice, notice != model.refusal {
-        Text(notice).textStyle(Tokens.TypeScale.callout).foregroundStyle(Theme.ink2)
-      }
+      // The model's notice is drawn by the screen around this body (onboarding's notice line, or Settings), once.
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+    // The folder is read when the screen appears, off the main actor, never at launch.
+    .task { await model.refresh() }
   }
 }
 
@@ -44,15 +44,23 @@ public struct RecordingsSettingsView: View {
   public var body: some View {
     VStack(alignment: .leading, spacing: Tokens.Space.s16) {
       Text(RecordingsCopy.settingsTitle).textStyle(Tokens.TypeScale.display).foregroundStyle(Theme.ink)
+        .accessibilityAddTraits(.isHeader)
       Text(RecordingsCopy.settingsHelp).textStyle(Tokens.TypeScale.body).foregroundStyle(Theme.ink2)
         .fixedSize(horizontal: false, vertical: true)
       RecordingsScreenBody(model: model)
-      HStack(spacing: Tokens.Space.s12) {
-        Button(OnboardingCopy.chooseFolder) { model.chooseFolder() }
-          .buttonStyle(SecondaryButtonStyle())
-        Button(OnboardingCopy.importTitle) { _ = model.startImport() }
-          .buttonStyle(PrimaryButtonStyle())
-          .disabled(model.isImporting)
+      if model.isOffered {
+        HStack(spacing: Tokens.Space.s12) {
+          Button(OnboardingCopy.chooseFolder) { Task { await model.chooseFolder() } }
+            .buttonStyle(SecondaryButtonStyle())
+          Button(OnboardingCopy.importTitle) { Task { await model.startImport() } }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(model.isImporting)
+        }
+      } else {
+        Text(RecordingsCopy.needsSending).textStyle(Tokens.TypeScale.callout).foregroundStyle(Theme.ink2)
+      }
+      if let notice = model.notice, notice != model.refusal, notice != RecordingsCopy.needsSending {
+        Text(notice).textStyle(Tokens.TypeScale.callout).foregroundStyle(Theme.ink2)
       }
       if !model.progressItems.isEmpty { MetaItemsLine(items: model.progressItems) }
       Divider()
@@ -65,12 +73,14 @@ public struct RecordingsSettingsView: View {
           Spacer()
           Button(RecordingsCopy.removeImported) { Task { await model.remove(record) } }
             .buttonStyle(SecondaryButtonStyle())
+            .accessibilityLabel(([RecordingsCopy.removeImported] + RecordingsCopy.pill(record, timeZone: model.timeZone)).joined(separator: ", "))
         }
       }
       Spacer(minLength: 0)
     }
     .padding(Tokens.Space.s24)
     .frame(minWidth: 520, minHeight: 360, alignment: .topLeading)
+    .task { await model.refresh() }
     .background(Theme.paper)
     .preferredColorScheme(.light)
   }
@@ -101,6 +111,11 @@ public struct ImportPanelView: View {
     .padding(Tokens.Space.s16)
     .frame(width: 340, alignment: .leading)
     .background(Theme.chrome)
+    // The panel's line changes while the person works elsewhere: VoiceOver hears each change.
+    .onChange(of: model.progressItems) { _, items in
+      guard !items.isEmpty else { return }
+      AccessibilityNotification.Announcement(items.joined(separator: ", ")).post()
+    }
   }
 }
 

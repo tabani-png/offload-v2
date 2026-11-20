@@ -95,15 +95,19 @@ public final class RecordingsImportModel: ObservableObject {
   private let importer: RecordingImporter?
   private let sink: (any ImportSink)?
   private let ledger: (any RecordingLedger)?
-  private let durations: (URL) -> TimeInterval?
+  private let durations: @Sendable (URL) -> TimeInterval?
   private let protected: [URL]
   public let timeZone: TimeZone
   private var runningFolderName: String?
   private var consumer: Task<Void, Never>?
+  /// Whether the import may be offered: only while the person is signed in and sending (ONBOARDING section 8, "Only
+  /// offered after screen 5 was accepted. In Local mode it is hidden"). OnboardingModel sets it; until then it fails
+  /// closed.
+  public var offerCheck: @MainActor () -> Bool = { false }
 
   /// `importer` is nil until m3-02 brings on-device OCR and the masker: then Import says so and reads nothing.
   public init(store: RecordingsFolderStore, picker: FolderPicker, panel: ImportPanelPresenter, importer: RecordingImporter?,
-              sink: (any ImportSink)?, ledger: (any RecordingLedger)?, durations: @escaping (URL) -> TimeInterval?,
+              sink: (any ImportSink)?, ledger: (any RecordingLedger)?, durations: @escaping @Sendable (URL) -> TimeInterval?,
               suggestedFolder: URL, protected: [URL], timeZone: TimeZone = .current) {
     self.store = store
     self.picker = picker
@@ -116,12 +120,20 @@ public final class RecordingsImportModel: ObservableObject {
     self.timeZone = timeZone
     self.folder = store.folder ?? suggestedFolder
     self.imports = store.imports
-    refresh()
+    // No scan here: the folder (often the Desktop, which macOS guards) is read only when screen 11 or Settings,
+    // Recordings appears (review 1).
   }
 
   public var canImport: Bool { importer != nil }
 
-  public var isImporting: Bool { consumer != nil }
+  /// False in Local mode and before "Start sending": the menu item, Settings' Import and screen 11 hide it.
+  public var isOffered: Bool { offerCheck() }
+
+  /// Derived from the phase, so the Import button is free again the moment the import has finished.
+  public var isImporting: Bool {
+    if case .reading = phase { return true }
+    return false
+  }
 
   /// The folder summary as separate items: "12 files", ".mov", "6 h 10 m", "Nov 5 to 11".
   public var summaryItems: [String] {
@@ -138,42 +150,56 @@ public final class RecordingsImportModel: ObservableObject {
     }
   }
 
-  /// Scans the folder again for the summary (no file is opened except to read recording lengths).
-  public func refresh() {
+  /// Scans the folder again for the summary, off the main actor (no file is opened except to read recording
+  /// lengths). Views call it when they appear.
+  public func refresh() async {
     guard let folder else {
       summary = nil
       refusal = nil
       return
     }
-    switch RecordingFolder.scan(folder, protected: protected, timeZone: timeZone) {
-    case .success(let scan):
-      summary = FolderSummary.make(scan: scan, timeZone: timeZone, duration: durations)
-      refusal = nil
-    case .failure(let r):
-      summary = nil
-      refusal = r.message
-    }
+    let protected = self.protected
+    let timeZone = self.timeZone
+    let durations = self.durations
+    let result = await Task.detached { () -> (summary: FolderSummary?, refusal: String?) in
+      switch RecordingFolder.scan(folder, protected: protected, timeZone: timeZone) {
+      case .success(let scan):
+        return (FolderSummary.make(scan: scan, timeZone: timeZone, duration: durations), nil)
+      case .failure(let r):
+        return (nil, r.message)
+      }
+    }.value
+    // The folder may have changed while the scan ran; only the latest folder's result counts.
+    guard folder == self.folder else { return }
+    summary = result.summary
+    refusal = result.refusal
   }
 
   /// "Choose folder…": keeps the folder for next time and reads its summary. A cancel changes nothing.
-  public func chooseFolder() {
+  public func chooseFolder() async {
     guard let url = picker.pickFolder(startingAt: folder) else { return }
     folder = url
     store.folder = url
     notice = nil
-    refresh()
+    await refresh()
   }
 
-  /// Starts the import in the background and shows the panel. False when it cannot start: no importer in this build,
-  /// or the folder is refused (the notice says why).
+  /// Starts the import in the background and shows the panel. False when it cannot start: not offered (Local mode,
+  /// or before "Start sending"), no importer in this build, or a refused folder (the notice says why).
   @discardableResult
-  public func startImport() -> Bool {
+  public func startImport() async -> Bool {
+    guard isOffered else {
+      notice = RecordingsCopy.needsSending
+      return false
+    }
     guard let importer, let folder else {
       notice = RecordingsCopy.notReady
       return false
     }
     if isImporting { return true }
-    refresh()
+    await refresh()
+    // A second tap while the folder was being read must not start a second import.
+    if isImporting { return true }
     if let refusal {
       notice = refusal
       return false
