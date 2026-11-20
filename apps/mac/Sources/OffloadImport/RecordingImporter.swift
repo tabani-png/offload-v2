@@ -233,13 +233,16 @@ public struct RecordingImporter: Sendable {
             continue
           }
           do {
-            let frame = try readers.openImage(item.file.url)
-            if firstAt == nil {
-              run.idle(.idleEnd, at: at)
-              firstAt = at
+            // One screenshot's buffers are released before the next is opened (review 2).
+            try autoreleasepool {
+              let frame = try readers.openImage(item.file.url)
+              if firstAt == nil {
+                run.idle(.idleEnd, at: at)
+                firstAt = at
+              }
+              run.exclusions = exclusions.currentRules()
+              try run.read(frame, at: at, videoTime: at.timeIntervalSince(firstAt ?? at))
             }
-            run.exclusions = exclusions.currentRules()
-            try run.read(frame, at: at, videoTime: at.timeIntervalSince(firstAt ?? at))
             try write(run.drain(), space: space, report: &report)
             try ledger.record(RecordingLedgerEntry(fingerprint: item.fingerprint, importID: space.id, ingestedAt: now,
                                                    recordedAt: at, moments: 1))

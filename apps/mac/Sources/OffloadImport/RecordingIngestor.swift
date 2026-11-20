@@ -55,8 +55,11 @@ public struct RecordingIngestor: Sendable {
     var run = Run(ingestor: self, importID: importID, exclusions: exclusions)
     run.idle(.idleEnd, at: start)
     for t in SamplePlan.times(duration: duration, interval: config.interval, maxFrames: config.maxFrames) {
-      guard let frame = try source.frame(at: t) else { continue }
-      try run.read(frame, at: start.addingTimeInterval(t), videoTime: t)
+      // AVFoundation and ImageIO leave autoreleased buffers behind; drain them after every frame (review 2).
+      try autoreleasepool {
+        guard let frame = try source.frame(at: t) else { return }
+        try run.read(frame, at: start.addingTimeInterval(t), videoTime: t)
+      }
     }
     run.idle(.idleStart, at: start.addingTimeInterval(duration + config.idleThreshold))
     return run.result
