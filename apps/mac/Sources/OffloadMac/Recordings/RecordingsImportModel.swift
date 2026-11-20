@@ -98,6 +98,12 @@ public final class RecordingsImportModel: ObservableObject {
   private let durations: @Sendable (URL) -> TimeInterval?
   private let protected: [URL]
   public let timeZone: TimeZone
+  /// The Never watch list, read when each import starts (and again before each file by the importer).
+  private let neverWatch: (any ExclusionSource)?
+  /// Looks up, on the main actor, every name the given apps are shown by; the result is a frozen Sendable table.
+  private let appNames: (@MainActor ([String]) -> @Sendable (String) -> [String])?
+  /// Whether the last refresh read the folder (it reads nothing while the import is not offered).
+  private var readWhileOffered = false
   private var runningFolderName: String?
   private var consumer: Task<Void, Never>?
   /// The last thing VoiceOver was told, and how many times it was told something (the panel posts on each change).
@@ -112,7 +118,9 @@ public final class RecordingsImportModel: ObservableObject {
   /// `importer` is nil until m3-02 brings on-device OCR and the masker: then Import says so and reads nothing.
   public init(store: RecordingsFolderStore, picker: FolderPicker, panel: ImportPanelPresenter, importer: RecordingImporter?,
               sink: (any ImportSink)?, ledger: (any RecordingLedger)?, durations: @escaping @Sendable (URL) -> TimeInterval?,
-              suggestedFolder: URL, protected: [URL], timeZone: TimeZone = .current) {
+              suggestedFolder: URL, protected: [URL], timeZone: TimeZone = .current,
+              neverWatch: (any ExclusionSource)? = nil,
+              appNames: (@MainActor ([String]) -> @Sendable (String) -> [String])? = nil) {
     self.store = store
     self.picker = picker
     self.panel = panel
@@ -122,6 +130,8 @@ public final class RecordingsImportModel: ObservableObject {
     self.durations = durations
     self.protected = protected
     self.timeZone = timeZone
+    self.neverWatch = neverWatch
+    self.appNames = appNames
     self.folder = store.folder ?? suggestedFolder
     self.imports = store.imports
     // No scan here: the folder (often the Desktop, which macOS guards) is read only when screen 11 or Settings,
@@ -161,8 +171,10 @@ public final class RecordingsImportModel: ObservableObject {
     guard isOffered, let folder else {
       summary = nil
       refusal = nil
+      readWhileOffered = false
       return
     }
+    readWhileOffered = true
     let protected = self.protected
     let timeZone = self.timeZone
     let durations = self.durations
@@ -178,6 +190,13 @@ public final class RecordingsImportModel: ObservableObject {
     guard folder == self.folder else { return }
     summary = result.summary
     refusal = result.refusal
+  }
+
+  /// The import became offered (or not): read the folder once if it was not read while offered. Screen 11 and
+  /// Settings call it when `isOffered` changes (review 3: the rule lives here, not in the view).
+  public func offerChanged() async {
+    guard isOffered, !readWhileOffered else { return }
+    await refresh()
   }
 
   /// "Choose folder…": keeps the folder for next time and reads its summary. A cancel changes nothing.
@@ -214,9 +233,22 @@ public final class RecordingsImportModel: ObservableObject {
     runningFolderName = folder.lastPathComponent
     phase = .reading(file: 0, of: summary?.files ?? 0)
     panel.show(self)
+    // The Never watch list as it is now, with its apps' names looked up now, on the main actor: an app the person
+    // added after launch (screen 9 in first-run setup) is matched by the name its menu bar shows (review 3).
+    let exclusions: (any ImportExclusionSource)?
+    if let neverWatch {
+      let ids = neverWatch.currentExclusions().filter { $0.kind == .bundleID }.map(\.value) + ImportExclusions.builtInBundleIDs
+      if let lookup = appNames?(ids) {
+        exclusions = NeverWatchImportExclusions(source: neverWatch, appNames: lookup)
+      } else {
+        exclusions = NeverWatchImportExclusions(source: neverWatch)
+      }
+    } else {
+      exclusions = nil
+    }
     let (stream, continuation) = AsyncStream<ImportProgress>.makeStream()
     Task.detached {
-      await importer.run(folder: folder) { _ = continuation.yield($0) }
+      await importer.run(folder: folder, exclusions: exclusions) { _ = continuation.yield($0) }
       continuation.finish()
     }
     // The latest import's task. It is never cleared, so an older task finishing late cannot drop a newer one

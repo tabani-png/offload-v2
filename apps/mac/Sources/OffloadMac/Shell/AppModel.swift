@@ -86,11 +86,13 @@ public final class AppModel: ObservableObject {
   /// stand-ins (their backends land in later slices); nothing is sent anywhere.
   public static func live(arguments: [String] = ProcessInfo.processInfo.arguments) -> AppModel {
     let sampleWeek = SampleWeekFlag()
+    // One Never watch store for the observer, the onboarding screens and the recordings import.
+    let neverWatch = NeverWatchStore()
     let services = OnboardingServices(
       account: UnavailableAccountService(), consent: LocalConsentService(), uploader: NoUploader(), capture: NoCapture(),
-      profile: LocalProfileService(), neverWatch: NeverWatchStore(), exclusions: LocalExclusionService(),
+      profile: LocalProfileService(), neverWatch: neverWatch, exclusions: LocalExclusionService(),
       connections: UnavailableConnectionService(), loginItem: LiveLoginItem(), relauncher: LiveRelauncher(),
-      sampleWeek: sampleWeek, recordings: RecordingsImportModel.live()
+      sampleWeek: sampleWeek, recordings: RecordingsImportModel.live(neverWatch: neverWatch)
     )
     let app = AppModel(
       options: LaunchOptions.parse(arguments: arguments), bundlePath: Bundle.main.bundlePath, bufferReadable: true,
