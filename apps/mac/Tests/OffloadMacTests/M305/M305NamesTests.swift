@@ -128,28 +128,38 @@ extension M305 {
   func aFileIsReadyOnlyWhenItStoppedGrowing() {
     var gate = StableFileGate(settle: 3)
     let t0 = Date(timeIntervalSince1970: 0)
-    #expect(!gate.observe(path: "/a.mov", size: 10, at: t0))
-    #expect(!gate.observe(path: "/a.mov", size: 20, at: t0.addingTimeInterval(4)))    // still growing
-    #expect(!gate.observe(path: "/a.mov", size: 20, at: t0.addingTimeInterval(5)))    // same size, too soon
-    #expect(gate.observe(path: "/a.mov", size: 20, at: t0.addingTimeInterval(7.5)))
-    #expect(!gate.observe(path: "/a.mov", size: 0, at: t0.addingTimeInterval(20)))    // empty files never
+    let ready1 = gate.observe(path: "/a.mov", size: 10, at: t0)
+    #expect(!ready1)
+    let ready2 = gate.observe(path: "/a.mov", size: 20, at: t0.addingTimeInterval(4))    // still growing
+    #expect(!ready2)
+    let ready3 = gate.observe(path: "/a.mov", size: 20, at: t0.addingTimeInterval(5))    // same size, too soon
+    #expect(!ready3)
+    let ready4 = gate.observe(path: "/a.mov", size: 20, at: t0.addingTimeInterval(7.5))
+    #expect(ready4)
+    let ready5 = gate.observe(path: "/a.mov", size: 0, at: t0.addingTimeInterval(20))    // empty files never
+    #expect(!ready5)
   }
 
   @Test("GATE: a file last modified 3 s or more ago is ready at once")
   func oldModificationTimeIsReady() {
     var gate = StableFileGate()
     let now = M305Clock.now
-    #expect(gate.observe(path: "/old.mov", size: 10, modified: now.addingTimeInterval(-3), at: now))
-    #expect(gate.observe(path: "/older.mov", size: 10, modified: now.addingTimeInterval(-3600), at: now))
+    let ready6 = gate.observe(path: "/old.mov", size: 10, modified: now.addingTimeInterval(-3), at: now)
+    #expect(ready6)
+    let ready7 = gate.observe(path: "/older.mov", size: 10, modified: now.addingTimeInterval(-3600), at: now)
+    #expect(ready7)
   }
 
   @Test("GATE: a file modified just now waits until its size held for 3 s")
   func recentModificationWaits() {
     var gate = StableFileGate()
     let now = M305Clock.now
-    #expect(!gate.observe(path: "/new.mov", size: 10, modified: now.addingTimeInterval(-1), at: now))
-    #expect(!gate.observe(path: "/new.mov", size: 10, modified: now.addingTimeInterval(-1), at: now.addingTimeInterval(1)))
-    #expect(gate.observe(path: "/new.mov", size: 10, modified: now.addingTimeInterval(-1), at: now.addingTimeInterval(2)))
+    let ready8 = gate.observe(path: "/new.mov", size: 10, modified: now.addingTimeInterval(-1), at: now)
+    #expect(!ready8)
+    let ready9 = gate.observe(path: "/new.mov", size: 10, modified: now.addingTimeInterval(-1), at: now.addingTimeInterval(1))
+    #expect(!ready9)
+    let ready10 = gate.observe(path: "/new.mov", size: 10, modified: now.addingTimeInterval(-1), at: now.addingTimeInterval(2))
+    #expect(ready10)
   }
 
   @Test("GATE: the settle time is 3 s and files are tracked apart")
@@ -157,8 +167,11 @@ extension M305 {
     #expect(StableFileGate().settle == 3)
     var gate = StableFileGate()
     let t0 = Date(timeIntervalSince1970: 100)
-    #expect(!gate.observe(path: "/a.mov", size: 5, at: t0))
-    #expect(!gate.observe(path: "/b.mov", size: 5, at: t0.addingTimeInterval(3)))
-    #expect(gate.observe(path: "/a.mov", size: 5, at: t0.addingTimeInterval(3)))
+    let ready11 = gate.observe(path: "/a.mov", size: 5, at: t0)
+    #expect(!ready11)
+    let ready12 = gate.observe(path: "/b.mov", size: 5, at: t0.addingTimeInterval(3))
+    #expect(!ready12)
+    let ready13 = gate.observe(path: "/a.mov", size: 5, at: t0.addingTimeInterval(3))
+    #expect(ready13)
   }
 }
