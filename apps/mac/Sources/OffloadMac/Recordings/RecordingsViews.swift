@@ -31,8 +31,9 @@ public struct RecordingsScreenBody: View {
       // The model's notice is drawn by the screen around this body (onboarding's notice line, or Settings), once.
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    // The folder is read when the screen appears, off the main actor, never at launch.
-    .task { await model.refresh() }
+    // The folder is read when the screen appears, off the main actor, never at launch; and again when the import
+    // becomes offered (sending started while Settings was open).
+    .task(id: model.isOffered) { await model.refresh() }
   }
 }
 

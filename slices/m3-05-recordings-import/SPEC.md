@@ -134,7 +134,9 @@ import branches per [MIGRATION 5.5 and 5.7](../../docs/MIGRATION.md#55-pr-44-fea
   visibility is read when the menu is drawn. An excluded app recorded without its menu bar (a window-only recording)
   is "Screen" and is not excluded by app; host, title and private-window rules still apply to its text. Display names
   of the person's apps are looked up when an import starts (`LiveAppNames.resolver`); an app added to Never watch
-  during an import is matched by bundle id only (enough for apps in the menu bar table).
+  during an import is matched by bundle id only (enough for apps in the menu bar table). `LiveAppNames` is not wired
+  yet: the shipped app has no importer, and m3-02 passes `LiveAppNames.resolver(for:)` to `NeverWatchImportExclusions`
+  when it builds one.
 - **Self-review**: an independent compile-blind read (Opus) of every file found one failing test (the fixed clock's
   epoch was Sat 21 Nov, not Thu 19 Nov, so the future-time file was not in the future); fixed. Its open risks: the
   AVFoundation calls used are deprecated on the macOS 15 SDK (warnings, not errors); the generated test video now

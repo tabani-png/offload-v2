@@ -3,7 +3,7 @@ import OffloadImport
 
 /// The person's Never watch list (m3-04's `ExclusionSource`, built-ins and their own entries) as the importer's
 /// rules. The importer reads it before every file, so an entry added during an import applies from the next file.
-/// `appName` resolves a bundle id to the app's display name (in the app: `LiveAppNames.displayName`), so a recorded
+/// `appName` resolves a bundle id to the app's display name (in the app: `LiveAppNames.resolver(for:)`, which m3-02 passes when it builds the importer), so a recorded
 /// app that is in no built-in table is still matched by the name its menu bar shows.
 public struct NeverWatchImportExclusions: ImportExclusionSource {
   public let source: any ExclusionSource
