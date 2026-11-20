@@ -118,7 +118,11 @@ public struct RecordingImporter: Sendable {
   /// Imports `folder`. Returns the report (also sent as `.finished`), or nil when the folder was refused or the
   /// import space could not be opened.
   @discardableResult
-  public func run(folder: URL, progress: (ImportProgress) -> Void) async -> ImportReport? {
+  /// `exclusions` replaces the importer's own source for this run (the app builds it when the import starts, with the
+  /// Never watch list's app names looked up then).
+  public func run(folder: URL, exclusions override: (any ImportExclusionSource)? = nil,
+                  progress: (ImportProgress) -> Void) async -> ImportReport? {
+    let exclusions = override ?? self.exclusions
     let scan: FolderScan
     switch RecordingFolder.scan(folder, protected: protected, timeZone: timeZone) {
     case .failure(let refusal):
@@ -187,7 +191,8 @@ public struct RecordingImporter: Sendable {
       if todo[i].file.kind != .image { progress(.reading(file: i + 1, of: todo.count)) }
       // Read again before each file, so a Never watch entry added meanwhile applies from here on.
       let rules = exclusions.currentRules()
-      readGroup(group, space: space, rules: rules, fileOffset: i, total: todo.count, report: &report, progress: progress)
+      readGroup(group, space: space, rules: rules, exclusions: exclusions, fileOffset: i, total: todo.count, report: &report,
+                progress: progress)
       i += group.count
     }
     progress(.finished(report))
@@ -195,7 +200,8 @@ public struct RecordingImporter: Sendable {
   }
 
   private func readGroup(_ group: [(file: ScannedFile, fingerprint: String)], space: ImportSpace,
-                         rules: [ImportExclusionRule], fileOffset: Int, total: Int, report: inout ImportReport,
+                         rules: [ImportExclusionRule], exclusions: any ImportExclusionSource, fileOffset: Int, total: Int,
+                         report: inout ImportReport,
                          progress: (ImportProgress) -> Void) {
     let now = clock.now()
     let first = group[0].file
