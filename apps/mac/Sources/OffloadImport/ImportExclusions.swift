@@ -14,10 +14,14 @@ public struct ImportExclusionRule: Equatable, Hashable, Sendable {
 
   public var kind: Kind
   public var value: String
+  /// For a `bundle_id` rule: the app's display name ("Photos", "Acme Ledger"). A recording knows its app only by the
+  /// name its menu bar shows, so an app that is in no built-in table is matched by this name (review 2).
+  public var appName: String?
 
-  public init(kind: Kind, value: String) {
+  public init(kind: Kind, value: String, appName: String? = nil) {
     self.kind = kind
     self.value = value
+    self.appName = appName
   }
 }
 
@@ -36,7 +40,9 @@ public enum ImportExclusions {
   /// Password managers and authenticators by the name the menu bar shows (PR #44 `excludedAppNames`).
   static let appNames: Set<String> = [
     "1password", "1password 7", "1password 8", "bitwarden", "dashlane", "lastpass", "keepassxc", "keychain access",
-    "passwords", "enpass", "proton pass", "authy",
+    "passwords", "enpass", "proton pass", "authy", "authy desktop", "microsoft authenticator", "yubico authenticator",
+    // The banking apps of `bundleIDs`, by the names their menu bars show (review 2).
+    "moneymoney", "banktivity", "banktivity 7", "banktivity 8", "quicken",
   ]
   /// Password managers, authenticators and banking apps by bundle id (s34 `folder.ts` DENY_BUNDLES).
   static let bundleIDs: Set<String> = [
@@ -68,7 +74,9 @@ public enum ImportExclusions {
       let value = rule.value.lowercased()
       guard !value.isEmpty else { continue }
       switch rule.kind {
-      case .bundleID: if bundle == value { return true }
+      case .bundleID:
+        if bundle == value { return true }
+        if let ruleName = rule.appName?.lowercased(), !ruleName.isEmpty, ruleName == name { return true }
       case .host: if !lowHost.isEmpty && matches(host: lowHost, rule: value) { return true }
       case .titleContains: if lowTitle.contains(value) { return true }
       }
