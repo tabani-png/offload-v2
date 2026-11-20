@@ -58,7 +58,7 @@ extension M305 {
   }
 
   @Test("SCREEN: the folder shown is the one last chosen, else where macOS saves recordings, with its summary")
-  @MainActor func folderAndSummary() {
+  @MainActor func folderAndSummary() async {
     let suggested = M305Files.folder("Desktop")
     defer { M305Files.remove(suggested) }
     M305Files.put(suggested, "Screen Recording 2026-11-05 at 9.00.00 AM.mov")
@@ -66,6 +66,7 @@ extension M305 {
     let ui = M305UI()
     let model = ui.model(importer: nil, suggested: suggested)
     #expect(model.folder == suggested)
+    await model.refresh()
     #expect(model.summaryItems == ["2 files", ".mov", "20 m", "Nov 5 to 11"])
     let other = M305Files.folder("Movies")
     defer { M305Files.remove(other) }
@@ -74,7 +75,7 @@ extension M305 {
   }
 
   @Test("SCREEN: Choose folder… asks for a folder, keeps it and reads its summary; a cancel changes nothing")
-  @MainActor func chooseFolder() {
+  @MainActor func chooseFolder() async {
     let suggested = M305Files.folder("Desktop")
     defer { M305Files.remove(suggested) }
     let picked = M305Files.folder("Recordings")
@@ -83,10 +84,10 @@ extension M305 {
     let ui = M305UI()
     let model = ui.model(importer: nil, suggested: suggested)
     ui.picker.answer = nil
-    model.chooseFolder()
+    await model.chooseFolder()
     #expect(model.folder == suggested)
     ui.picker.answer = picked
-    model.chooseFolder()
+    await model.chooseFolder()
     #expect(ui.picker.asked == [suggested, suggested])
     #expect(model.folder == picked)
     #expect(ui.store.folder == picked)
@@ -94,14 +95,15 @@ extension M305 {
   }
 
   @Test("SCREEN: a refused folder says why on the screen and nothing starts")
-  @MainActor func refusedFolder() {
+  @MainActor func refusedFolder() async {
     let empty = M305Files.folder("Stuff")
     defer { M305Files.remove(empty) }
     M305Files.put(empty, "notes.txt")
     let ui = M305UI()
     let model = ui.model(importer: M305Importer(), suggested: empty)
+    await model.refresh()
     #expect(model.refusal?.hasPrefix("No screen recordings found in Stuff.") == true)
-    #expect(!model.startImport())
+    #expect(!(await model.startImport()))
     #expect(model.notice == model.refusal)
     #expect(ui.panel.shown == 0)
   }
@@ -151,6 +153,101 @@ extension M305 {
     #expect(rules == [ImportExclusionRule(kind: .titleContains, value: "Incognito"),
                       ImportExclusionRule(kind: .host, value: "mail.google.com"),
                       ImportExclusionRule(kind: .bundleID, value: "com.tinyspeck.slackmacgap")])
+  }
+
+  // MARK: Review 1
+
+  @Test("SCREEN: building the model reads no folder (no Desktop access at launch); the screen's refresh does, off the main actor")
+  @MainActor func noScanAtLaunch() async {
+    let suggested = M305Files.folder("Desktop")
+    defer { M305Files.remove(suggested) }
+    M305Files.put(suggested, "Screen Recording 2026-11-05 at 9.00.00 AM.mov")
+    let reads = M305Counter()
+    let ui = M305UI()
+    let model = ui.model(importer: nil, suggested: suggested, durations: { _ in
+      reads.bump()
+      // The length read runs off the main actor.
+      return Thread.isMainThread ? -1 : 600
+    })
+    #expect(reads.count == 0)
+    #expect(model.summary == nil)
+    #expect(model.refusal == nil)
+    await model.refresh()
+    #expect(reads.count == 1)
+    #expect(model.summary?.totalSeconds == 600)
+  }
+
+  @Test("SCREEN: in Local mode or before Start sending the import is not offered, and Import opens no import space")
+  @MainActor func notOfferedWithoutSending() async {
+    let folder = M305Files.folder("Desktop")
+    defer { M305Files.remove(folder) }
+    M305Files.put(folder, "Screen Recording 2026-11-13 at 9.41.07 AM.mov")
+    let ui = M305UI()
+    let fakes = M305Importer()
+    let recordings = ui.model(importer: fakes, suggested: folder)
+    // OnboardingModel wires the rule to "signed in and sending"; here setup stops at screen 5 without consent.
+    let m304 = M304Services()
+    var services = m304.services
+    services.recordings = recordings
+    let onboarding = OnboardingModel(store: m304.store, services: services)
+    for a in M304Path.toWhatLeaves { await onboarding.perform(a) }
+    #expect(onboarding.flow.screen == .whatLeaves)
+    #expect(!recordings.isOffered)
+    #expect(!(await recordings.startImport()))
+    #expect(recordings.notice == RecordingsCopy.needsSending)
+    #expect(fakes.sink.spaces.isEmpty)
+    #expect(ui.panel.shown == 0)
+    // Local mode ("Keep it on this Mac") is the same.
+    await onboarding.perform(.keepOnThisMac)
+    #expect(!recordings.isOffered)
+    #expect(!(await recordings.startImport()))
+    // Once sending, it is offered.
+    let sending = ui.model(importer: fakes, suggested: folder)
+    let model = await M305.onboardingAtRecordings(sending)
+    #expect(model.flow.screen == .recordings)
+    #expect(sending.isOffered)
+  }
+
+  @Test("SCREEN: the model is not offered until something says the person is sending (fails closed)")
+  @MainActor func failsClosed() async {
+    let model = RecordingsImportModel(
+      store: MemoryRecordingsFolderStore(), picker: FakeFolderPicker(), panel: FakeImportPanel(), importer: M305Importer().importer(),
+      sink: nil, ledger: nil, durations: { _ in nil }, suggestedFolder: URL(fileURLWithPath: "/nowhere"), protected: [])
+    #expect(!model.isOffered)
+    #expect(!(await model.startImport()))
+  }
+
+  @Test("SCREEN: the Import button is free again as soon as the import has finished")
+  @MainActor func importingFollowsPhase() {
+    let ui = M305UI()
+    let model = ui.model(importer: nil, suggested: URL(fileURLWithPath: "/nowhere"))
+    #expect(!model.isImporting)
+    model.apply(.started(.videos, files: 2))
+    #expect(model.isImporting)
+    model.apply(.finished(ImportReport(space: nil, filesRead: 0, skipped: 2, failed: 0, stillWriting: 0, moments: 0,
+                                       observations: 0, firstDay: nil, lastDay: nil)))
+    #expect(!model.isImporting)
+    model.apply(.reading(file: 1, of: 1))
+    model.apply(.failed("x"))
+    #expect(!model.isImporting)
+  }
+
+  @Test("SCREEN: the folder last chosen and the import spaces survive a relaunch (UserDefaults)")
+  @MainActor func defaultsStore() throws {
+    let suite = "m305-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let store = UserDefaultsRecordingsFolderStore(defaults: defaults)
+    #expect(store.folder == nil)
+    #expect(store.imports.isEmpty)
+    let record = ImportRecord(space: ImportSpace(id: "8d0f2f4e-0000-4000-8000-000000000001", sourceKind: .videos),
+                              folderName: "Desktop", first: M305Clock.date(2026, 11, 5), last: nil, moments: 3,
+                              createdAt: M305Clock.now)
+    store.folder = URL(fileURLWithPath: "/tmp/Recordings", isDirectory: true)
+    store.imports = [record]
+    let again = UserDefaultsRecordingsFolderStore(defaults: defaults)
+    #expect(again.folder?.path == "/tmp/Recordings")
+    #expect(again.imports == [record])
   }
 
   // MARK: COPY

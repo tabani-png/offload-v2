@@ -255,7 +255,7 @@ extension M305 {
     let fakes = M305Importer()
     let log = await fakes.run(src)
     #expect(log.refusal?.code == .noRecordings)
-    #expect(log.refusal?.message == "No screen recordings found in Stuff. Offload reads screen recordings (mov, mp4), screenshots (png, jpg, heic, webp) or a screenwatch archive (days/DATE/log.jsonl).")
+    #expect(log.refusal?.message == "No screen recordings found in Stuff. Offload reads screen recordings (mov, mp4, m4v), screenshots (png, jpg, heic, webp) or a screenwatch archive.")
     #expect(fakes.sink.spaces.isEmpty)
   }
 
@@ -361,5 +361,78 @@ extension M305 {
     #expect(report.failed == 1)
     #expect(log.warnings == [.unreadable(file: "broken.mov")])
     #expect(fakes.ledger.entries.count == 1)
+  }
+
+  // MARK: Review 1
+
+  @Test("PROGRESS: screenshots are opened one at a time as they are read, and written as they go")
+  func screenshotsStream() async throws {
+    let src = M305Files.folder("Shots")
+    defer { M305Files.remove(src) }
+    for i in 0..<4 { M305Files.put(src, "Screenshot 2026-10-20 at 10.10.\(10 + i * 5) AM.png") }
+    let log = M305EventLog()
+    var fakes = M305Importer()
+    fakes.opens = log
+    fakes.customSink = M305Sink(log: log)
+    // Each screenshot shows a different app, so each one has something to write.
+    for i in 0..<4 {
+      fakes.imageLines["Screenshot 2026-10-20 at 10.10.\(10 + i * 5) AM.png"] = m305Screen(app: "App\(i)", body: "page \(i)")
+    }
+    let progress = await fakes.run(src)
+    for p in progress.all { if case .reading(let n, _) = p { log.add("reading \(n)") } }
+    let events = log.all
+    let opens = events.enumerated().filter { $0.element.hasPrefix("open ") }.map(\.offset)
+    let writes = events.enumerated().filter { $0.element == "write" }.map(\.offset)
+    #expect(opens.count == 4)
+    // Something was written after the first screenshot and before the last one was opened.
+    #expect(writes.contains { $0 > opens[0] && $0 < opens[3] })
+    // The reading values come one per file, in order.
+    let readings = progress.all.compactMap { p -> Int? in if case .reading(let n, _) = p { return n } else { return nil } }
+    #expect(readings == [1, 2, 3, 4])
+    #expect(fakes.ledger.entries.count == 4)
+    #expect(progress.report?.moments == 4)
+  }
+
+  @Test("PROGRESS: when the import space cannot be opened, nothing is read and the panel says so")
+  func openFails() async {
+    let folder = M305Files.folder()
+    defer { M305Files.remove(folder) }
+    M305Files.put(folder, "Screen Recording 2026-11-12 at 9.41.07 AM.mov")
+    var fakes = M305Importer()
+    fakes.customSink = M305Sink(failOpen: true)
+    let log = await fakes.run(folder)
+    #expect(log.all.contains { if case .failed = $0 { return true } else { return false } })
+    #expect(log.report == nil)
+    #expect(fakes.ledger.entries.isEmpty)
+  }
+
+  @Test("FOLDER: the scan skips app bundles, photo libraries and node_modules, and stops at the file cap")
+  func scanSkipsBundlesAndCaps() throws {
+    let dir = M305Files.folder()
+    defer { M305Files.remove(dir) }
+    M305Files.put(dir, "Tool.app/Contents/Resources/intro.mov")
+    M305Files.put(dir, "Photos Library.photoslibrary/originals/a.png")
+    M305Files.put(dir, "node_modules/pkg/demo.mp4")
+    for i in 0..<5 { M305Files.put(dir, "clips/clip\(i).mov") }
+    let all = try RecordingFolder.scan(dir, protected: [], timeZone: M305Clock.utc).get()
+    #expect(all.files.count == 5)
+    #expect(all.files.allSatisfy { $0.url.path.contains("/clips/") })
+    let capped = try RecordingFolder.scan(dir, protected: [], timeZone: M305Clock.utc, maxFiles: 3).get()
+    #expect(capped.files.count == 3)
+  }
+
+  @Test("SCREENWATCH: picking one day folder of the archive reads that day's rows, not its screenshots")
+  func screenwatchOneDay() async throws {
+    let root = M305Files.folder("screenwatch")
+    defer { M305Files.remove(root) }
+    M305Files.screenwatchDay(root, "2026-09-01", start: (9, 0), minutes: 10, apps: M305Files.watchApps)
+    let day = root.appendingPathComponent("days/2026-09-01")
+    M305Files.put(day, "09-00-00.webp")
+    let scan = try RecordingFolder.scan(day, protected: [], timeZone: M305Clock.utc).get()
+    #expect(scan.sourceKind == .screenwatch)
+    #expect(scan.files.count == 1)
+    let fakes = M305Importer()
+    let log = await fakes.run(day)
+    #expect(log.report?.moments == 120)
   }
 }

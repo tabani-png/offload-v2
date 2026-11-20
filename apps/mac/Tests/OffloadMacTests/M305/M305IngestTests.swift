@@ -222,4 +222,73 @@ extension M305 {
     let title = ImportExclusionRule(kind: .titleContains, value: "payroll")
     #expect(ImportExclusions.isExcluded(bundleID: "x", appName: "X", title: "Q3 Payroll.xlsx", host: nil, rules: [title]))
   }
+
+  // MARK: Review 1
+
+  static func oneScene(_ id: String, _ lines: [OCRLine]) -> M305Script {
+    M305Script(id: id, duration: 10, scenes: [M305Scene(at: 0, lines: lines, hash: 0)])
+  }
+
+  @Test("MASK: window text in the top band (no menu bar) never becomes an app name; the app is unknown")
+  func bandTextIsNotAnAppName() throws {
+    let lines = [OCRLine(text: "Okafor_contract.pdf", box: OCRBox(x: 400, y: 4, width: 300, height: 16)),
+                 OCRLine(text: "Terms and payment", box: OCRBox(x: 100, y: 300, width: 600, height: 20))]
+    let script = M305.oneScene("band", lines)
+    let r = try M305.ingestor([script]).ingest(FakeRecording(script), startedAt: M305Clock.now.addingTimeInterval(-600),
+                                               importID: "imp", exclusions: [])
+    let focus = M305.of(.focus, r)
+    #expect(focus.map(\.appName) == ["Screen"])
+    #expect(focus.map(\.appBundleID) == ["recording.unknown"])
+    let json = String(decoding: try JSONEncoder().encode(r.observations), as: UTF8.self)
+    #expect(!json.contains("contract"))
+    #expect(!json.lowercased().contains("okafor"))
+  }
+
+  @Test("MASK: a menu bar name the masker would change is not written; the app is unknown")
+  func maskedNameIsNotWritten() throws {
+    let script = M305.oneScene("masked", m305Screen(app: "Report 2026", menus: "File Edit View", body: "Totals"))
+    let masker = FakeMasker()
+    let r = try M305.ingestor([script], masker: masker).ingest(FakeRecording(script), startedAt: M305Clock.now.addingTimeInterval(-600),
+                                                                importID: "imp", exclusions: [])
+    #expect(M305.of(.focus, r).map(\.appName) == ["Screen"])
+    #expect(M305.of(.focus, r).map(\.appBundleID) == ["recording.unknown"])
+    #expect(masker.calls.contains("Report 2026"))
+    let json = String(decoding: try JSONEncoder().encode(r.observations), as: UTF8.self)
+    #expect(!json.contains("2026"))
+  }
+
+  @Test("EXCLUDE: a banking host or a private window seen in a recording gets no text and no keyframe (built-ins)")
+  func builtInsOnRecordings() throws {
+    let bank = M305.oneScene("bank", m305Screen(app: "Safari", body: "https://secure.chase.com/accounts") +
+      [OCRLine(text: "Balance 9876 available", box: OCRBox(x: 100, y: 340, width: 600, height: 20))])
+    let priv = M305.oneScene("priv", m305Screen(app: "Safari", body: "Private Browsing") +
+      [OCRLine(text: "Search for gifts", box: OCRBox(x: 100, y: 340, width: 600, height: 20))])
+    for script in [bank, priv] {
+      let keyframes = FakeKeyframes()
+      let r = try M305.ingestor([script], keyframes: keyframes).ingest(FakeRecording(script), startedAt: M305Clock.now.addingTimeInterval(-600),
+                                                                         importID: "imp", exclusions: [])
+      #expect(M305.of(.textSnapshot, r).isEmpty, "\(script.id)")
+      #expect(keyframes.all.isEmpty, "\(script.id)")
+      #expect(M305.of(.focus, r).map(\.appName) == ["Safari"], "\(script.id)")
+    }
+  }
+
+  @Test("EXCLUDE: the person's host and title rules apply to what a recording shows")
+  func userHostAndTitleRulesOnRecordings() throws {
+    let mail = M305.oneScene("mail", m305Screen(app: "Safari", body: "mail.example.org/inbox") +
+      [OCRLine(text: "Lunch on Friday?", box: OCRBox(x: 100, y: 340, width: 600, height: 20))])
+    let payroll = M305.oneScene("pay", m305Screen(app: "Numbers", body: "Q3 Payroll review"))
+    let plain = M305.oneScene("plain", m305Screen(app: "Safari", body: "docs.example.com/guide"))
+    let rules = [ImportExclusionRule(kind: .host, value: "example.org"), ImportExclusionRule(kind: .titleContains, value: "payroll")]
+    for script in [mail, payroll] {
+      let r = try M305.ingestor([script]).ingest(FakeRecording(script), startedAt: M305Clock.now.addingTimeInterval(-600),
+                                                 importID: "imp", exclusions: rules)
+      #expect(M305.of(.textSnapshot, r).isEmpty, "\(script.id)")
+      #expect(M305.of(.focus, r).count == 1, "\(script.id)")
+    }
+    let r = try M305.ingestor([plain]).ingest(FakeRecording(plain), startedAt: M305Clock.now.addingTimeInterval(-600),
+                                              importID: "imp", exclusions: rules)
+    #expect(M305.of(.textSnapshot, r).count == 1)
+    #expect(ImportExclusions.hosts(in: ["Go to https://Secure.Chase.com/login, then", "nothing here"]) == ["secure.chase.com"])
+  }
 }
