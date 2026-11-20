@@ -384,11 +384,13 @@ func m305JSON(_ o: ImportObservation) throws -> [String: Any] {
   /// A model over the fakes; `importer` nil is this build's app (no OCR or masker yet). `offered` stands for "the
   /// person is sending" (OnboardingModel wires the real rule).
   func model(importer: M305Importer?, suggested: URL, offered: Bool = true,
-             durations: @escaping @Sendable (URL) -> TimeInterval? = { _ in 600 }) -> RecordingsImportModel {
+             durations: @escaping @Sendable (URL) -> TimeInterval? = { _ in 600 },
+             neverWatch: (any ExclusionSource)? = nil,
+             appNames: (@MainActor ([String]) -> @Sendable (String) -> [String])? = nil) -> RecordingsImportModel {
     let m = RecordingsImportModel(
       store: store, picker: picker, panel: panel, importer: importer?.importer(), sink: importer?.sink,
       ledger: importer?.ledger, durations: durations, suggestedFolder: suggested, protected: [],
-      timeZone: M305Clock.utc
+      timeZone: M305Clock.utc, neverWatch: neverWatch, appNames: appNames
     )
     m.offerCheck = { offered }
     return m
