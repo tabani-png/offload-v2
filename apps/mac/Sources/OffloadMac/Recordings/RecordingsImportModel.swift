@@ -100,7 +100,10 @@ public final class RecordingsImportModel: ObservableObject {
   public let timeZone: TimeZone
   private var runningFolderName: String?
   private var consumer: Task<Void, Never>?
-  private var consumerID: UUID?
+  /// The last thing VoiceOver was told, and how many times it was told something (the panel posts on each change).
+  @Published public private(set) var announcement: String?
+  @Published public private(set) var announcements = 0
+  private var announcedTenth = 0
   /// Whether the import may be offered: only while the person is signed in and sending (ONBOARDING section 8, "Only
   /// offered after screen 5 was accepted. In Local mode it is hidden"). OnboardingModel sets it; until then it fails
   /// closed.
@@ -154,7 +157,8 @@ public final class RecordingsImportModel: ObservableObject {
   /// Scans the folder again for the summary, off the main actor (no file is opened except to read recording
   /// lengths). Views call it when they appear.
   public func refresh() async {
-    guard let folder else {
+    // Not offered (Local mode, before Start sending): no folder is read, not even by a restored Settings window.
+    guard isOffered, let folder else {
       summary = nil
       refusal = nil
       return
@@ -215,12 +219,10 @@ public final class RecordingsImportModel: ObservableObject {
       await importer.run(folder: folder) { _ = continuation.yield($0) }
       continuation.finish()
     }
-    let runID = UUID()
-    consumerID = runID
+    // The latest import's task. It is never cleared, so an older task finishing late cannot drop a newer one
+    // (review 2: simpler than tracking which task is current); `isImporting` follows the phase.
     consumer = Task { [weak self] in
       for await p in stream { self?.apply(p) }
-      // An import started right after this one finished keeps its own task.
-      if self?.consumerID == runID { self?.consumer = nil }
     }
     return true
   }
@@ -236,12 +238,23 @@ public final class RecordingsImportModel: ObservableObject {
     case .started(_, let files):
       phase = .reading(file: 0, of: files)
       warnings = []
+      announcedTenth = 0
+      announce(RecordingsCopy.panelTitle)
     case .reading(let file, let total):
       phase = .reading(file: file, of: total)
+      // VoiceOver hears about every tenth of the files, not each one.
+      let tenth = total > 0 ? min(10, file * 10 / total) : 0
+      if tenth > announcedTenth {
+        announcedTenth = tenth
+        announce(RecordingsCopy.reading(file: file, of: total))
+      }
     case .warning(let w):
-      warnings.append(RecordingsCopy.warning(w))
+      let line = RecordingsCopy.warning(w)
+      warnings.append(line)
+      announce(line)
     case .finished(let report):
       phase = .done(report)
+      announce(RecordingsCopy.doneItems(report).joined(separator: ", "))
       if let space = report.space {
         let record = ImportRecord(space: space, folderName: runningFolderName ?? folder?.lastPathComponent ?? "",
                                   first: report.firstDay, last: report.lastDay, moments: report.moments, createdAt: Date())
@@ -251,11 +264,21 @@ public final class RecordingsImportModel: ObservableObject {
     case .refused(let r):
       phase = .refused(r.message)
       notice = r.message
+      announce(r.message)
     case .failed(let message):
       phase = .failed(message)
       notice = message
+      announce(message)
     }
   }
+
+  private func announce(_ line: String) {
+    announcement = line
+    announcements += 1
+  }
+
+  /// Clears the one-line notice (after Choose folder…, the old line no longer applies).
+  public func clearNotice() { notice = nil }
 
   /// "Remove imported data": the import space is forgotten (`POST /v1/me/forget` scope `import`), its ledger entries
   /// go so the files can be read again, and it leaves the list. If the forget call fails, nothing changes here.

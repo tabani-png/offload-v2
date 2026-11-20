@@ -763,8 +763,8 @@ struct RecordingsScreen: View {
       Spacer(minLength: 0)
       ScreenButtons(screen: .recordings, spec: spec, primary: { await model.perform(.importRecordings) },
                     secondary: {
-                      if let recordings = model.services.recordings {
-                        await recordings.chooseFolder()
+                      if model.services.recordings != nil {
+                        await model.chooseRecordingsFolder()
                       } else {
                         await model.perform(.importRecordings)
                       }

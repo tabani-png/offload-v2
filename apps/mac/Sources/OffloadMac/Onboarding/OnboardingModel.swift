@@ -86,7 +86,12 @@ public final class OnboardingModel: ObservableObject {
         // start (no on-device text reading in this build, or a refused folder) the screen stays and says why.
         if let recordings = services.recordings {
           if await recordings.startImport() {
-            await perform(.next)
+            // The folder was read first; meanwhile the person may have tapped Import again or Skip. Advance only
+            // from screen 11, so screen 12 is never skipped (review 2).
+            if flow.screen == .recordings { await perform(.next) }
+          } else if let refusal = recordings.refusal, recordings.notice == refusal {
+            // Screen 11's body already shows why the folder cannot be read; say it once.
+            notice = nil
           } else {
             notice = recordings.notice ?? OnboardingCopy.recordingsNotReady
           }
@@ -97,6 +102,16 @@ public final class OnboardingModel: ObservableObject {
         onOpenToday?()
       }
     }
+  }
+
+  // MARK: Screen 11
+
+  /// "Choose folder…" on screen 11: the old notice (not ready, refused) no longer applies to the new folder.
+  public func chooseRecordingsFolder() async {
+    guard let recordings = services.recordings else { return }
+    await recordings.chooseFolder()
+    recordings.clearNotice()
+    notice = nil
   }
 
   // MARK: Screen 3

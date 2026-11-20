@@ -111,9 +111,9 @@ public struct ImportPanelView: View {
     .frame(width: 340, alignment: .leading)
     .background(Theme.chrome)
     // The panel's line changes while the person works elsewhere: VoiceOver hears each change.
-    .onChange(of: model.progressItems) { _, items in
-      guard !items.isEmpty else { return }
-      AccessibilityNotification.Announcement(items.joined(separator: ", ")).post()
+    .onChange(of: model.announcements) { _, _ in
+      guard let line = model.announcement else { return }
+      AccessibilityNotification.Announcement(line).post()
     }
   }
 }
