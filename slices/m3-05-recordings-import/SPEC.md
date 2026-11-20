@@ -132,11 +132,12 @@ import branches per [MIGRATION 5.5 and 5.7](../../docs/MIGRATION.md#55-pr-44-fea
   import space (listed in Settings, so it can be removed). The fingerprint includes the path, so a renamed recording
   is read again (as in PR #44). A frame that merely shows an excluded word or host gets no text. The menu bar entry's
   visibility is read when the menu is drawn. An excluded app recorded without its menu bar (a window-only recording)
-  is "Screen" and is not excluded by app; host, title and private-window rules still apply to its text. Display names
-  of the person's apps are looked up when an import starts (`LiveAppNames.resolver`); an app added to Never watch
-  during an import is matched by bundle id only (enough for apps in the menu bar table). `LiveAppNames` is not wired
-  yet: the shipped app has no importer, and m3-02 passes `LiveAppNames.resolver(for:)` to `NeverWatchImportExclusions`
-  when it builds one.
+  is "Screen" and is not excluded by app; host, title and private-window rules still apply to its text. The names of
+  the Never watch apps (and of the built-in password and banking apps) are looked up when each import starts
+  (`RecordingsImportModel.startImport`, `LiveAppNames.resolver(for:)`, wired in `RecordingsImportModel.live`), from
+  the list as it is then; an app added during a running import is matched by bundle id only until the next import.
+  Menu bars are read in English, German, French and Spanish; in other languages the app is "Screen" (not excluded by
+  app, text rules still apply). Code lines in the slice may pass 120 columns; comments keep to 120.
 - **Self-review**: an independent compile-blind read (Opus) of every file found one failing test (the fixed clock's
   epoch was Sat 21 Nov, not Thu 19 Nov, so the future-time file was not in the future); fixed. Its open risks: the
   AVFoundation calls used are deprecated on the macOS 15 SDK (warnings, not errors); the generated test video now
@@ -238,3 +239,15 @@ forget scope `import`); the analysis anchored to an import's last day (cloud); `
   7 `ImportSink` says the uploader is the only egress for `openImport`, `write` and `forget` (ADR 0035).
   8 done gate: this slice stays `in_progress` until m3-03 adds the clicky credit for
   `Recordings/LiveRecordings.swift` to NOTICE (AGENTS Definition of done item 5) and the CI `mac` job has run M305.
+- Review 3 (logs/m3-05-recordings-import.review3.md), red tests first (`1c73241`):
+  1 (major) app names are looked up when each import starts: `RecordingsImportModel` takes the Never watch store
+  and a `@MainActor` name lookup, builds `NeverWatchImportExclusions` with a frozen table from the list as it is at
+  that moment, and passes it to `RecordingImporter.run(folder:exclusions:)`. `AppModel.live()` shares one
+  `NeverWatchStore` between onboarding and the import. An app named on screen 9 after launch is excluded from the
+  next import by its name.
+  2 a `bundle_id` rule carries every name its app is shown by (`appNames`); `LiveAppNames` returns the localized
+  `CFBundleName` first, then the display names and the file name; with a lookup, the built-in bundle ids are looked
+  up too (Keychain Access reads "Schlüsselbundverwaltung" on a German Mac); German, French and Spanish menu titles.
+  3 the refresh when the import becomes offered is `RecordingsImportModel.offerChanged()`, tested; the views call it
+  from `onChange(of: isOffered)`.
+  4 the adapter's comment is re-wrapped; no comment in the slice passes 120 columns.
