@@ -152,4 +152,12 @@ extension M305 {
     #expect(MenuBarApp.bundleID(for: nil) == "recording.unknown")
     #expect(MenuBarApp.bundleID(for: "") == "recording.unknown")
   }
+
+  @Test("MENUBAR: a top band without two menu titles is window content, not an app name (review 1)")
+  func bandWithoutMenusIsNotAnApp() {
+    let title = [OCRLine(text: "Okafor_contract.pdf", box: OCRBox(x: 400, y: 4, width: 300, height: 16))]
+    #expect(MenuBarApp.name(from: title, frameHeight: 800) == nil)
+    #expect(MenuBarApp.name(from: m305Screen(app: "Q3 Report", menus: "View", body: "x"), frameHeight: 800) == nil)
+    #expect(MenuBarApp.name(from: m305Screen(app: "Notes", menus: "File Edit", body: "x"), frameHeight: 800) == "Notes")
+  }
 }

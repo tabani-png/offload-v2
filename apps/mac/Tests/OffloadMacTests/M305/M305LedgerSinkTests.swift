@@ -152,7 +152,7 @@ extension M305 {
     let ui = M305UI()
     ui.store.folder = folder
     let model = ui.model(importer: fakes, suggested: folder)
-    #expect(model.startImport())
+    #expect(await model.startImport())
     await model.waitForImport()
     let record = try #require(model.imports.first)
     #expect(!fakes.ledger.entries.isEmpty)
@@ -161,5 +161,25 @@ extension M305 {
     #expect(fakes.ledger.entries.isEmpty)
     #expect(model.imports.isEmpty)
     #expect(ui.store.imports.isEmpty)
+  }
+
+  @Test("SINK: when forgetting the import space fails, nothing changes on the Mac and the notice says so")
+  @MainActor func removeFailsKeepsEverything() async throws {
+    let sink = M305Sink(failForget: true)
+    let ledger = MemoryRecordingLedger()
+    let space = try await sink.openImport(sourceKind: .videos)
+    try ledger.record(RecordingLedgerEntry(fingerprint: "a", importID: space.id, ingestedAt: M305Clock.now,
+                                           recordedAt: M305Clock.now, moments: 1))
+    let record = ImportRecord(space: space, folderName: "Desktop", first: nil, last: nil, moments: 1, createdAt: M305Clock.now)
+    let store = MemoryRecordingsFolderStore()
+    store.imports = [record]
+    let model = RecordingsImportModel(store: store, picker: FakeFolderPicker(), panel: FakeImportPanel(), importer: nil,
+                                      sink: sink, ledger: ledger, durations: { _ in nil },
+                                      suggestedFolder: URL(fileURLWithPath: "/nowhere"), protected: [])
+    await model.remove(record)
+    #expect(model.imports == [record])
+    #expect(store.imports == [record])
+    #expect(ledger.entries.count == 1)
+    #expect(model.notice == RecordingsCopy.removeFailed)
   }
 }

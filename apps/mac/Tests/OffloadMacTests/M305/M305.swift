@@ -289,6 +289,10 @@ struct M305Importer {
   var exclusions: any ImportExclusionSource = StaticImportExclusions([])
   var clock = FakeClock()
   var protected: [URL] = []
+  /// Replaces the in-memory sink (to log writes or fail).
+  var customSink: (any ImportSink)? = nil
+  /// Logs "open <name>" for each screenshot opened.
+  var opens: M305EventLog? = nil
 
   /// Videos are looked up by file name in `scripts` (a 60 s two-app recording when missing); images give a frame
   /// tagged with their file name.
@@ -301,12 +305,15 @@ struct M305Importer {
         if broken.contains(name) { throw M305ReadError() }
         return FakeRecording(scripts[name] ?? M305Script.twoApps(name))
       },
-      openImage: { url in ImportFrame(width: 1280, height: 800, tag: url.lastPathComponent) }
+      openImage: { [opens] url in
+        opens?.add("open \(url.lastPathComponent)")
+        return ImportFrame(width: 1280, height: 800, tag: url.lastPathComponent)
+      }
     )
     return RecordingImporter(
       recognizer: M305AnyNameRecognizer(scripts: scripts, images: imageLines),
       masker: masker, hasher: M305AnyNameHasher(scripts: scripts), keyframes: keyframes,
-      exclusions: exclusions, sink: sink, ledger: ledger, readers: readers, clock: clock,
+      exclusions: exclusions, sink: customSink ?? sink, ledger: ledger, readers: readers, clock: clock,
       timeZone: M305Clock.utc, protected: protected
     )
   }
@@ -374,12 +381,73 @@ func m305JSON(_ o: ImportObservation) throws -> [String: Any] {
   let picker = FakeFolderPicker()
   let panel = FakeImportPanel()
 
-  /// A model over the fakes; `importer` nil is this build's app (no OCR or masker yet).
-  func model(importer: M305Importer?, suggested: URL) -> RecordingsImportModel {
-    RecordingsImportModel(
+  /// A model over the fakes; `importer` nil is this build's app (no OCR or masker yet). `offered` stands for "the
+  /// person is sending" (OnboardingModel wires the real rule).
+  func model(importer: M305Importer?, suggested: URL, offered: Bool = true,
+             durations: @escaping @Sendable (URL) -> TimeInterval? = { _ in 600 }) -> RecordingsImportModel {
+    let m = RecordingsImportModel(
       store: store, picker: picker, panel: panel, importer: importer?.importer(), sink: importer?.sink,
-      ledger: importer?.ledger, durations: { _ in 600 }, suggestedFolder: suggested, protected: [],
+      ledger: importer?.ledger, durations: durations, suggestedFolder: suggested, protected: [],
       timeZone: M305Clock.utc
     )
+    m.offerCheck = { offered }
+    return m
+  }
+}
+
+/// Counts calls from any thread.
+final class M305Counter: @unchecked Sendable {
+  private let lock = NSLock()
+  private var n = 0
+  func bump() {
+    lock.lock()
+    n += 1
+    lock.unlock()
+  }
+  var count: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return n
+  }
+}
+
+/// One ordered log shared by readers, the sink and the progress callback.
+final class M305EventLog: @unchecked Sendable {
+  private let lock = NSLock()
+  private var items: [String] = []
+  func add(_ s: String) {
+    lock.lock()
+    items.append(s)
+    lock.unlock()
+  }
+  var all: [String] {
+    lock.lock()
+    defer { lock.unlock() }
+    return items
+  }
+}
+
+/// An in-memory sink that logs each write, and can fail to open or to forget.
+final class M305Sink: ImportSink, @unchecked Sendable {
+  let inner = InMemoryImportSink()
+  let log: M305EventLog
+  let failOpen: Bool
+  let failForget: Bool
+  init(log: M305EventLog = M305EventLog(), failOpen: Bool = false, failForget: Bool = false) {
+    self.log = log
+    self.failOpen = failOpen
+    self.failForget = failForget
+  }
+  func openImport(sourceKind: ImportSourceKind) async throws -> ImportSpace {
+    if failOpen { throw M305ReadError() }
+    return try await inner.openImport(sourceKind: sourceKind)
+  }
+  func write(_ observations: [ImportObservation], to space: ImportSpace) throws {
+    log.add("write")
+    try inner.write(observations, to: space)
+  }
+  func forget(_ space: ImportSpace) async throws {
+    if failForget { throw M305ReadError() }
+    try await inner.forget(space)
   }
 }
