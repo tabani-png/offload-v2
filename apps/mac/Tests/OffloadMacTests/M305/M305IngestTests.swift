@@ -64,10 +64,14 @@ extension M305 {
     for (a, b) in zip(kept, kept.dropFirst()) { #expect(b.ts.timeIntervalSince(a.ts) >= 20) }
     #expect(kept.allSatisfy { !$0.appName.isEmpty && $0.importID == "imp" })
     var throttle = KeyframeThrottle()
-    #expect(throttle.keep(at: 0, hash: 0))
-    #expect(!throttle.keep(at: 25, hash: 1))             // the picture did not change enough
-    #expect(!throttle.keep(at: 10, hash: .max))          // too soon
-    #expect(throttle.keep(at: 30, hash: .max))
+    let kept1 = throttle.keep(at: 0, hash: 0)
+    #expect(kept1)
+    let kept2 = throttle.keep(at: 25, hash: 1)             // the picture did not change enough
+    #expect(!kept2)
+    let kept3 = throttle.keep(at: 10, hash: .max)          // too soon
+    #expect(!kept3)
+    let kept4 = throttle.keep(at: 30, hash: .max)
+    #expect(kept4)
   }
 
   @Test("INGEST: keyframes off writes none")
