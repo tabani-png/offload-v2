@@ -92,5 +92,20 @@ extension M305 {
     #expect(model.summary?.files == 1)
     await model.offerChanged()
     #expect(reads.count == 1)
+    // Withdrawn (Local mode): the summary goes; offered again: the folder is read again.
+    model.offerCheck = { false }
+    await model.offerChanged()
+    #expect(model.summary == nil)
+    model.offerCheck = { true }
+    await model.offerChanged()
+    #expect(reads.count == 2)
+  }
+
+  @Test("MENUBAR: menu titles OCR returns with decomposed accents (E + combining acute) are still menu titles")
+  func decomposedAccents() {
+    let decomposed = m305Screen(app: "Photos", menus: "Fichier E\u{0301}dition Pre\u{0301}sentation Fene\u{0302}tre Aide", body: "x")
+    #expect(MenuBarApp.name(from: decomposed, frameHeight: 800) == "Photos")
+    let german = m305Screen(app: "Notizen", menus: "Ablage Bearbeiten Einfu\u{0308}gen", body: "x")
+    #expect(MenuBarApp.name(from: german, frameHeight: 800) == "Notizen")
   }
 }
