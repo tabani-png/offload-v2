@@ -128,9 +128,10 @@ Parts:
   ledger keeps SHA-256 fingerprints only. Imports go to a separate **import space** (`source = 'import'`), never the
   live store, and can be wiped in one action (PR #44). The import runs in the app on the Mac (`OffloadImport`): a
   file is read only once its size has held for 3 s; timestamps are the recordings' own (never rebased); screenshots
-  and screenwatch archives are read too (MIGRATION 5.7); exclusions are read again before every file. Masked
-  observations go to an `ImportSink` (`POST /v1/imports`, then the uploader with the `import_id`; forget scope
-  `import`), slice m3-05.
+  and screenwatch archives are read too (MIGRATION 5.7); exclusions are read again before every file and, for frames,
+  matched against the frame's OCR text (hosts, titles, private-window markers); app names come from the menu bar only
+  when it is one and the masker leaves the name unchanged. Masked observations go to an `ImportSink`
+  (`POST /v1/imports`, then the uploader with the `import_id`; forget scope `import`), slice m3-05.
 - **Updates**: Sparkle with EdDSA signatures on a Developer ID signed, notarized app with a locked bundle id
   ([ADR 0024](adr/0024-client-stacks.md), [DEPLOYMENT.md](DEPLOYMENT.md)).
 
