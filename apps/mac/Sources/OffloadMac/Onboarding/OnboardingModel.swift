@@ -41,6 +41,8 @@ public final class OnboardingModel: ObservableObject {
     let effects = flow.perform(action, now: Date())
     store.save(flow.state)
     if flow.screen != before { notice = nil; connectMessage = nil }
+    // Settings, Recordings redraws when "sending" changes (its offer rule reads this state).
+    services.recordings?.objectWillChange.send()
     await run(effects)
   }
 
