@@ -14,14 +14,20 @@ public struct ImportExclusionRule: Equatable, Hashable, Sendable {
 
   public var kind: Kind
   public var value: String
-  /// For a `bundle_id` rule: the app's display name ("Photos", "Acme Ledger"). A recording knows its app only by the
-  /// name its menu bar shows, so an app that is in no built-in table is matched by this name (review 2).
-  public var appName: String?
+  /// For a `bundle_id` rule: every name the app is shown by ("Photos", "Fotos", "Acme Ledger"). A recording knows its
+  /// app only by the name its menu bar shows, so an app that is in no built-in table, or a Mac in another language,
+  /// is matched by these names (reviews 2 and 3).
+  public var appNames: [String]
 
   public init(kind: Kind, value: String, appName: String? = nil) {
+    self.init(kind: kind, value: value, appNames: appName.map { [$0] } ?? [])
+  }
+
+  public init(kind: Kind, value: String, appNames: [String]) {
     self.kind = kind
     self.value = value
-    self.appName = appName
+    var seen = Set<String>()
+    self.appNames = appNames.filter { !$0.isEmpty && seen.insert($0).inserted }
   }
 }
 
@@ -45,6 +51,9 @@ public enum ImportExclusions {
     "moneymoney", "banktivity", "banktivity 7", "banktivity 8", "quicken",
   ]
   /// Password managers, authenticators and banking apps by bundle id (s34 `folder.ts` DENY_BUNDLES).
+  /// The built-in bundle ids, for looking up their (localized) names on the Mac.
+  public static var builtInBundleIDs: [String] { bundleIDs.sorted() }
+
   static let bundleIDs: Set<String> = [
     "com.1password.1password", "com.agilebits.onepassword7", "com.agilebits.onepassword-osx", "com.bitwarden.desktop",
     "org.keepassxc.keepassxc", "com.lastpass.lastpass", "com.dashlane.dashlanephonefinal", "com.apple.passwords",
@@ -76,7 +85,7 @@ public enum ImportExclusions {
       switch rule.kind {
       case .bundleID:
         if bundle == value { return true }
-        if let ruleName = rule.appName?.lowercased(), !ruleName.isEmpty, ruleName == name { return true }
+        if rule.appNames.contains(where: { $0.lowercased() == name }) { return true }
       case .host: if !lowHost.isEmpty && matches(host: lowHost, rule: value) { return true }
       case .titleContains: if lowTitle.contains(value) { return true }
       }

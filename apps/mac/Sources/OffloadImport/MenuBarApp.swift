@@ -9,7 +9,12 @@ public enum MenuBarApp {
   static let menus: Set<String> = ["File", "Edit", "View", "Go", "Window", "Help", "History", "Bookmarks", "Format",
                                    "Insert", "Table", "Shell", "Mailbox", "Message", "Conversation", "Navigate",
                                    "Selection", "Run", "Terminal", "Profiles", "Tab", "Arrange", "Share", "Data",
-                                   "Tools", "Debug", "Product", "Editor", "Find", "Song", "Controls", "Account"]
+                                   "Tools", "Debug", "Product", "Editor", "Find", "Song", "Controls", "Account",
+                                   // German, French and Spanish menu bars (review 3; other languages read as "Screen").
+                                   "Ablage", "Datei", "Bearbeiten", "Darstellung", "Ansicht", "Fenster", "Hilfe",
+                                   "Gehe", "Verlauf", "Einfügen", "Fichier", "Édition", "Présentation",
+                                   "Affichage", "Fenêtre", "Aide", "Aller", "Historique", "Archivo", "Edición",
+                                   "Visualización", "Ver", "Ventana", "Ayuda", "Ir", "Historial", "Insertar"]
 
   /// The menu bar band: the top 4 % of the frame, at least 24 px.
   public static func bandHeight(frameHeight: Int) -> Double {
