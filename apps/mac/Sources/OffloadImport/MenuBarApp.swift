@@ -20,18 +20,19 @@ public enum MenuBarApp {
     line.box.y < bandHeight(frameHeight: frameHeight)
   }
 
-  /// The app name the menu bar shows, or nil when the frame has no menu bar text (a window-only recording).
+  /// The app name the menu bar shows, or nil when the top band is not a menu bar. A menu bar is the app name (at
+  /// most 3 words) followed by two menu titles; anything else in the band (a window-only recording, a hidden menu
+  /// bar) is window content, which must never become an app name (review 1: it would leave unmasked).
   public static func name(from lines: [OCRLine], frameHeight: Int) -> String? {
     var bandWords: [OCRWord] = []
     for line in lines where isInBand(line, frameHeight: frameHeight) { bandWords.append(contentsOf: line.words) }
     bandWords.sort { $0.box.x < $1.box.x }
     // Drops the Apple logo and other symbols.
     let words = bandWords.map(\.text).filter(hasAlphanumeric)
-    guard let first = words.first else { return nil }
-    if let i = words.indices.dropFirst().first(where: { menus.contains(words[$0]) }) {
-      return words[..<min(i, 3)].joined(separator: " ")
-    }
-    return first
+    guard words.count >= 3,
+          let i = words.indices.dropFirst().first(where: { menus.contains(words[$0]) }), i <= 3,
+          i + 1 < words.count, menus.contains(words[i + 1]) else { return nil }
+    return words[..<i].joined(separator: " ")
   }
 
   private static func hasAlphanumeric(_ text: String) -> Bool {

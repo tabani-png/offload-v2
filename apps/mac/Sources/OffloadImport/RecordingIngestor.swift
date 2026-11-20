@@ -28,17 +28,6 @@ public struct IngestResult: Equatable, Sendable {
   public init() {}
 }
 
-/// A screenshot with its time.
-public struct Screenshot: Sendable {
-  public var frame: ImportFrame
-  public var at: Date
-
-  public init(frame: ImportFrame, at: Date) {
-    self.frame = frame
-    self.at = at
-  }
-}
-
 public struct RecordingIngestor: Sendable {
   public let recognizer: any TextRecognizer
   public let masker: any ImportTextMasker
@@ -73,23 +62,15 @@ public struct RecordingIngestor: Sendable {
     return run.result
   }
 
-  /// One run of screenshots (sorted, each within `runGap` of the one before) as one span of activity.
-  public func ingestScreenshots(_ shots: [Screenshot], importID: String, exclusions: [ImportExclusionRule]) throws -> IngestResult {
-    guard let first = shots.first, let last = shots.last else { return IngestResult() }
-    var run = Run(ingestor: self, importID: importID, exclusions: exclusions)
-    run.idle(.idleEnd, at: first.at)
-    for shot in shots {
-      try run.read(shot.frame, at: shot.at, videoTime: shot.at.timeIntervalSince(first.at))
-    }
-    run.idle(.idleStart, at: last.at.addingTimeInterval(config.idleThreshold))
-    return run.result
-  }
+  // Screenshots are read through `Run` one at a time by the importer (RecordingImporter), so a long run is never
+  // held in memory at once.
 
   /// The state of one span while its frames are read.
   struct Run {
     let ingestor: RecordingIngestor
     let importID: String
-    let exclusions: [ImportExclusionRule]
+    /// Replaced before each screenshot of a streamed run, so Never watch changes apply from the next file.
+    var exclusions: [ImportExclusionRule]
     var result = IngestResult()
     var lastApp: String?
     var lastText: String?
@@ -101,6 +82,13 @@ public struct RecordingIngestor: Sendable {
       self.exclusions = exclusions
     }
 
+    /// The observations made since the last drain, for writing as the run goes (screenshots are streamed).
+    mutating func drain() -> [ImportObservation] {
+      let out = result.observations
+      result.observations = []
+      return out
+    }
+
     mutating func idle(_ kind: ImportObservation.Kind, at date: Date) {
       result.observations.append(.idle(kind, id: ingestor.ids.next(at: date), ts: date, importID: importID))
     }
@@ -109,8 +97,12 @@ public struct RecordingIngestor: Sendable {
       result.frames += 1
       let config = ingestor.config
       let lines = try ingestor.recognizer.recognize(frame)
-      let appName = MenuBarApp.name(from: lines, frameHeight: frame.height) ?? config.unknownAppName
-      let app = MenuBarApp.bundleID(for: appName == config.unknownAppName ? nil : appName)
+      // The app name is OCR text too: it is used only when the masker leaves it as it is (a name the masker would
+      // change is a person, a number or a document, not an app).
+      let seen = MenuBarApp.name(from: lines, frameHeight: frame.height)
+      let named = seen.flatMap { ingestor.masker.mask($0) == $0 ? $0 : nil }
+      let appName = named ?? config.unknownAppName
+      let app = MenuBarApp.bundleID(for: named)
       if appName != lastApp {
         result.observations.append(.focus(id: ingestor.ids.next(at: date), ts: date, importID: importID,
                                           appBundleID: app, appName: appName))
@@ -118,7 +110,8 @@ public struct RecordingIngestor: Sendable {
         lastText = nil
       }
       // An excluded app keeps its time and nothing else: no text, no keyframe.
-      if ImportExclusions.isExcluded(bundleID: app, appName: appName, title: nil, host: nil, rules: exclusions) { return }
+      // Hosts, title rules and private-window markers are read off the frame's own text (review 1).
+      if ImportExclusions.isExcluded(bundleID: app, appName: appName, lines: lines.map(\.text), rules: exclusions) { return }
 
       let body = lines.filter { !MenuBarApp.isInBand($0, frameHeight: frame.height) }.map(\.text).joined(separator: "\n")
       if !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
