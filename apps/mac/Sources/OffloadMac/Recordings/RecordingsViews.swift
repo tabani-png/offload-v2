@@ -33,7 +33,8 @@ public struct RecordingsScreenBody: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     // The folder is read when the screen appears, off the main actor, never at launch; and again when the import
     // becomes offered (sending started while Settings was open).
-    .task(id: model.isOffered) { await model.refresh() }
+    .task { await model.refresh() }
+    .onChange(of: model.isOffered) { _, _ in Task { await model.offerChanged() } }
   }
 }
 

@@ -58,27 +58,33 @@ final class KeyablePanel: NSPanel {
   public func hide() { panel?.orderOut(nil) }
 }
 
-/// Display names of installed apps (`CFBundleDisplayName`, else `CFBundleName`, else the bundle's file name), for
-/// `NeverWatchImportExclusions`. Looked up on the main actor when an import starts; the importer then reads a frozen,
-/// Sendable table off the main actor. An app added to Never watch during an import is still matched by bundle id.
+/// Every name installed apps are shown by, for `NeverWatchImportExclusions`: the localized `CFBundleName` (what the
+/// application menu shows), the localized and plain `CFBundleDisplayName` and `CFBundleName`, and the bundle's file
+/// name. Looked up on the main actor when each import starts (`RecordingsImportModel.startImport`); the importer then
+/// reads the frozen, Sendable table off the main actor. An app added to Never watch during an import is matched by
+/// bundle id until the next import.
 public enum LiveAppNames {
-  @MainActor public static func resolver(for bundleIDs: [String]) -> @Sendable (String) -> String? {
-    var names: [String: String] = [:]
+  @MainActor public static func resolver(for bundleIDs: [String]) -> @Sendable (String) -> [String] {
+    var names: [String: [String]] = [:]
     for id in bundleIDs {
       guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { continue }
-      let info = Bundle(url: url)?.infoDictionary
-      names[id] = (info?["CFBundleDisplayName"] as? String) ?? (info?["CFBundleName"] as? String)
-        ?? url.deletingPathExtension().lastPathComponent
+      let bundle = Bundle(url: url)
+      let localized = bundle?.localizedInfoDictionary
+      let plain = bundle?.infoDictionary
+      let found = [localized?["CFBundleName"], localized?["CFBundleDisplayName"], plain?["CFBundleDisplayName"],
+                   plain?["CFBundleName"]].compactMap { $0 as? String } + [url.deletingPathExtension().lastPathComponent]
+      var seen = Set<String>()
+      names[id] = found.filter { !$0.isEmpty && seen.insert($0).inserted }
     }
     let frozen = names
-    return { frozen[$0] }
+    return { frozen[$0] ?? [] }
   }
 }
 
 extension RecordingsImportModel {
   /// The app as shipped in this build: the real folder, summary and picker, and no importer yet, because the
   /// on-device OCR and masker arrive with capture (m3-02). Import says so and reads nothing.
-  public static func live() -> RecordingsImportModel {
+  public static func live(neverWatch: NeverWatchStore) -> RecordingsImportModel {
     let fm = FileManager.default
     let location = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "location")
     let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
@@ -87,7 +93,8 @@ extension RecordingsImportModel {
       store: UserDefaultsRecordingsFolderStore(), picker: LiveFolderPicker(), panel: LiveImportPanel(), importer: nil,
       sink: nil, ledger: nil, durations: { AVRecordingFrameSource.duration(of: $0) },
       suggestedFolder: RecordingFolder.suggested(home: fm.homeDirectoryForCurrentUser, screencaptureLocation: location),
-      protected: support.map { [$0] } ?? []
+      protected: support.map { [$0] } ?? [], neverWatch: neverWatch,
+      appNames: { LiveAppNames.resolver(for: $0) }
     )
   }
 }
