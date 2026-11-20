@@ -100,6 +100,7 @@ public final class RecordingsImportModel: ObservableObject {
   public let timeZone: TimeZone
   private var runningFolderName: String?
   private var consumer: Task<Void, Never>?
+  private var consumerID: UUID?
   /// Whether the import may be offered: only while the person is signed in and sending (ONBOARDING section 8, "Only
   /// offered after screen 5 was accepted. In Local mode it is hidden"). OnboardingModel sets it; until then it fails
   /// closed.
@@ -214,9 +215,12 @@ public final class RecordingsImportModel: ObservableObject {
       await importer.run(folder: folder) { _ = continuation.yield($0) }
       continuation.finish()
     }
+    let runID = UUID()
+    consumerID = runID
     consumer = Task { [weak self] in
       for await p in stream { self?.apply(p) }
-      self?.consumer = nil
+      // An import started right after this one finished keeps its own task.
+      if self?.consumerID == runID { self?.consumer = nil }
     }
     return true
   }

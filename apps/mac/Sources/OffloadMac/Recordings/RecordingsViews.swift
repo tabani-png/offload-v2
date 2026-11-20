@@ -80,7 +80,6 @@ public struct RecordingsSettingsView: View {
     }
     .padding(Tokens.Space.s24)
     .frame(minWidth: 520, minHeight: 360, alignment: .topLeading)
-    .task { await model.refresh() }
     .background(Theme.paper)
     .preferredColorScheme(.light)
   }
