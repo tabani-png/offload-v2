@@ -115,11 +115,9 @@ extension M305 {
     let model = ui.model(importer: M305Importer(), suggested: folder)
     let started = await model.startImport()
     #expect(started)
-    var spins = 0
-    while model.isImporting && spins < 100_000 {
-      await Task.yield()
-      spins += 1
-    }
+    // Waits for the first import's progress to be applied in full (no timing loop).
+    await model.waitForImport()
+    #expect(!model.isImporting)
     M305Files.put(folder, "Screen Recording 2026-11-14 at 9.41.07 AM.mov")
     let again = await model.startImport()
     #expect(again)
