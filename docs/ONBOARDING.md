@@ -345,7 +345,13 @@ week of capture.
 - The folder may also hold screenshots (png, jpg, heic, webp, up to 3 folders deep) or be a screenwatch archive
   (`days/DATE/log.jsonl`, rows with app, window and URL become masked focus observations).
 - Settings, Recordings (and "Recordings…" in the menu bar item) shows the same folder and Import, and each import
-  space as "Recordings from Desktop · Nov 5 to 11 · 1,284 moments read" with **Remove imported data**.
+  space as "Recordings from Desktop · Nov 5 to 11 · 1,284 moments read" with **Remove imported data**. Like screen
+  11, the menu entry and Import show only while the person is signed in and sending; the folder is read when the
+  screen appears, never at launch.
+- A recording has no window title or URL, so the person's host and title exclusions, banking sites and private
+  windows are matched against the text on each frame; a frame that shows one gets no text and no keyframe. An app
+  name is read off the menu bar only when it is followed by menu titles and the masker leaves it unchanged; otherwise
+  the app is "Screen".
 - This build has no on-device text reading yet (it comes with capture, m3-02), so Import says so and reads nothing;
   the folder summary is real.
 - The import space is analysed as of its last day, so last month's recordings still show their week. "Remove

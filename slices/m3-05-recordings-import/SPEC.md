@@ -81,8 +81,11 @@ import branches per [MIGRATION 5.5 and 5.7](../../docs/MIGRATION.md#55-pr-44-fea
   `ExclusionSource` as import rules, read before every file), `RecordingsScreenBody` and `RecordingsSettingsView`.
 - **Hooks into m3-04's files** (additive): `OnboardingServices.recordings: RecordingsImportModel?` (default nil);
   `OnboardingModel` runs `.startRecordingsImport` through it (started → screen 12; not ready → the notice);
-  `RecordingsScreen` shows the folder summary and Choose folder…; `AppModel.live()` builds the model. The app adds a
-  `Settings` scene and a "Recordings…" menu bar entry in `OffloadMacApp`.
+  `RecordingsScreen` shows the folder summary and Choose folder…; `AppModel.live()` builds the model; `OnboardingModel`
+  sets the model's `offerCheck` to "signed in and sending". The app adds a `Window` scene with id `settings`, not a
+  SwiftUI `Settings` scene, so the "Recordings…" menu bar entry can open it in front (`openWindow` plus
+  `NSApp.activate()`; a `Settings` scene opens only through `SettingsLink`, which cannot activate a menu bar app).
+  The entry and Settings' Import show only while the import is offered.
 
 ## Design note
 - **Structure**: everything that decides is a value type or a small final class in `OffloadImport`; `RecordingImporter`
@@ -99,7 +102,21 @@ import branches per [MIGRATION 5.5 and 5.7](../../docs/MIGRATION.md#55-pr-44-fea
   120 s) with the same brackets. A screenwatch row with app, window and URL becomes a masked `focus` (title masked,
   URL reduced to its host); rows without app fields get one synthetic app `screenwatch.screen` "Screen".
 - **Exclusions** are read again before each file, so a Never watch entry added during an import applies from the next
-  file (the "within one check" rule of MIGRATION 5.5).
+  file (the "within one check" rule of MIGRATION 5.5). A recording or screenshot has no window title or URL, so host,
+  `title_contains` and private-window rules (the person's and the built-ins) are matched against the frame's OCR
+  lines: a host token (`secure.chase.com`, `mail.example.org/inbox`) or the rule's words anywhere on the frame
+  excludes it. This errs on the side of excluding (review 1 finding 3).
+- **App names from pixels**: the top band is a menu bar only when the app name (at most 3 words) is followed by two
+  menu titles; the name is used only when the masker leaves it unchanged. Otherwise the app is "Screen"
+  (`recording.unknown`), so window text never leaves as `app_name` or `app_bundle_id` (review 1 finding 2).
+- **Offered only while sending**: `RecordingsImportModel.offerCheck` defaults to false (fails closed); OnboardingModel
+  wires it to `OnboardingState.sending`. Not offered, `startImport()` returns false with a notice and opens no import
+  space (review 1 finding 4).
+- **No folder read at launch**: building the model reads nothing. Screen 11 and Settings, Recordings call `refresh()`
+  when they appear; it scans and reads recording lengths in a detached task (review 1 finding 1).
+- **Streaming**: a run of screenshots is one span, but each screenshot is opened, read, written and recorded in the
+  ledger before the next is opened (review 1 finding 5). Picking one `days/DATE/` folder of a screenwatch archive
+  reads its rows.
 - **Moments read** = frames read plus screenwatch rows. The ledger records a file only after its observations were
   written, so a crash re-reads the file instead of losing it.
 - **Faked / deferred**: OCR, masker, perceptual hash and keyframe rendering are m3-02's; the uploader and the server
@@ -108,10 +125,13 @@ import branches per [MIGRATION 5.5 and 5.7](../../docs/MIGRATION.md#55-pr-44-fea
   Recordings show the real folder summary and Choose folder…, and Import says reading needs on-device text reading,
   which comes with capture, and reads nothing. The importer is complete and tested against fakes; m3-02 passes its
   OCR, masker and uploader-backed sink to `RecordingImporter` and the button works.
-- **Known limits** (for review): the folder summary reads each recording's length on the main actor (a header read
-  per file; a very large folder slows screen 11 and Settings); the import space is opened before the first file is
-  read, so a run whose every new file fails or is in the future leaves an empty import space (listed in Settings, so
-  it can be removed); the fingerprint includes the path, so a renamed recording is read again (as in PR #44).
+- **Known limits** (for review): when screen 11 shows the Desktop (where macOS saves recordings unless moved), macOS
+  asks once for Desktop access at that moment, because the screen shows the folder's summary (ONBOARDING section 8);
+  declining shows "No screen recordings found in Desktop", and Choose folder… still works. The import space is
+  opened before the first file is read, so a run whose every new file fails or is in the future leaves an empty
+  import space (listed in Settings, so it can be removed). The fingerprint includes the path, so a renamed recording
+  is read again (as in PR #44). A frame that merely shows an excluded word or host gets no text. The menu bar entry's
+  visibility is read when the menu is drawn.
 - **Self-review**: an independent compile-blind read (Opus) of every file found one failing test (the fixed clock's
   epoch was Sat 21 Nov, not Thu 19 Nov, so the future-time file was not in the future); fixed. Its open risks: the
   AVFoundation calls used are deprecated on the macOS 15 SDK (warnings, not errors); the generated test video now
@@ -178,6 +198,19 @@ forget scope `import`); the analysis anchored to an import's last day (cloud); `
   import exists; ONBOARDING section 8 says so.
 - NOTICE (m3-03's file): the import panel is written fresh after clicky's `MenuBarPanelManager.swift` KeyablePanel idea
   (a non-activating `NSPanel` that can become key, floating, on every Space); NOTICE's clicky entry should name
-  `apps/mac/Sources/OffloadMac/Recordings/LiveImportPanel.swift` as adapted from it.
+  `apps/mac/Sources/OffloadMac/Recordings/LiveRecordings.swift` (`KeyablePanel`, `LiveImportPanel`) as adapted from it.
 - Tags are letters only (verify.sh counts `Test "[A-Z]+: ..."`), so MIGRATION's `OFFLOAD HOME` and `EMPTY` cases live
   under `REFUSE:`, and `PILL` under `SCREEN:`.
+- Review 1 (logs/m3-05-recordings-import.review1.md), every finding fixed, red tests first (`fe90ab9`):
+  1 no folder read at launch, scan off the main actor; 2 app names from pixels only with a real menu bar and only
+  when the masker leaves them; 3 host, title and private-window rules matched on OCR lines; 4 offered only while
+  sending, failing closed, menu entry and Settings' Import hidden otherwise; 5 screenshots streamed one at a time,
+  `.reading` per file as it opens, `RecordingIngestor.ingestScreenshots` (which held a run in memory) removed; 6
+  `isImporting` follows the phase; 7 tests for `openImport` failing, `forget` failing, the UserDefaults store,
+  bundles, `node_modules` and the file cap (now a `scan` parameter); 8 the notice is drawn once (screen 11's body no
+  longer repeats it); 9 the `no_recordings` sentence lists m4v and drops the file-system path, Settings' title is a
+  header, each Remove button's label names its import, the panel announces its line; 10 this Contract records the
+  `Window` scene; 11 `ImportKeyframeSink` says raw frames and lines must be masked before storing.
+- `OnboardingState.recordingsImportStarted` stays unused: setting it needs a flow action in `OnboardingFlow.swift`,
+  which m3-04 owns, and nothing reads the flag (the import record lives in `RecordingsImportModel.imports`). m3-04 can
+  drop the flag and the comment at `OnboardingFlow.swift` "(.recordings, .importRecordings)" (review 1 finding 10).
