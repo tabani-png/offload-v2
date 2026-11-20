@@ -131,7 +131,10 @@ import branches per [MIGRATION 5.5 and 5.7](../../docs/MIGRATION.md#55-pr-44-fea
   opened before the first file is read, so a run whose every new file fails or is in the future leaves an empty
   import space (listed in Settings, so it can be removed). The fingerprint includes the path, so a renamed recording
   is read again (as in PR #44). A frame that merely shows an excluded word or host gets no text. The menu bar entry's
-  visibility is read when the menu is drawn.
+  visibility is read when the menu is drawn. An excluded app recorded without its menu bar (a window-only recording)
+  is "Screen" and is not excluded by app; host, title and private-window rules still apply to its text. Display names
+  of the person's apps are looked up when an import starts (`LiveAppNames.resolver`); an app added to Never watch
+  during an import is matched by bundle id only (enough for apps in the menu bar table).
 - **Self-review**: an independent compile-blind read (Opus) of every file found one failing test (the fixed clock's
   epoch was Sat 21 Nov, not Thu 19 Nov, so the future-time file was not in the future); fixed. Its open risks: the
   AVFoundation calls used are deprecated on the macOS 15 SDK (warnings, not errors); the generated test video now
@@ -214,3 +217,22 @@ forget scope `import`); the analysis anchored to an import's last day (cloud); `
 - `OnboardingState.recordingsImportStarted` stays unused: setting it needs a flow action in `OnboardingFlow.swift`,
   which m3-04 owns, and nothing reads the flag (the import record lives in `RecordingsImportModel.imports`). m3-04 can
   drop the flag and the comment at `OnboardingFlow.swift` "(.recordings, .importRecordings)" (review 1 finding 10).
+- Review 2 (logs/m3-05-recordings-import.review2.md), red tests first (`e6f9ae8`):
+  1 (major) `ImportExclusionRule` carries the app's display name for `bundle_id` rules; `NeverWatchImportExclusions`
+  takes a name resolver (`LiveAppNames.resolver(for:)` in the app, NSWorkspace on the main actor, frozen into a
+  Sendable table), and `isExcluded` matches the menu bar name case-insensitively. The built-in banking and
+  authenticator apps are excluded by name too, and Photos and the banking apps are in the menu bar table. Window-only
+  recordings are a known limit (above).
+  2 Import advances to screen 12 only while still on screen 11.
+  3 `refresh()` reads nothing while not offered, and the Settings window is left out of the Window menu
+  (`.commandsRemoved()`); a window macOS restores at launch then reads no folder in Local mode.
+  4 the review-1 `consumerID` guard is replaced by keeping the latest import's task (no clearing at all, so no race
+  to test); tests now cover back-to-back imports, the redraw on every onboarding action, and Never watch changes
+  inside one run of screenshots. The removal of Settings' second `.task` is view-only and has no test.
+  5 a refusal is said once on screen 11 (its body), and Choose folder… clears the old line
+  (`OnboardingModel.chooseRecordingsFolder`).
+  6 `autoreleasepool` around every frame and screenshot read; VoiceOver hears the start, about every tenth of the
+  files, warnings and the end (`announcement`, `announcements`).
+  7 `ImportSink` says the uploader is the only egress for `openImport`, `write` and `forget` (ADR 0035).
+  8 done gate: this slice stays `in_progress` until m3-03 adds the clicky credit for
+  `Recordings/LiveRecordings.swift` to NOTICE (AGENTS Definition of done item 5) and the CI `mac` job has run M305.
