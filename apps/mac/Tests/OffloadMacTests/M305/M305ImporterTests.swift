@@ -232,6 +232,17 @@ extension M305 {
     #expect(RecordingsCopy.summaryItems(watch, timeZone: M305Clock.utc) == ["32 days", "screenwatch archive", "Sep 1 to Oct 2"])
   }
 
+  @Test("FOLDER: a range with only one date shows that day; with no dates there is no range item")
+  func dateRangeWithOneDate() {
+    let d = M305Clock.date(2026, 11, 5, 9)
+    #expect(RecordingsCopy.dateRange(d, nil, timeZone: M305Clock.utc) == "Nov 5")
+    #expect(RecordingsCopy.dateRange(nil, d, timeZone: M305Clock.utc) == "Nov 5")
+    #expect(RecordingsCopy.dateRange(nil, nil, timeZone: M305Clock.utc) == nil)
+    let undated = FolderSummary(sourceKind: .screenshots, files: 2, extensions: ["png"], totalSeconds: nil,
+                                first: nil, last: nil)
+    #expect(RecordingsCopy.summaryItems(undated, timeZone: M305Clock.utc) == ["2 files", ".png"])
+  }
+
   // MARK: REFUSE
 
   @Test("REFUSE: an Offload home (or its days/ folder) is refused with a clear message")
