@@ -79,6 +79,37 @@ public enum ImportExclusions {
   static func matches(host: String, rule: String) -> Bool {
     host == rule || host.hasSuffix("." + rule)
   }
+
+  /// For a recording or screenshot, which has no window title or URL: the frame is excluded when any OCR line shows
+  /// an excluded host (in an address bar or a link), a `title_contains` value, or a private-window marker. Errs on
+  /// the side of excluding: a frame that merely mentions a rule's word gets no text either.
+  public static func isExcluded(bundleID: String, appName: String, lines: [String], rules: [ImportExclusionRule]) -> Bool {
+    if isExcluded(bundleID: bundleID, appName: appName, title: nil, host: nil, rules: rules) { return true }
+    let text = lines.joined(separator: "\n")
+    for host in hosts(in: lines) where isExcluded(bundleID: bundleID, appName: appName, title: nil, host: host, rules: rules) {
+      return true
+    }
+    return isExcluded(bundleID: bundleID, appName: appName, title: text, host: nil, rules: rules)
+  }
+
+  /// Host names in OCR text: tokens like `https://secure.chase.com/login` or `mail.example.org/inbox`, lowercased,
+  /// without scheme, path or surrounding punctuation. The last label must hold a letter (so "1.5" is not a host).
+  public static func hosts(in lines: [String]) -> [String] {
+    var out: [String] = []
+    for line in lines {
+      for raw in line.split(whereSeparator: { $0.isWhitespace }) {
+        var token = raw.lowercased()
+        if let r = token.range(of: "://") { token = String(token[r.upperBound...]) }
+        if let slash = token.firstIndex(where: { $0 == "/" || $0 == "?" || $0 == "#" }) { token = String(token[..<slash]) }
+        token = token.trimmingCharacters(in: CharacterSet(charactersIn: "()[]<>{}\"'.,;:!"))
+        if let at = token.lastIndex(of: "@") { token = String(token[token.index(after: at)...]) }
+        guard token.range(of: #"^[a-z0-9-]+(\.[a-z0-9-]+)+$"#, options: .regularExpression) != nil,
+              let last = token.split(separator: ".").last, last.contains(where: { $0.isLetter }) else { continue }
+        if !out.contains(token) { out.append(token) }
+      }
+    }
+    return out
+  }
 }
 
 /// At most one keyframe per `minGap` seconds of recording time, and only when the picture changed: a Hamming
