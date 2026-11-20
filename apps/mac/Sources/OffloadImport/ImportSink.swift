@@ -4,7 +4,13 @@ import Foundation
 // observations to the uploader (m3-02), which sends them with `source = "import"` and the `import_id`, and forgets an
 // import with `POST /v1/me/forget` scope `import`. The server half lands after m1-02; this slice ships the in-memory
 // fake only.
+//
+// Egress (ADR 0035): the uploader is the Mac's only way out. A real sink makes no request of its own: `openImport`
+// and `forget` go through the uploader (one host, written to the local egress ledger like every batch), and every
+// observation handed to `write` is checked there against the closed observation schema, with the detectors run again,
+// before it is queued. A sink that opened a second network path would break the egress guard.
 
+/// Implementations send nothing themselves: every call goes through the uploader, the egress guard (see above).
 public protocol ImportSink: Sendable {
   /// `POST /v1/imports` with `{ source_kind }`.
   func openImport(sourceKind: ImportSourceKind) async throws -> ImportSpace
