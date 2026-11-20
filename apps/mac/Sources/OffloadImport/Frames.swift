@@ -99,6 +99,9 @@ public struct ImportKeyframe: Equatable, Sendable {
 }
 
 /// Where kept keyframes go (m3-02's masked keyframe store). Nil turns keyframes off.
+///
+/// The frame and `keyframe.lines` are raw: implementations must mask the pixels and the OCR lines (the m3-02 masker
+/// and keyframe renderer) before anything is stored or uploaded, and must never keep the raw frame.
 public protocol ImportKeyframeSink: Sendable {
   func keep(_ frame: ImportFrame, keyframe: ImportKeyframe) throws
 }
