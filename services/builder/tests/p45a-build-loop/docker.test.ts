@@ -61,6 +61,11 @@ describe("p45a docker provider", () => {
     expect(await down.p.create(SPEC).catch((e) => e)).toBeInstanceOf(SandboxInfraError);
     expect(pulls).toBe(2);
 
+    // an image reference is one docker argument, never an option: refused before any docker call
+    const opt = fake();
+    for (const image of ["--privileged", "-v/:/host", "oven/bun 1.4.4", ""]) expect(await opt.p.create({ ...SPEC, image }).catch((x) => x)).toBeInstanceOf(SandboxSpecError);
+    expect(opt.calls).toHaveLength(0);
+
     // an air-gapped host can forbid the pull: a missing image is then an infra error naming no registry call
     const calls2: string[][] = [];
     const offline = new DockerProvider({ executor: async (argv) => (calls2.push(argv), { exit: argv[1] === "image" ? 1 : 0, stdout: "", stderr: "", timed_out: false }), docker: "docker", pull_missing_image: false });
@@ -74,6 +79,7 @@ describe("p45a docker provider", () => {
   test("SANDBOX: harness: true is refused unless the exec is exactly the trusted harness in /check: a caller's word never gets root (review 5 finding 5)", async () => {
     const { p, calls } = fake();
     const sb = await p.create(SPEC);
+    const before = calls.length; // create's image check
     for (const o of [
       { argv: ["sh", "-c", "id"], cwd: "/check" as const },
       { argv: ["bun", "/check/harness.ts", "--extra"], cwd: "/check" as const },
@@ -83,7 +89,7 @@ describe("p45a docker provider", () => {
       const e = await p.exec(sb, { ...o, timeout_ms: 1000, harness: true }).catch((x) => x);
       expect([o.argv.join(" "), o.cwd, e instanceof SandboxSpecError]).toEqual([o.argv.join(" "), o.cwd, true]);
     }
-    expect(calls).toHaveLength(0);
+    expect(calls).toHaveLength(before);
     expect(HARNESS_ARGV).toEqual(["bun", "/check/harness.ts"]);
   });
 

@@ -64,12 +64,18 @@ export class DockerProvider implements SandboxProvider {
   private readonly boxes = new Map<string, Box>();
 
   private readonly split: boolean;
+  private readonly pullMissing: boolean;
+  /** Images known to be on the host, or being provisioned (one pull per image however many sandboxes start at once). */
+  private readonly images = new Map<string, Promise<void>>();
 
   /** `privilege_split` (default true): the harness starts as root with only CHOWN, SETGID and SETUID, runs the check
    * as the host user that owns /check and the built tool as another user that cannot read it. False is for
-   * development only (no root): verdicts then do not prove the held-out check stayed hidden. */
-  constructor(o: { executor?: Executor; docker?: string; root?: string; privilege_split?: boolean } = {}) {
+   * development only (no root): verdicts then do not prove the held-out check stayed hidden.
+   * `pull_missing_image` (default true): an image that is not on the host is pulled once, host side, before the first
+   * sandbox; false (an air-gapped host) makes a missing image an infra error. */
+  constructor(o: { executor?: Executor; docker?: string; root?: string; privilege_split?: boolean; pull_missing_image?: boolean } = {}) {
     this.split = o.privilege_split ?? true;
+    this.pullMissing = o.pull_missing_image ?? true;
     this.executor = o.executor ?? spawnExecutor;
     this.docker = o.docker ?? "docker";
     this.root = o.root ?? tmpdir();
@@ -79,9 +85,32 @@ export class DockerProvider implements SandboxProvider {
     return this.split;
   }
 
+  /** Provisions the image on the host before any container uses it (CI run 1: a fresh host has no image, and every
+   * `docker run --pull never` then failed as infra, so no verdict was possible). This is a host-side step of the
+   * Docker daemon, outside every sandbox and before any check runs; sandbox containers still never fetch (`--pull
+   * never`). A digest reference (`@sha256:`, spike S4) is verified by the daemon on pull. */
+  private ensureImage(image: string): Promise<void> {
+    const known = this.images.get(image);
+    if (known !== undefined) return known;
+    const inspect = () => this.executor([this.docker, "image", "inspect", "--format", "{{.Id}}", image], { timeout_ms: 30_000 }).then((r) => r.exit === 0, () => false);
+    const p = (async () => {
+      if (await inspect()) return;
+      if (!this.pullMissing) throw new SandboxInfraError(`the sandbox image ${image} is not on this host`);
+      const r = await this.executor([this.docker, "pull", "--quiet", image], { timeout_ms: 15 * 60_000 }).catch(() => null);
+      if (r === null || r.exit !== 0 || !(await inspect())) throw new SandboxInfraError(`the sandbox image ${image} is not on this host and could not be pulled`);
+    })();
+    this.images.set(image, p);
+    // a failed provisioning is not remembered: the next sandbox tries again
+    p.catch(() => this.images.delete(image));
+    return p;
+  }
+
   async create(spec: SandboxSpec): Promise<Sandbox> {
     checkEnv(spec.env);
     if (spec.network_allowlist.length > 0) throw new SandboxSpecError("the docker provider runs with no network; the egress proxy network is not built yet (m2-08)");
+    // an image reference is one docker argument, never an option
+    if (!/^[A-Za-z0-9][A-Za-z0-9._\/:@-]*$/.test(spec.image)) throw new SandboxSpecError("the sandbox image reference is not valid");
+    await this.ensureImage(spec.image);
     let root: string;
     try {
       root = mkdtempSync(join(this.root, "offload-sbx-"));

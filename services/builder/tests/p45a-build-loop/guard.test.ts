@@ -223,7 +223,8 @@ describe("p45a container guard", () => {
           const src = /source=([^,]+)/.exec(mount)![1]!;
           for (const f of ["guard.ts", "bunfig.toml", "accept.test.ts", "harness.ts"]) files[f] = readFileSync(join(src, f), "utf8");
         }
-        return { exit: 1, stdout: "", stderr: "", timed_out: false };
+        // the image is on the host; the check run itself fails
+        return { exit: argv[1] === "run" ? 1 : 0, stdout: "", stderr: "", timed_out: false };
       },
     });
     await runShards({ provider: spy, spec: SPEC, artifact: plantedArtifact(), shards: [{ name: "held_out", check: checkSet("held_out", FAILING_CHECK) }], timeout_ms: 1000 });
