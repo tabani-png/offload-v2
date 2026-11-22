@@ -18,3 +18,4 @@ One line per slice step: slice | decision | tests | reviewer verdict.
     check walked m3-10's commits and failed on its TodayLive placeholder (ddb9120). BASE is now `e80962a` (d31fec8).
   - Not yet seen green: the file that failed compiled no further than type checking, so region-isolation (SIL)
     diagnostics for the M311 test files run for the first time in the next run.
+- 2026-11-22 13:16 today | CI green on e183e7dcb3d7a917ac8c2dda98493104a703e6d2 | runs: mac-artifact=success, ci=success
