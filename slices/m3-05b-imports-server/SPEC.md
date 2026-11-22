@@ -172,4 +172,8 @@ state (none references an import yet); the analysis anchored to an import's last
   test copies `outbox_claim`'s locking instead of calling it.
 - [x] after the box restore (2026-11-22): history intact; on the recreated empty database `verify.sh` PASS (20 slice
   tests, 461 in the full suite) and `SLICE_UPSTREAM=<merge-base> scripts/verify-all.sh` green at `554f93f`
-- [ ] CI run and a reviewer pass on the review-2 fix (the gate for `done`); status stays `in_progress` until then
+- [x] mac CI fix (2026-11-22, on origin tip `fe9be56`, rebased onto main `e241980` by the orchestrator): red tests
+  `affa53b` (seen failing: 4 generated files missing; `ImportSourceKind` shared with OffloadImport), generator rename
+  and generated `ForgetRequest`, `Import`, `OpenImportRequest`, `PurgeRequestState` `79326ef`; `verify.sh` PASS (22
+  slice tests), `SLICE_UPSTREAM=e241980 scripts/verify-all.sh` green (631 tests). Swift not compiled here (no macOS)
+- [ ] CI run (mac job compiles the generated types) and a reviewer pass on the review-2 fix (the gate for `done`); status stays `in_progress` until then
