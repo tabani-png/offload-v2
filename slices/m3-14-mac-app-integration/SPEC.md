@@ -11,7 +11,7 @@ size: M
 parallel_group: M3-D
 owns: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Tests/OffloadMacTests/M314/**]
 verify: bash slices/m3-14-mac-app-integration/verify.sh
-min_tests: 48
+min_tests: 54
 paths_in_scope: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Sources/OffloadMac/CaptureRuntime.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/Onboarding/Services.swift, apps/mac/Sources/OffloadMac/Updates/CaptureLifecycle.swift, apps/mac/Sources/OffloadUploader/Uploader.swift, apps/mac/Sources/OffloadUploader/DeviceKey.swift, apps/mac/Sources/OffloadUploader/ImportOutbox.swift, apps/mac/Sources/OffloadUploader/Tokens.swift, apps/mac/Sources/OffloadUploader/PseudonymKeyStore.swift, apps/mac/Package.swift, docs/ONBOARDING.md, apps/mac/Tests/OffloadMacTests/M314/**, apps/mac/README.md, docs/ARCHITECTURE.md, slices/m3-14-mac-app-integration/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadContracts/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Tests/OffloadMacTests/M302/**, apps/mac/Tests/OffloadMacTests/M303/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**]
 red_tests: [ENTRY, LAUNCH, CAPTURE, UPLOAD, EXCLUDE, NOW, IMPORT]
@@ -38,11 +38,14 @@ running observer, and imports go through the uploader when this Mac is signed in
   not started), `--version` (m3-09), otherwise the SwiftUI app. `OffloadApp` builds everything once through
   `AppComposition.live()`; no other file constructs `AppModel`, `AppUpdates`, `CaptureRuntime` or `UploadRuntime`.
   `CaptureRuntime.swift` (PR #13) moves to `Composition/CaptureRuntime.swift` and is split in two.
-- **`BackendMode`** (`Composition/BackendMode.swift`): `.local` (the test build's default: nothing leaves the Mac) or
-  `.cloud(apiBase:deviceID:)`, chosen by `BackendMode.decide(apiBase:deviceID:deviceKeyStored:)`: an `https` API base
-  (or `http` on a loopback host), a non-empty device id from enrollment and a stored device key, else `.local`. The
-  live values: Info.plist `OffloadAPIBase`, `UserDefaults` `OffloadDeviceID` (written by enrollment, m1-04 client
-  in PR #13), the device key in the Keychain. The test build sets none of them, so it runs in `.local`.
+- **`UploadBackend`** (`Composition/UploadBackend.swift`; whether an uploader may exist, not what the screens read):
+  `.local` (the test build's default: nothing leaves the Mac) or `.cloud(apiBase:deviceID:)`, chosen by
+  `UploadBackend.decide(apiBase:deviceID:deviceKeyStored:)`: an `https` API base with a host and no user, query or
+  fragment (m3-10's rule), a non-empty device id from enrollment and a stored device key, else `.local`. The live
+  values: `UserDefaults` `ai.offload.api.baseURL` (the same setting as m3-10's `BackendMode`), `UserDefaults`
+  `OffloadDeviceID` (written by enrollment, m1-04 client in PR #13), the device key in the Keychain. The test build
+  sets none of them, so it runs in `.local`. The screens' one flag is m3-10's `BackendMode`; this slice declares no
+  type of that name.
 - **`LaunchPlan.decide(_ facts: LaunchFacts) -> LaunchPlan`** (`Composition/LaunchPlan.swift`), pure:
   - `startUpdater`: always (Sparkle sends no observation; it is how fixes reach the Mac).
   - `startCapture`: the person resolved screen 2 (`captureStarted`, which needs screen 1 and a permission on) and
@@ -94,17 +97,20 @@ running observer, and imports go through the uploader when this Mac is signed in
   this Mac" whenever nothing is uploaded (GLOSSARY: signed out or without upload consent), then why the import is not
   offered ("Recordings import is coming: it needs on-device text reading" without an importer; "Recordings import
   starts after Start sending" otherwise). Plain text items.
-- **Seams for m3-10** (on-device OCR, local analysis store, Today/Weekly/Builds navigation; sibling branch):
-  `CompositionSeams { textRecognizer, onDeviceImportSink }` passed to `AppComposition.live(seams:)`. With both nil
-  (this slice) there is no importer and Local mode offers no import. m3-10 plugs its recognizer and its local sink in
-  there (the import is then offered in Local mode) and reads `BackendMode` from `AppComposition.backend`.
+- **Seams for m3-10 to m3-13** (`CompositionSeams`, passed to `AppComposition.live(seams:)`): `textRecognizer` and
+  `onDeviceImportSink` for the composition's own import, and `analysis`, called before AppModel is built with
+  `AnalysisInputs { neverWatch, events, uploadBackend }` (the one Never watch list and the capture runtime's
+  `StoreEventSource`), returning `AnalysisPlug { recordings, onDeviceImport, afterLaunch }`: a recordings model that
+  replaces the composition's, and a call made once AppModel exists. The composition applies the one offer rule
+  (`ImportOffer`) after `afterLaunch`. All nil in this slice: no importer, and Local mode offers no import. The merge
+  steps are under Scope changes, "Integration with m3-10 to m3-13".
 - No new dependency. `Package.swift` changes only in its header comment (merge commit and 7dfa249).
 
 ## Design note
 The app has one composition root, `AppComposition`, so the order of launch is visible in one place:
 
 1. `OffloadEntry.main` → `EntryCommand.decide`: self-check and version exit before any UI, Keychain or disk access.
-2. `OffloadApp.init` → `AppComposition.live()`: reads `BackendMode`, makes the one `NeverWatchStore`, the
+2. `OffloadApp.init` → `AppComposition.live()`: reads `UploadBackend`, makes the one `NeverWatchStore`, the
    `CaptureRuntime` (nothing built yet), the `UploadRuntime` only in `.cloud`, the import model with the sink the
    launch facts allow, then `AppModel` (which reads both permissions, checks the notice version, and starts capture
    and the uploader per `LaunchPlan`) and `AppUpdates` (Sparkle, with the same `CaptureRuntime` as its
@@ -133,7 +139,7 @@ fakes and temp folders only.
 | LAUNCH | LAUNCH: a signed-in, consented person on an enrolled Mac gets capture, the uploader and the uploader-backed import sink | |
 | LAUNCH | LAUNCH: a changed notice keeps capture local and the uploader paused, and imports stay on the Mac | |
 | LAUNCH | LAUNCH: an unreadable buffer starts neither capture nor the uploader | |
-| LAUNCH | LAUNCH: the backend is cloud only with an https API base, a device id and a stored device key | `BackendMode.decide` |
+| LAUNCH | LAUNCH: uploads exist only for an https API base (the screens' setting), a device id and a stored device key | `UploadBackend.decide` |
 | LAUNCH | LAUNCH: the app model starts the uploader only when uploads are available | `AppModel(uploadsAvailable:)` with fakes |
 | CAPTURE | CAPTURE: the capture runtime creates nothing on disk until it is started | temp home stays absent |
 | CAPTURE | CAPTURE: the composition gives the updater and the app the same capture runtime | identity |
@@ -274,3 +280,48 @@ passing and every tag present, then the full `swift test`. On Linux it prints SK
   store; the menu says the import is coming). A test build from this branch alone is not the full one.
 - **Finding 6:** `.timeLimit(.minutes(1))` on the held-flush test; `exclusions.json` is written from a temp file created
   0600 in the store's 0700 folder and swapped in with the new file's metadata.
+
+### Review 4 (2026-11-22)
+- **Finding 1 (major, the seam and the flag did not match the sibling UI slices).** Checked against `w1/ui-analysis`
+  (m3-10, e80962a) and the same files on `w1/ui-today`, `w1/ui-weekly`, `w1/ui-builds`. Changed here:
+  - This slice's flag is renamed `UploadBackend` (what it decides: whether an uploader may exist). m3-10's
+    `Backend/BackendMode.swift` stays the one flag the screens read. `UploadBackend` reads the API base from m3-10's
+    setting (`ai.offload.api.baseURL`) with m3-10's https rule, so there is one config source; it adds the device id
+    and device key that uploads need (a member token, which `BackendMode` needs, is a different credential).
+  - m3-10 declares `HTTPTransport`, `URLSessionTransport`, `JCS`, `JSONValue` and `Figure` in OffloadMac. In a merged
+    OffloadMac those would shadow OffloadUploader's and OffloadContracts' types, so `Composition/` names them with their
+    module (`OffloadUploader.HTTPTransport`, ...); a test keeps it so.
+  - `CompositionSeams.analysis` gives m3-10 exactly what its `LocalAnalysis.live(neverWatch:events:mode:)` and
+    `startLocalAnalysis(rules:)` need, with the capture runtime's events (a composition test asserts the inputs, that
+    the plug's model is the app's, that `afterLaunch` runs once, and that the composition's offer rule wins).
+
+  **Integration with m3-10 to m3-13** (for the orchestrator; this branch cannot compile m3-10's types). Merge this
+  branch first, then m3-10, and resolve:
+  1. `Shell/AppModel.swift`: keep this branch's version (no `live()`), plus m3-10's additive stored properties and init
+     parameters (`backends`, `insights`, `onDeviceRecordings`, `startLocalAnalysis`). Drop m3-10's `AppModel.live()`.
+  2. `Composition/AppComposition.swift` `live()`: resolve `let backends = Backends.make(mode: BackendMode.resolve(
+     defaults: .standard, tokens: NoMemberToken()))`; pass `seams.analysis = { inputs in let local =
+     LocalAnalysis.live(neverWatch: inputs.neverWatch, events: inputs.events, mode: backends.mode); ... }`, returning
+     `AnalysisPlug(recordings: local.onDevice?.model, onDeviceImport: local.onDevice != nil, afterLaunch: { app in
+     app.startLocalAnalysis(rules: local.rules) })`, and pass `backends`, `local.insights`, `local.onDevice` to the
+     `AppModel(...)` call in `AppComposition.init` (the only place it is built).
+  3. One offer rule: m3-10's `wireRecordingsOffer()` / `RecordingsOffer.isOffered` is replaced by the composition's
+     `ImportOffer` (it adds the screen-2 gate and the pending-notice rule from reviews 2 and 3); `startLocalAnalysis`
+     keeps its other work.
+  4. m3-10's own files that also import OffloadContracts or OffloadUploader must name `JCS`, `JSONValue`, `Figure`,
+     `HTTPTransport` and `URLSessionTransport` with a module, or m3-10 renames its types (for example `BrainTransport`).
+  5. m3-10's `InterimTextMasker` should give way to this slice's `ImportMaskerAdapter` (the real masker, the same key as
+     live capture), passed through `AnalysisInputs` if m3-10 asks for it.
+  m3-11 to m3-13 carry m3-10's `Backend/` unchanged, so the same steps apply once.
+- **Finding 2:** one flush at a time in the uploader actor: a flush that starts while another waits on the network
+  returns `skipped` and `tick()` returns nil, so no flush overwrites another's queue or takes staged imports it then
+  loses. Test with a held batch.
+- **Finding 3:** `StoreContext.importLedger` (`ResettableImportLedger`) is the one ledger the importer holds;
+  `discard()` resets the file and the in-memory entries; a later record does not write old entries back.
+- **Finding 4:** the importer's sink opens an import space only once the masker's key loads
+  (`ImportMaskerAdapter.ready()`); otherwise the import ends "the import space could not be opened", reads nothing and
+  records no file. The fail-closed empty text stays as the last line of defence.
+- **Finding 5:** `ExclusionsFile.createFile` is a seam; a test sees every created file asked for 0600. A start, stop,
+  `tickOnce()` case pins the `running` guard.
+- **Finding 6 (no code):** nothing in this slice has been compiled; the mac job must run on this branch (and on the
+  merged branch) before merge. Agents here do not push.
