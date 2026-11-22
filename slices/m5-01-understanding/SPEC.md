@@ -11,7 +11,7 @@ size: L
 parallel_group: M5-A
 owns: [services/brain/src/understanding/**, services/brain/tests/m5-01-understanding/**]
 verify: bash slices/m5-01-understanding/verify.sh
-min_tests: 36
+min_tests: 43
 paths_in_scope: [services/brain/src/understanding/**, services/brain/src/user-model/ports.ts, services/brain/src/index.ts, services/brain/tests/m5-01-understanding/**, services/brain/package.json, bun.lock, docs/API.md, docs/ARCHITECTURE.md, docs/DATA_MODEL.md, docs/GLOSSARY.md, docs/ROADMAP.md, slices/m5-01-understanding/**]
 paths_out_of_scope: [ee/**, apps/**, packages/**, services/api/**, services/runtime/**, services/broker/**, services/builder/**, services/brain/src/models/**, services/brain/src/store/**, services/brain/src/user-model/ledger.ts, services/brain/sql/**, docs/adr/**, .github/**, slices/m5-01-understanding/STATUS.md]
 red_tests: [SPAN, CUE, DESCRIBE, EMBED, INDUCE, WINDOW, LEDGER, CONSUME]
@@ -69,8 +69,10 @@ deterministic local embedder, induce tasks and instances, and hand the result to
 Pipeline, all in `services/brain/src/understanding/`:
 1. **Read** (`capture.ts`, `pgCaptureStore`): inside `withTenant` as the event's member (principal `durable`, role
    `service`), so tenant RLS and the member wall apply. The range: `first_ts`/`last_ts` when the event has them, else
-   the `ts` range of the member's rows whose partition `day` is the event's UTC day or the day before (rows just
-   ingested: live rows have `day` = UTC date of `ts`, imported rows the ingest date). The range is widened to whole
+   the `ts` range of the member's rows whose partition `day` is the event's UTC day or one of the `LIVE_LATE_DAYS` (7)
+   days before it. Live rows have `day` = UTC date of `ts` and ingest accepts them up to 7 days late (`too_old`), so a
+   batch uploaded days late is still found (review 2 finding 1); imported rows carry the ingest date. This is a
+   superset of the rows just ingested, not the exact set: m3-01's payload has no range. The range is widened to whole
    days in the member's timezone (from the brain profile), capped at 31 days ending at its last day, and every
    observation and text in it is read **by `ts`**, not by `day`. So an import is analysed on its own days and its
    records are anchored to its last day (m3-05 "ANCHOR").
@@ -78,8 +80,10 @@ Pipeline, all in `services/brain/src/understanding/`:
    `idle_start` (backdated 120 s), `pause` or the last event; blips under 10 s join a contiguous neighbour; segments of
    the same app + title + host merge across idle up to 15 min. Text snapshots attach to the segment open at their `ts`.
 3. **Cues** (`cues.ts`; app names only at the start of the first two lines of a snapshot): a segment on a **stand-in app** (`recording.unknown`, `screenwatch.screen`, app name `Screen`: what
-   the recordings import emits without a macOS menu bar) takes its host from host tokens in its masked text (URL bar)
-   and its app from known app names in window chrome text, before merging. A stand-in segment with no cue never merges
+   the recordings import emits without a macOS menu bar) takes its host from a URL-bar-shaped token in its masked text
+   (lowercase as read, after a scheme or `www.`, or on a chrome line with three labels or a common top-level domain;
+   OCR fragments like `Mr.Smith` or `update.Regards` are not hosts, review 2 finding 2) and its app from known app names
+   in window chrome text, before merging. A stand-in segment with no cue never merges
    across idle, so unrelated recordings stay apart.
 4. **Describe** (`describe.ts`): verb and object from fixed vocabularies counted in the masked title and text
    (`SPAN_VERBS`, `SPAN_OBJECTS`), else a default verb by kind of work; pseudonyms (`<doc:h_…>`, `<person:h_…>`,
@@ -150,6 +154,14 @@ requires it).
 | CONSUME | CONSUME: first_ts and last_ts in the event narrow the analysed days | finding 5 |
 | CONSUME | CONSUME: with learning paused nothing is read or written and the event is delivered | finding 5 |
 | CONSUME | CONSUME: label route calls carry the event's tenant and member | finding 6 |
+| CUE | CUE: a host needs a URL-bar shape: OCR words joined by a period are not hosts, and body lines name no app | review 2 findings 2, 4a |
+| CUE | CUE: a period-joined name in OCR text never becomes a span's or a task's host | review 2 finding 2 |
+| INDUCE | INDUCE: back-to-back repetitions without docs split where the first step comes round again | review 2 finding 3 |
+| INDUCE | INDUCE: a stand-in task cued by its host only is named on that host, not on the stand-in app | review 2 finding 8 |
+| CONSUME | CONSUME: a live batch uploaded days late is analysed on its own days | review 2 finding 1 |
+| CONSUME | CONSUME: an event of a frozen member reads nothing | review 2 finding 4b |
+| CONSUME | CONSUME: the analysed days are the member's timezone days | review 2 finding 4c |
+| CONSUME | (in the failing-event test) an exhausted event is refused on the durable path too | review 2 finding 7 |
 
 ## Test plan
 Pure tests on synthetic, masked observations (`tests/m5-01-understanding/fixtures.ts`: a reproducible generator of
@@ -200,7 +212,9 @@ fix rules and `FixEstimate` (m5-04: `estimateFor` is passed through), `offload s
   finding 9 recorded under Known limits
 - [x] after review 1: `verify.sh` PASS (38 slice tests, 479 in the full suite); `verify-all` green with
   `SLICE_UPSTREAM=$(git merge-base HEAD origin/main)`
-- [ ] review 2, then `status: done`
+- [x] review 2 (CHANGES): findings 1 to 4, 6, 7 and 8 fixed with red tests first (b392e76, then 47e9d77); finding 5
+  recorded under Known limits
+- [ ] review 3, then `status: done`
 
 Known limits (for m1-06 and later):
 - Each event re-reads its whole days, so a live member whose Mac uploads every few minutes re-analyses today and
@@ -209,8 +223,20 @@ Known limits (for m1-06 and later):
   import's ingest day (and the day after) every live batch's fallback range also covers the whole imported range,
   up to 31 days, read into memory per event. m1-06 should coalesce a member's pending events (one run per member per
   tick) or have ingest write `first_ts`/`last_ts` into the event; both stay inside this consumer's contract.
-- Each running event holds one pool connection for its claim (session advisory lock) besides its queries: size the
-  `offload serve` pool for that.
+- Hand-off to m1-06 (review 2 finding 1): have ingest write `first_ts`/`last_ts` (the accepted objects' ts range)
+  into `observations.ingested`. Until then each live event re-analyses every day with rows ingested in the last 8 UTC
+  days (`LIVE_LATE_DAYS` + 1), up to 31 days: correct, but more work than the batch needs.
+- Each running event holds one connection for its claim (a session advisory lock) while its work takes others. With a
+  single pool and as many concurrent claims as connections, nothing can progress (review 2 finding 6). `offload
+  serve` must pass a small dedicated `claimPool` to `pgCaptureStore`, or bound concurrent runs below the pool size.
+- Stale rows after re-analysis (review 2 finding 5): when a later window links a day's steps differently (a transition
+  reaching its count, a new shared doc), that day's instances get new ids and task signatures. Day records are
+  rebuilt, but the old `episodes` rows (upserted, never deleted by `saveEpisodes`) and the old task's ledger entry stay.
+  Readers of episodes or the ledger (m5-04, `GET /v1/today`) must go through `day_records.episode_ids` (DATA_MODEL
+  section 4 already requires it for episodes). Dropping a re-analysed day's absent episodes needs a change in
+  `services/brain/src/store/` (out of this slice's scope): the window already carries its `days` for that.
+- The attempt cap applies on every path: the drain skips exhausted events and `runUnderstanding` returns `failed`
+  (`attempts_exhausted`) for them, so a durable runtime retrying the workflow does not run them again.
 - App cues use a fixed table of app names, read only at the start of a snapshot's first two lines; a recording of
   an app not in the table, or whose chrome OCR reads lower down, gets its host cue only.
 - Instances split by the rules above; a workflow whose steps interleave with unrelated work inside 2 min can link
