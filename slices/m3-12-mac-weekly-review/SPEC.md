@@ -235,7 +235,7 @@ folders.
 - Reference repos: nothing ported. The old repo's `ReviewModel`/`ReviewView` (release/mac-testable) are the workflow
   approval review built around the run mode ADR 0016 removes, not the weekly review; Clicky has no notification or
   week code. The layout follows the owner-approved mockup (`Weekly`, lines 629 to 709). No NOTICE change.
-- Not verified here: Swift does not build on Linux; the slice suite (79 tests) and the UserNotifications delegate
+- Not verified here: Swift does not build on Linux; the slice suite (82 tests) and the UserNotifications delegate
   conformance under Swift 6 are first checked by the macOS CI run.
 - Review 1 (2026-11-22, independent Opus 5.5 review, `VERDICT: CHANGES`), red tests first (`b0c58a4`), then fixes:
   1. (major) The notification is now offered on the review screen (ONBOARDING section 12): a line with **Tell me when
@@ -263,3 +263,20 @@ folders.
   notification must reopen the main window, a SwiftUI `Window` scene that only `openWindow(id: "main")` reopens once
   closed (the app keeps running with no window), and the menu bar label is the one view always alive. `Shell/RootView.swift`
   stays untouched. The modifier lives in `WeeklyReview/`.
+- Review 2 (2026-11-22, independent Opus 5.5 review, `VERDICT: CHANGES`), red tests first (`24df762`), then fixes:
+  1. (major) A click on the notification opens the main window: `WeeklyReviewHub.windowRequests` rises and
+     `WeeklyReviewWindowOpener` (on the menu bar label, see the scope note above) calls `openWindow(id: "main")`; an
+     open main window behind Settings is also brought forward.
+  2. The slot timer sleeps on the continuous clock (it counts time the Mac slept), and `NSWorkspace.didWakeNotification`
+     calls `didWake()`, which moves a screen whose slot passed during sleep.
+  3. `slotPassed()` moves the week but loads only when the screen already asked for content (no weekly request in
+     `.cloud` nobody asked for).
+  4. A goal "not linked yet" is plain text, not a dimmed button.
+  5. Accepted, not changed: the brain's sentence is checked against the review's four tiles only, so a sentence that
+     quotes another week-record number (switch count, meeting minutes) is replaced by "Here is your week.". The brain
+     checks the sentence against the whole week record (brain port `records/narrative.ts`, `checkNarrative`), which the
+     review does not send. Safe under ADR 0003; for the API owners: send the sentence's figures with `WeekReview`.
+  6. The chip menu uses `.menuStyle(.button)` with `.buttonStyle(.borderless)`. Whether the delegate's methods match
+     the SDK ("nearly matches optional requirement") is for the first macOS CI log.
+  7. Linux: `verify-all.sh` is green here with a disposable Postgres 17 (`DATABASE_URL` set); without one, `bun test`
+     stops on the database tests, which is the environment, not this slice.

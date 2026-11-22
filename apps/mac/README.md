@@ -49,5 +49,6 @@ on this Mac through `LocalAnswerStore`, so local ranking reads them at once. In 
 week is shown; `ReviewScheduler` keeps one repeating notification (`ai.offload.weekly-review`) at the review slot while
 "Tell me when my review is ready" is on (off by default); `AppModel.live()` starts it through `WeeklyReviewHub`.
 Settings keys: `ai.offload.review.day`, `ai.offload.review.time`, `ai.offload.review.notify`,
-`ai.offload.review.offered`. The screen offers the notification once; clicking it opens this week's review. Tests:
+`ai.offload.review.offered`. The screen offers the notification once; clicking it opens the main window on this week's review
+(`WeeklyReviewWindowOpener` on the menu bar label). Tests:
 `Tests/OffloadMacTests/M312/`.
