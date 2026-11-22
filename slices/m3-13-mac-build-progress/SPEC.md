@@ -213,7 +213,8 @@ sheet?" (m5-06); any change to m3-10's folders.
     names here and are listed under row 3.
   - Dots: `cancelled` and an unknown state are amber (needs you), as nothing was installed; a gone build's row is amber.
   - The plan panel has **Close** in every phase but `starting`: it hides the plan on this Mac, posts nothing, drops the
-    kept plan and says "Closed on this Mac. Offload may still finish designing it." (review5.md finding 1). In `.cloud`, a `.localRepeat` hand-off says
+    kept plan and says, true to the phase, that it can't be opened here again (review5.md finding 1, review6.md
+    finding 1). In `.cloud`, a `.localRepeat` hand-off says
     "“<name>” was counted on this Mac. Build it from a suggestion in Today once Offload has seen it." and shows no
     sample (sample data exists only in `.local`).
   - The start time in the list ("started 22 Nov, 11:50") is a date in the person's time zone, not a caption: its
@@ -332,5 +333,17 @@ sheet?" (m5-06); any change to m3-10's folders.
   2. Close is synchronous and off while OK, build is busy or starting, so it cannot be double-pressed or race the
      build approval (the async Not now that could is gone).
   3. The implementation notes now say Close, and review 4 item 3 is marked superseded.
+- **Review 6** (`logs/m3-13-mac-build-progress.review6.md`, verdict CHANGES; every finding taken; commits say
+  "review6.md"):
+  1. Close's notice is true to the phase and says the plan can't be opened here again (the opportunity is past
+     `open`, Today lists only open ones, and the kept plan is dropped): ready, "Closed on this Mac. This plan can't be
+     opened here again."; waiting on a connection, "Closed on this Mac. Nothing more happens until the apps are
+     connected, and it can't be opened here again."; answering, designing or too long, "Closed on this Mac. Offload
+     may still design it, but it can't be opened here again."; a stopped plan closes quietly.
+  2. A kept or polled plan whose opportunity is still `open` never reached Offload: it stops with "Your OK, build
+     didn't reach Offload. Press OK, build in Today again." and drops the kept plan (the suggestion is still open in
+     Today). The answer's own reply is already past `open`.
+  3. SECURITY_PRIVACY says the kept plan is removed when it is built, closed or stopped; the review-4 test header no
+     longer describes Not now; `planNotNow` and `notNowEveryPhase` are now `planClose` and `closeEveryPhase`.
 - `BASE` is set after m3-10 is `done`, so m3-10's placeholder commit in `BuildProgress/` is not counted against this
   slice's `owns`.
