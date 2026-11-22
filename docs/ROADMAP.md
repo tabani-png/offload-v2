@@ -73,7 +73,7 @@ Only the owner can do these. Lead times are typical, not promises; check each wh
 | O14 | Rotate the provider key that old `LAUNCH.md` lists as exposed, and confirm old test canaries are fake | same day | M1 (first port, m1-03) |
 | O15 | Privacy policy, terms and sub-processor list ([OQ-17](OPEN_QUESTIONS.md#oq-17-privacy-policy-terms-and-dpa)): a plain-language version for the tenant of one, counsel-reviewed before any second user | weeks | M3 (linked from "What leaves your Mac"); M8 (reviewed) |
 | O16 | Create the public repository `tabani-png/offload-v2` and push, after the checklist in [DEPLOYMENT section 6.5](DEPLOYMENT.md#65-before-the-public-push) ([OQ-27](OPEN_QUESTIONS.md#oq-27-publish-the-repository-publicly)). Agents never do this | an hour | M0 (when the owner chooses) |
-| O17 | Ask n8n (license@n8n.io) in writing how the Sustainable Use License applies to Offload's n8n export, push to a user's own n8n (self-hosted and n8n Cloud) and n8n run by Offload; record the answer in [OQ-32](OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n) | weeks (vendor reply) | M5 (switching m5-12 push on); any hosted n8n path |
+| O17 | Ask n8n (license@n8n.io) in writing how the Sustainable Use License applies to Offload's n8n export, push to a user's own n8n (self-hosted and n8n Cloud) and n8n run by Offload, and whether a user keeps free Community-license use when Offload generated the workflows in their n8n; record the answer in [OQ-32](OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n) | weeks (vendor reply) | M5 (switching m5-12 push on); any hosted n8n path |
 
 ### Spikes
 
