@@ -116,7 +116,8 @@ const CHECK_UID = id("OFFLOAD_CHECK_UID", 0);
 const CHECK_GID = id("OFFLOAD_CHECK_GID", 0);
 const TOOL_UID = id("OFFLOAD_TOOL_UID", 65534);
 const run = mkdtempSync(join(tmpdir(), "offload-run-"));
-if (SPLIT) { chownSync(run, CHECK_UID, CHECK_GID); chmodSync(run, 0o711); }
+// chmod while root still owns it: after the chown, chmod would need CAP_FOWNER, which the container does not grant.
+if (SPLIT) { chmodSync(run, 0o711); chownSync(run, CHECK_UID, CHECK_GID); }
 const report = join(run, "junit.xml");
 const tools = new Set<any>();
 let broker: any = null;
@@ -164,8 +165,8 @@ if (SPLIT) {
       error() {},
     },
   });
-  chownSync(socketPath, CHECK_UID, CHECK_GID);
   chmodSync(socketPath, 0o600);
+  chownSync(socketPath, CHECK_UID, CHECK_GID);
 }
 function send(sock: any, kind: string, b: Buffer) { sock.data.out += kind + b.toString("base64") + "\n"; flush(sock); }
 function finish(sock: any, code: number) { if (sock.data.ended) return; sock.data.ended = true; sock.data.out += "X" + code + "\n"; flush(sock); }
