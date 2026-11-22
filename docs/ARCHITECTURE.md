@@ -429,6 +429,10 @@ and checks.
 - **Brief** (`fix_briefs`): goal, inputs, outputs, steps with class and `runs_on`, pinned connections, capabilities,
   acceptance lines, forbidden actions, limits, budget, estimated saving with arithmetic.
   `brief_hash = sha256(JCS(brief))`.
+- **Tool choice, scaffold, held-out instances** ([ADR 0040](adr/0040-routine-definition-v2-and-execution-backends.md), proposed): code ranks candidate connectors per
+  capability (verified, allowlisted, stable, then the MCP, Composio, API, browser order) and records why; code writes
+  the skeleton `routine.json` from the brief, and workers fill only transforms, prompts and templates; up to 8
+  instances are captured by default and 0, 1 or 2 are held out from the worker for verification only.
 - **Checks** (within the design budget, default $0.60, [OQ-07](OPEN_QUESTIONS.md#oq-07-design-budget-before-ok-build)):
   check set from the acceptance lines (Opus, `check_write` route), held-out check (Opus, separate context), teeth gate.
   A new build of the same brief regenerates the held-out check ([ADR 0029](adr/0029-build-verdicts.md)).
@@ -613,6 +617,19 @@ flowchart LR
 
 `services/runtime`, on the durable runtime. Artifact contract in
 [ADR 0026](adr/0026-routine-artifact-contract.md).
+
+- **Execution backend** ([ADR 0040](adr/0040-routine-definition-v2-and-execution-backends.md), proposed): routines run behind an `ExecutionBackend` port. `native`, this
+  runtime on DBOS, is the default and the only backend in core; a backend must pass the backend conformance suite
+  (commits only through the gate and the broker, journal first, ids-only state). `routine.json` v2 adds per-step
+  retry policies, timeouts, `skip_item`, dedupe keys and read shapes. Versions can be rolled back under a deploy
+  approval, read-shape drift puts a routine in `needs_review`, and each version has a stability record. Every
+  routine definition passes the eight workflow design rules (lint, [ADR 0040 section 3.4](adr/0040-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules)).
+  n8n is never a backend and Offload does not run n8n. A user's own n8n workflows can be connected as MCP tools, and
+  a verified build can be exported as n8n workflow JSON for the user's own n8n (`packages/n8n-export`), downloaded or
+  pushed by the broker under a deploy approval that binds `export_hash`; push is off until
+  [OQ-32](OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n)
+  ([research](research/workflow-engines-2026-11.md), [OQ-30](OPEN_QUESTIONS.md#oq-30-n8n-in-offload),
+  [ADR 0040 section 9](adr/0040-routine-definition-v2-and-execution-backends.md#9-the-n8n-export)).
 
 - **Routine**: a deployed fix with immutable versions (`routine_versions`), a `definition_hash`, triggers (`schedule`
   cron, `manual`, `webhook` from M6, `event`), limits and a commit mode. States `active`, `paused`, `needs_review`,
