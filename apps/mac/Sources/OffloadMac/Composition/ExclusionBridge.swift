@@ -40,6 +40,9 @@ public enum ExclusionBridge {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
     try encoder.encode(rules).write(to: file, options: .atomic)
+    // Owner-only, like the sealed store's files. It stays plain because PR #13's reloader reads plain JSON; the list
+    // holds bundle ids, hosts and title words, no screen content (SPEC Scope changes, review 2 finding 5).
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
     written = rules
     return true
   }

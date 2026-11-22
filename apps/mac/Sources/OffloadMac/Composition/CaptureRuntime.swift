@@ -116,19 +116,25 @@ import OffloadUploader
     store.set(dayStore)
   }
 
+  /// One tick: the Never watch list is written first, so an entry added since the last tick applies to this one, then
+  /// the observer runs, unless a tick is still running. False when nothing ticked. The timer calls it while running.
+  @discardableResult
+  public func tickOnce() async -> Bool {
+    _ = try? syncExclusions()
+    guard let observer, !ticking else { return false }
+    ticking = true
+    await observer.tick()
+    ticking = false
+    return true
+  }
+
   private func schedule() {
     timer?.invalidate()
     // Added in the common run-loop modes, so capture keeps ticking while a menu is open (review 1, finding 7).
     let timer = Timer(timeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated {
-        guard let self, !self.ticking, let observer = self.observer else { return }
-        // Never watch first, so an entry added since the last tick applies to this one.
-        _ = try? self.syncExclusions()
-        self.ticking = true
-        Task { @MainActor in
-          await observer.tick()
-          self.ticking = false
-        }
+        guard let self, !self.ticking else { return }
+        Task { @MainActor in await self.tickOnce() }
       }
     }
     RunLoop.main.add(timer, forMode: .common)

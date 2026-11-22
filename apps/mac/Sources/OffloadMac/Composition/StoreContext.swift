@@ -28,20 +28,29 @@ public final class StoreContext: Sendable {
 
   public var home: URL { layout.home }
 
-  /// Row 11.6: false when day files exist but the newest one's key no longer opens (a restore or a new Mac without
-  /// the Keychain). With no day files there is nothing to open, so it is readable. Reads the Keychain only when day
+  /// Which recordings were read (m3-05's fingerprint ledger), next to the buffer.
+  public var importLedgerFile: URL { layout.home.appendingPathComponent("import-ledger.json") }
+
+  /// Row 11.6: false when day files exist but the master key is gone or the newest day key no longer opens (a restore
+  /// or a new Mac without the Keychain). With no day files there is nothing to open, so it is readable. Never writes:
+  /// the master key is read, not created. A Keychain that cannot be read right now (locked, access denied) is not
+  /// "unreadable", so "Start fresh" is never offered over a buffer that is fine. Reads the Keychain only when day
   /// files exist, that is after capture was consented.
   public func bufferReadable() -> Bool {
     guard let newest = dayStore.storedDays().last else { return true }
+    let master: Data?
+    do { master = try secrets.read(account: KeyRing.masterAccount) } catch { return true }
+    guard let master, master.count == StoreCrypto.keySize else { return false }
     return (try? keys.dayKey(domain: .days, day: newest, create: false)) != nil
   }
 
   /// "Start fresh" (row 11.6): deletes the unreadable buffer (day files, their keys, the egress ledger, the reveal
-  /// map, the upload queue and the import outbox). The master key stays; new day keys are wrapped under it.
+  /// map, the upload queue, the import outbox and the import ledger, so recordings whose objects went with the outbox
+  /// can be imported again). The master key stays; new day keys are wrapped under it.
   public func discard() throws {
     let fm = FileManager.default
     for url in [layout.daysDir, layout.keysDir, layout.egressDir, layout.revealFile, layout.uploadStateFile,
-                importOutbox.file] where fm.fileExists(atPath: url.path) {
+                importOutbox.file, importLedgerFile] where fm.fileExists(atPath: url.path) {
       try fm.removeItem(at: url)
     }
     keys.forget()
