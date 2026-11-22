@@ -13,7 +13,7 @@ import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { sha256Hex } from "../hash.ts";
-import { checkEnv, MOUNT_PATH, safeRelPath, SandboxInfraError, SandboxSpecError, type ExecOptions, type ExecResult, type Mount, type Sandbox, type SandboxFile, type SandboxProvider, type SandboxSpec } from "./provider.ts";
+import { checkEnv, HARNESS_ARGV, MOUNT_PATH, safeRelPath, SandboxInfraError, SandboxSpecError, type ExecOptions, type ExecResult, type Mount, type Sandbox, type SandboxFile, type SandboxProvider, type SandboxSpec } from "./provider.ts";
 
 /** Runs one host command. Injected so tests pin the argv; spawnExecutor is the real one. */
 export type Executor = (argv: string[], o: { stdin?: string; timeout_ms: number }) => Promise<ExecResult>;
@@ -28,6 +28,8 @@ function splitEnv(): string[] {
   const tool = uid === 65534 ? 65533 : 65534;
   return ["--env", `OFFLOAD_CHECK_UID=${uid}`, "--env", `OFFLOAD_CHECK_GID=${gid}`, "--env", `OFFLOAD_TOOL_UID=${tool}`];
 }
+/** The exec is exactly the trusted harness: the only one `harness: true` may start as root (review round 5). */
+const isHarnessExec = (o: ExecOptions) => o.cwd === "/check" && o.argv.length === HARNESS_ARGV.length && o.argv.every((a, i) => a === HARNESS_ARGV[i]);
 const DOCKER_ERROR_EXITS: ReadonlySet<number> = new Set([125, 126, 127]);
 const MAX_FILE = 4 * 1024 * 1024;
 const MAX_FILES = 2_000;
@@ -222,7 +224,7 @@ export class DockerProvider implements SandboxProvider {
   runArgv(s: Sandbox, name: string, o: ExecOptions): string[] {
     const b = this.box(s);
     // Root (with three capabilities) only for the trusted harness on a split provider; never for anything else.
-    const root = this.split && o.harness === true;
+    const root = this.split && o.harness === true && isHarnessExec(o);
     const env = { ...b.spec.env, ...(o.env ?? {}) };
     const envArgs = Object.keys(env)
       .sort()
@@ -261,6 +263,7 @@ export class DockerProvider implements SandboxProvider {
   async exec(s: Sandbox, o: ExecOptions): Promise<ExecResult> {
     checkEnv(o.env);
     if (o.argv.length === 0 || o.argv[0] === "") throw new SandboxSpecError("exec needs a command");
+    if (o.harness === true && !isHarnessExec(o)) throw new SandboxSpecError("harness: true runs only the trusted harness (bun /check/harness.ts in /check)");
     const b = this.box(s);
     const name = `offload-${s.id}-${++b.runs}`;
     const timeout = Math.min(o.timeout_ms, b.spec.wall_ms);

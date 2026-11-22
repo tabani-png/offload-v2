@@ -49,7 +49,8 @@ export interface ExecOptions {
   stdin?: string;
   env?: Record<string, string>;
   timeout_ms: number;
-  /** The trusted check harness (`bun /check/harness.ts`), set only by shards.ts and the advisory run in attempt.ts. On
+  /** The trusted check harness (HARNESS_ARGV in /check; a provider refuses the flag on any other exec), set only by
+   * shards.ts and the advisory run in attempt.ts. On
    * a provider with the user split it alone starts as root with CHOWN, SETGID and SETUID; every other exec (a
    * worker's command above all) runs as an unprivileged user with no added capability. */
   harness?: boolean;
