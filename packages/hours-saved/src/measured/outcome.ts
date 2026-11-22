@@ -10,6 +10,9 @@ import { figure, type Evidence, type Figure } from "./figure.ts";
 export const WEEKS_TRACKED = 4;
 export const ON_TRACK = 0.8;
 export const PARTIAL = 0.5;
+/** The thresholds in integer tenths, derived from the constants above (comparisons never use floats). */
+const ON_TRACK_TENTHS = Math.round(ON_TRACK * 10);
+const PARTIAL_TENTHS = Math.round(PARTIAL * 10);
 export const DAY_MS = 86_400_000;
 export const WEEK_MS = 7 * DAY_MS;
 
@@ -113,8 +116,8 @@ export function summarize(i: { estimated_minutes_per_week: number; baseline_minu
   let flag: OutcomeFlag;
   if (!complete) flag = "pending";
   else if (m20 === null || e10 <= 0) flag = "unmeasured";
-  else if (m20 * 10 >= e10 * 2 * 8) flag = "on_track";
-  else if (m20 * 10 >= e10 * 2 * 5) flag = "partial";
+  else if (m20 * 10 >= e10 * 2 * ON_TRACK_TENTHS) flag = "on_track";
+  else if (m20 * 10 >= e10 * 2 * PARTIAL_TENTHS) flag = "partial";
   else flag = "under";
   const shown = i.weeks.map((w) => (w === "purged" ? "purged" : w === null ? "not yet" : fmt(w))).join(", ");
   const percent = m10 === null || e10 <= 0 ? null : Math.round((m10 * 100) / e10);
