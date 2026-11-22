@@ -62,12 +62,15 @@ public enum OnDeviceFiles {
     }
   }
 
+  /// How on-device files are written: never over an existing file, protected until the first unlock after a restart.
+  public static let writeOptions: Data.WritingOptions = [.withoutOverwriting, .completeFileProtectionUntilFirstUserAuthentication]
+
   /// Creates `file` with `data`, 0600, protected until the first unlock after a restart (falls back to plain when the
   /// volume does not support data protection). Not complete protection: an import that runs while the screen locks,
   /// and the counting after it, must still be able to write and read (review 1, finding 6).
   public static func writeProtected(_ data: Data, to file: URL) throws {
     do {
-      try data.write(to: file, options: [.withoutOverwriting, .completeFileProtectionUntilFirstUserAuthentication])
+      try data.write(to: file, options: writeOptions)
     } catch {
       guard FileManager.default.createFile(atPath: file.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
         throw OnDeviceWriteError(step: "create")

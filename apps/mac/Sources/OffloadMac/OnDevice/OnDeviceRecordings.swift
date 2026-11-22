@@ -58,6 +58,8 @@ public struct OnDeviceRecordings {
   public let paths: OnDevicePaths
   /// The default folders, found when the Recordings screen asks (existence only), never at launch.
   public let folderCandidates: RecordingFolderCandidates
+  /// Imports a quit or a crash left unfinished, discarded when this was built (review 2, finding 2).
+  public let discardedUnfinished: [String]
 
   /// The recordings model with a real importer. `pseudonymKey` nil reads or creates the local pseudonym key.
   public static func make(neverWatch: NeverWatchStore, store: RecordingsFolderStore, folders: Folders,
@@ -73,6 +75,7 @@ public struct OnDeviceRecordings {
     try OnDeviceFiles.ensureFolder(paths.root)
     let sink = LocalImportSink(folder: paths.imports)
     let ledger = FileRecordingLedger(file: paths.ledger)
+    let discarded = discardUnfinished(store: store, sink: sink, ledger: ledger)
     let protected = [paths.offloadSupport]
     let importer = RecordingImporter(
       recognizer: recognizer ?? VisionTextRecognizer(), masker: InterimTextMasker(key: key), hasher: nil, keyframes: nil,
@@ -94,7 +97,21 @@ public struct OnDeviceRecordings {
     )
     return OnDeviceRecordings(model: model, sink: sink, ledger: ledger, observations: LocalObservationStore(folder: paths.imports),
                               picker: chooser, paths: paths,
-                              folderCandidates: RecordingFolderCandidates(folders: folders, protected: protected))
+                              folderCandidates: RecordingFolderCandidates(folders: folders, protected: protected),
+                              discardedUnfinished: discarded)
+  }
+
+  /// At launch, before any import can run: an import is listed (and so removable) only once it finished, so a file or
+  /// ledger entries of an import that is not listed come from one a quit or a crash cut short. They are deleted, so
+  /// nothing is counted that cannot be removed, and the recordings they came from are read again by the next import
+  /// (review 2, finding 2). Returns the discarded import ids.
+  static func discardUnfinished(store: RecordingsFolderStore, sink: LocalImportSink, ledger: FileRecordingLedger) -> [String] {
+    let listed = Set(store.imports.map(\.space.id))
+    let files = LocalObservationStore(folder: sink.folder).importIDs().filter { !listed.contains($0) }
+    for id in files { try? FileManager.default.removeItem(at: sink.file(for: id)) }
+    let entries = Set(ledger.entries.map(\.importID)).filter { !listed.contains($0) }
+    for id in entries { try? ledger.removeEntries(importID: id) }
+    return Array(Set(files).union(entries)).sorted()
   }
 
   /// "Use this folder": the candidate becomes the chosen folder (kept for next time) and is read for its summary.
