@@ -294,26 +294,110 @@ public enum LocalInsights {
 
   // MARK: One day
 
-  /// One day of insights from events of any origins (each origin is read on its own, then counted together).
+  /// One day of insights from events of any origins.
   public static func day(_ events: [InsightEvent], day label: String, timeZone: TimeZone,
                          exclusions: [ImportExclusionRule], until: Date? = nil) -> DayInsights {
-    guard let interval = LocalDays.interval(of: label, timeZone: timeZone) else {
-      return dayInsights(spans: [], day: label, timeZone: timeZone)
+    days(events, labels: [label], timeZone: timeZone, exclusions: exclusions, until: until)[label]
+      ?? dayInsights(spans: [], day: label, timeZone: timeZone)
+  }
+
+  /// Several days from one pass: the spans of every origin are built and merged once, Never watch is applied once,
+  /// then the spans are clipped into each day (review 1, finding 3).
+  public static func days(_ events: [InsightEvent], labels: [String], timeZone: TimeZone,
+                          exclusions: [ImportExclusionRule], until: Date? = nil) -> [String: DayInsights] {
+    let all = applyExclusions(mergedSpans(events, until: until), rules: exclusions)
+    var out: [String: DayInsights] = [:]
+    for label in labels {
+      guard let interval = LocalDays.interval(of: label, timeZone: timeZone) else {
+        out[label] = dayInsights(spans: [], day: label, timeZone: timeZone)
+        continue
+      }
+      let clipped = clip(all, to: interval)
+        .sorted { $0.start != $1.start ? $0.start < $1.start : $0.firstEventID < $1.firstEventID }
+      out[label] = dayInsights(spans: clipped, day: label, timeZone: timeZone)
     }
+    return out
+  }
+
+  // MARK: Origins
+
+  /// The spans of every origin with each instant counted once (review 1, finding 1): two imports of the same
+  /// screenwatch day, a recording made while screenwatch ran, or an import of today next to live capture would
+  /// otherwise add the same minutes twice. Where origins overlap, one wins: live capture first, then imports that
+  /// carry titles or hosts (screenwatch), then the rest (recordings, app only); ties by import id. A losing span keeps
+  /// the parts of its time no winner covers.
+  public static func mergedSpans(_ events: [InsightEvent], until: Date? = nil) -> [ActivitySpan] {
     var byOrigin: [InsightEvent.Origin: [InsightEvent]] = [:]
-    var originOrder: [InsightEvent.Origin] = []
-    for e in events {
-      if byOrigin[e.origin] == nil { originOrder.append(e.origin) }
-      byOrigin[e.origin, default: []].append(e)
+    for e in events { byOrigin[e.origin, default: []].append(e) }
+    let ordered = byOrigin.keys.sorted { a, b in
+      let ra = originRank(a, events: byOrigin[a] ?? [])
+      let rb = originRank(b, events: byOrigin[b] ?? [])
+      return ra.level != rb.level ? ra.level < rb.level : ra.id < rb.id
     }
-    var all: [ActivitySpan] = []
-    for origin in originOrder {
+    var covered: [DateInterval] = []
+    var out: [ActivitySpan] = []
+    for origin in ordered {
       let live = origin == .live
-      all += spans(byOrigin[origin] ?? [], until: live ? until : nil, idleGapRule: live)
+      var kept: [ActivitySpan] = []
+      for s in spans(byOrigin[origin] ?? [], until: live ? until : nil, idleGapRule: live) {
+        kept += uncovered(s, by: covered)
+      }
+      out += kept
+      covered = union(covered + kept.map { DateInterval(start: $0.start, end: $0.end) })
     }
-    let clipped = clip(applyExclusions(all, rules: exclusions), to: interval)
-      .sorted { $0.start != $1.start ? $0.start < $1.start : $0.firstEventID < $1.firstEventID }
-    return dayInsights(spans: clipped, day: label, timeZone: timeZone)
+    return out.sorted { $0.start != $1.start ? $0.start < $1.start : $0.firstEventID < $1.firstEventID }
+  }
+
+  /// 0 live; 1 an import with titles or hosts; 2 an import without; then the import id.
+  static func originRank(_ origin: InsightEvent.Origin, events: [InsightEvent]) -> (level: Int, id: String) {
+    switch origin {
+    case .live: return (0, "")
+    case .imported(let id): return (events.contains { $0.title != nil || $0.host != nil } ? 1 : 2, id)
+    }
+  }
+
+  /// The parts of `s` outside `covered` (sorted, disjoint).
+  static func uncovered(_ s: ActivitySpan, by covered: [DateInterval]) -> [ActivitySpan] {
+    // The first interval that ends after the span starts.
+    var lo = 0
+    var hi = covered.count
+    while lo < hi {
+      let mid = (lo + hi) / 2
+      if covered[mid].end <= s.start { lo = mid + 1 } else { hi = mid }
+    }
+    var pieces: [ActivitySpan] = []
+    var cursor = s.start
+    var i = lo
+    while i < covered.count, covered[i].start < s.end, cursor < s.end {
+      let c = covered[i]
+      if c.start > cursor {
+        var piece = s
+        piece.start = cursor
+        piece.end = min(c.start, s.end)
+        pieces.append(piece)
+      }
+      cursor = max(cursor, c.end)
+      i += 1
+    }
+    if cursor < s.end {
+      var piece = s
+      piece.start = cursor
+      pieces.append(piece)
+    }
+    return pieces
+  }
+
+  /// Sorted, disjoint intervals covering the same time.
+  static func union(_ intervals: [DateInterval]) -> [DateInterval] {
+    var out: [DateInterval] = []
+    for i in intervals.sorted(by: { $0.start < $1.start }) {
+      if let last = out.last, i.start <= last.end {
+        out[out.count - 1] = DateInterval(start: last.start, end: max(last.end, i.end))
+      } else {
+        out.append(i)
+      }
+    }
+    return out
   }
 
   /// Every figure of a day from its (clipped, sorted) spans.
@@ -516,7 +600,10 @@ public enum LocalInsights {
 
     let observed = days.filter { !$0.isEmpty }.map(\.day)
     let span = LocalDays.span(observed, timeZone: timeZone)
-    let weeks = recentWeeks(now: now, timeZone: timeZone)
+    // The 8 weeks count back from the last observed day when the data is older than now, so an old archive still
+    // ranks (review 1, finding 4).
+    let lastObserved = observed.max().flatMap { LocalDays.start(of: $0, timeZone: timeZone) }
+    let weeks = recentWeeks(now: min(now, lastObserved ?? now), timeZone: timeZone)
     let observedWeeks = Set(observed.compactMap { label in
       LocalDays.start(of: label, timeZone: timeZone).map { LocalDays.isoWeek($0, timeZone: timeZone) }
     }).intersection(weeks)
