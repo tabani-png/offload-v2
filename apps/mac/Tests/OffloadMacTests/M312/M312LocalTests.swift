@@ -376,11 +376,11 @@ extension M312 {
     let ship = ReviewGoals.id("Ship a product")
     let c = try #require(Self.local(e.events, answers: [Self.answer(key, .keep, goal: ship)], goals: ["Ship a product", "Close 2 deals"]))
     // Each line is checked against its own figures (review 1, finding 7), so a line cannot borrow another's number.
-    var lines: [(text: String, figures: [Figure])] = [(c.sentence, c.sentenceFigures + c.tiles.flatMap(\.figures))]
-    lines += c.subtitleItems.map { ($0, [c.weeksKnown].compactMap { $0 }) }
-    for t in c.tiles { lines += ([t.valueText] + [t.deltaLine].compactMap { $0 }).map { ($0, t.figures) } }
-    for g in c.goals { lines += ([g.hoursText].compactMap { $0 } + g.trendItems).map { ($0, g.figures) } }
-    for q in c.questions { lines += [q.whyLine].compactMap { $0 }.map { ($0, q.why) } }
+    var lines: [(text: String, figures: [Figure])] = [(text: c.sentence, figures: c.sentenceFigures + c.tiles.flatMap(\.figures))]
+    lines += c.subtitleItems.map { (text: $0, figures: [c.weeksKnown].compactMap { $0 }) }
+    for t in c.tiles { lines += ([t.valueText] + [t.deltaLine].compactMap { $0 }).map { (text: $0, figures: t.figures) } }
+    for g in c.goals { lines += ([g.hoursText].compactMap { $0 } + g.trendItems).map { (text: $0, figures: g.figures) } }
+    for q in c.questions { lines += [q.whyLine].compactMap { $0 }.map { (text: $0, figures: q.why) } }
     var numbers = 0
     for line in lines {
       numbers += ReviewSentence.numbers(in: line.text).count
