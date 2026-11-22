@@ -301,6 +301,9 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
     const more = (await Promise.all(Array.from({ length: n }, (_, k) => attemptOnce(2 + k, fb)))).filter((x): x is NonNullable<typeof x> => x !== null);
     ran.push(...more);
     if (more.some((x) => x.row.outcome === "tamper")) return void (await end("tampered", "A frozen check changed during a try; the build stopped."));
+    // ADR 0012 step 6: reaching the cap ends the build capped. No fan-out worker fit (no room, or every reservation
+    // refused), so the build stopped on money, not on a check verdict of a worker it could pay for.
+    if (more.length === 0) return void (await end("capped", `The build cap leaves no room for another worker. Worker 1: ${r1.note}`));
     done(true);
   } else done(true);
 
