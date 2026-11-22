@@ -312,6 +312,7 @@ test("IMPORT: an import forgotten while its batch is being checked stores nothin
   const importId = await openImport(h, dev);
   const objects = imported(importId, daysAgo(9));
   const live = focus(h);
+  await h.token(dev, "device"); // minted now: the challenge and token transactions also run as the device
   let deviceTx = 0;
   let forgot: Response | null = null;
   // Ingest runs device-principal transactions in order: public key, seq state, per-object context (reads the open
