@@ -71,10 +71,8 @@ extension M314 {
   }
 
   /// The same objects as contract observations (what the sink hands to the uploader).
-  static func importObjects(_ importID: String) -> [Observation] {
-    observations(importID).map { o in
-      (try? JSONDecoder().decode(Observation.self, from: JSONEncoder().encode(o)))!
-    }
+  static func importObjects(_ importID: String) throws -> [Observation] {
+    try observations(importID).map { o in try JSONDecoder().decode(Observation.self, from: JSONEncoder().encode(o)) }
   }
 
   static func observations(_ importID: String) -> [ImportObservation] {

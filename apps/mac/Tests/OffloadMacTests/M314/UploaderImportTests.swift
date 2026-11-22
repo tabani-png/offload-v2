@@ -236,7 +236,7 @@ extension M314 {
     let seqs = rig.server.batchRequests.compactMap { r -> Int? in
       ((try? JSONSerialization.jsonObject(with: r.body ?? Data())) as? [String: Any])?["seq"] as? Int
     }
-    #expect(seqs == Array(1...seqs.count))
+    #expect(seqs == [1, 2])
     #expect(try rig.outbox.staged().isEmpty)
     // Nothing is sent twice.
     _ = await rig.uploader.flush()

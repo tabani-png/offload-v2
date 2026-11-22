@@ -127,7 +127,7 @@ extension M314 {
   @MainActor func pausedRefusesImports() async throws {
     let uploads = UploadRuntime(apiBase: M314Fixture.apiBase, deviceID: "dev_m314",
                                 context: StoreContext(home: M314Fixture.tempHome(), secrets: MemorySecretStore()), turns: false)
-    let objects = M314.importObjects(M314Fixture.importID)
+    let objects = try M314.importObjects(M314Fixture.importID)
     await #expect(throws: ImportUploadRefusal.self) { try await uploads.openImport(sourceKind: "videos") }
     #expect(throws: ImportUploadRefusal.self) { try uploads.stageImport(objects) }
     #expect(try uploads.outbox.staged().isEmpty)
@@ -193,7 +193,7 @@ extension M314 {
     defer { uploads.pause() }
     let id = try await uploads.openImport(sourceKind: "videos")
     #expect(id == M314Uploads.importID)
-    let objects = M314.importObjects(id)
+    let objects = try M314.importObjects(id)
     try uploads.stageImport(objects)
     let uploader = try uploads.uploader()
     let report = await uploader.flush()
