@@ -92,6 +92,8 @@ function judge(raw: unknown, i: number, k: Context7): Verdict {
   const parsed = ObservationSchema.safeParse(raw);
   if (!parsed.success) return { id, code: "schema_invalid" };
   const o = parsed.data;
+  // uuids are compared and stored in lower case (the database returns them so; forget lowercases too).
+  if (o.import_id !== undefined) o.import_id = o.import_id.toLowerCase();
   const ts = Date.parse(o.ts);
   if (Number.isNaN(ts)) return { id, code: "schema_invalid" };
   const isImport = o.source === "import";
@@ -153,14 +155,16 @@ const importIdsOf = (verdicts: Verdict[]): string[] =>
   [...new Set(verdicts.flatMap((v) => (v.obs?.source === "import" ? [v.obs.import_id!] : [])))];
 
 /**
- * Re-reads the batch's import spaces under FOR SHARE in the insert transaction: forget takes the row FOR UPDATE, so
- * an import space forgotten after the per-object check rejects its objects here instead of leaving orphan rows.
+ * Re-reads the batch's import spaces in the insert transaction under FOR NO KEY UPDATE: forget takes the row FOR
+ * UPDATE, so an import space forgotten after the per-object check rejects its objects here instead of leaving orphan
+ * rows. Not FOR SHARE: two devices of one member writing into one import space would each hold a share lock and then
+ * deadlock on the first_day/last_day update; this lock lets the second wait for the first instead.
  */
 async function recheckImports(tx: Tx, p: DevicePrincipal, verdicts: Verdict[]): Promise<Verdict[]> {
   const ids = importIdsOf(verdicts);
   if (ids.length === 0) return verdicts;
   const open = new Set((await tx.query<{ id: string }>(
-    "select id from imports where member_id = $1 and wiped_at is null and id = any($2::uuid[]) for share", [p.memberId, ids],
+    "select id from imports where member_id = $1 and wiped_at is null and id = any($2::uuid[]) order by id for no key update", [p.memberId, ids],
   )).rows.map((r) => r.id));
   return verdicts.map((v) => (v.obs?.source === "import" && !open.has(v.obs.import_id!) ? { id: v.id, code: "schema_invalid" as const } : v));
 }
@@ -287,7 +291,7 @@ export function registerIngestRoutes(app: Hono, deps: IngestDeps): void {
     } else {
       const k = await withTenant(deps.pool, p.ctx, async (tx): Promise<Context7> => {
         const own = (await tx.query<ExclusionRule>("select kind, value from exclusions where member_id = $1", [p.memberId])).rows;
-        const importIds = [...new Set(objects.flatMap((o) => (typeof o === "object" && o !== null && typeof (o as { import_id?: unknown }).import_id === "string" ? [(o as { import_id: string }).import_id] : [])))]
+        const importIds = [...new Set(objects.flatMap((o) => (typeof o === "object" && o !== null && typeof (o as { import_id?: unknown }).import_id === "string" ? [(o as { import_id: string }).import_id.toLowerCase()] : [])))]
           .filter((x) => UUID_RE.test(x));
         const open = importIds.length === 0 ? [] : (await tx.query<{ id: string }>("select id from imports where member_id = $1 and wiped_at is null and id = any($2::uuid[])", [p.memberId, importIds])).rows;
         return { now, consented: await hasUploadConsent(tx, p.memberId), rules: [...BUILTIN_EXCLUSIONS, ...own], openImports: new Set(open.map((r) => r.id)) };

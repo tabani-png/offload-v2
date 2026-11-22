@@ -27,19 +27,28 @@ export interface ForgetImportResult {
  */
 export async function forgetImport(tx: Tx, f: ForgetImportInput): Promise<ForgetImportResult | null> {
   // The row lock serialises with an ingest batch that is about to write into this import space (it reads the row
-  // FOR SHARE in its insert transaction).
+  // FOR NO KEY UPDATE in its insert transaction).
   const found = await tx.query("select 1 from imports where member_id = $1 and id = $2 for update", [f.memberId, f.importId]);
   if (found.rows.length === 0) return null;
 
-  const eventsOf = "select tenant_id, id from events_outbox where payload->>'member_id' = $1 and payload->>'import_id' = $2";
-  await tx.query(`delete from outbox_deliveries where (tenant_id, event_id) in (${eventsOf})`, [f.memberId, f.importId]);
-  const events = await tx.query(`delete from events_outbox where (tenant_id, id) in (${eventsOf})`, [f.memberId, f.importId]);
+  // Lock the import's events first: the dispatcher (outbox_claim) skips locked events, and one it already holds is
+  // waited for, so its delivery row is committed before the deletes below see it (no foreign-key race).
+  // `payload ? 'import_id'` lets the partial index events_outbox_import (migration 0007) answer this.
+  const events = (await tx.query<{ tenant_id: string; id: string }>(
+    `select tenant_id, id from events_outbox
+      where payload ? 'import_id' and payload->>'import_id' = $2 and payload->>'member_id' = $1
+      order by id for update`,
+    [f.memberId, f.importId],
+  )).rows;
+  const eventIds = events.map((e) => e.id);
+  if (eventIds.length > 0) await tx.query("delete from outbox_deliveries where event_id = any($1::uuid[])", [eventIds]);
+  const deletedEvents = eventIds.length === 0 ? 0 : (await tx.query("delete from events_outbox where id = any($1::uuid[])", [eventIds])).rowCount ?? 0;
   const obs = await tx.query("delete from observations where member_id = $1 and import_id = $2", [f.memberId, f.importId]);
   const texts = await tx.query("delete from observation_texts where member_id = $1 and import_id = $2", [f.memberId, f.importId]);
   const imports = await tx.query("delete from imports where member_id = $1 and id = $2", [f.memberId, f.importId]);
 
   const rowsDeleted = {
-    observations: obs.rowCount ?? 0, observation_texts: texts.rowCount ?? 0, events_outbox: events.rowCount ?? 0, imports: imports.rowCount ?? 0,
+    observations: obs.rowCount ?? 0, observation_texts: texts.rowCount ?? 0, events_outbox: deletedEvents, imports: imports.rowCount ?? 0,
   };
   const purgeRequestId = uuidv7();
   await tx.query(

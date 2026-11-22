@@ -60,7 +60,7 @@ Ingest (`POST /v1/ingest/batches`, `observation_batch`), changes to step 7 and 8
   UTC date of ingest (unchanged).
 - New: an object with an `import_id` but no `source = "import"` is `schema_invalid` (it would sit in the live store and
   still be wiped by forget).
-- New: the open import spaces are read again in the insert transaction under `FOR SHARE`, so a forget that commits
+- New: the open import spaces are read again in the insert transaction under `FOR NO KEY UPDATE`, so a forget that commits
   between the check and the insert cannot leave orphan rows; objects of a vanished import space are then
   `schema_invalid` in the receipt.
 - New: accepted imported objects widen `imports.first_day` / `last_day` to the UTC dates of their `ts` (the days the
@@ -77,7 +77,8 @@ Forget scope `import`, one transaction (`withTenant`, member context): lock the 
 `privacy.forgotten` `{ scope: "import", import_id, purge_request_id }`.
 
 Migration `packages/db/migrations/0007_imports.sql`: partial indexes on `observations` and `observation_texts`
-`(tenant_id, member_id, import_id) where import_id is not null`, so forget does not scan the live store.
+`(tenant_id, member_id, import_id) where import_id is not null`, and on `events_outbox`
+`(tenant_id, (payload->>'import_id')) where payload ? 'import_id'`, so forget does not scan the live store or the outbox.
 
 ## Design note
 - **Module**: `services/api/src/imports/` (`routes.ts` registers the four routes; `forget.ts` holds
@@ -91,7 +92,10 @@ Migration `packages/db/migrations/0007_imports.sql`: partial indexes on `observa
 - **Outbox**: deleting the import's events keeps a dispatcher from starting work for rows that are gone. Splitting the
   event per import space makes that delete exact (a batch with live objects keeps its live event).
 - **Ingest race**: forget takes the `imports` row `FOR UPDATE`; the ingest insert transaction re-reads open import
-  spaces `FOR SHARE`, so the two serialise on that row.
+  spaces `FOR NO KEY UPDATE` (not `FOR SHARE`: two devices of one member writing into one import space would each
+  hold a share lock and deadlock on the `first_day`/`last_day` update), so batches and forget serialise on that row.
+  Forget locks the import's outbox events `FOR UPDATE` before deleting deliveries, so a dispatcher holding one is
+  waited for instead of racing the foreign key. Import ids are lower-cased on ingest and forget.
 - **No Idempotency-Key** yet: no route in the repo implements `idempotency_keys`; opening two import spaces is harmless
   (an empty one is listed and can be forgotten). Recorded under Scope changes.
 
@@ -116,6 +120,10 @@ Tests live in `services/api/tests/m3-05b-imports-server/`, real Postgres (the m3
 | IMPORT | IMPORT: forget scopes other than import and malformed bodies are 400 invalid_request | `entity`, `range`, `all`, missing `import_id`, extra key |
 | IMPORT | IMPORT: an import forgotten while its batch is being checked stores nothing for it | forget commits between the check and the insert (fault hook): receipt `schema_invalid`, 0 rows |
 | IMPORT | IMPORT: the contracts accept the API.md bodies and the JSON Schemas agree | zod and committed JSON Schema |
+| IMPORT | IMPORT: two devices of one member ingest into one import space at the same time without a deadlock | 15 concurrent rounds all 200 (review 1, finding 1) |
+| IMPORT | IMPORT: an import_id sent in upper case is the same import space for ingest and forget | review 1, finding 4 |
+| IMPORT | IMPORT: forget waits for a dispatcher that holds the import's outbox event and still wipes it | 202, no FK error (review 1, finding 2) |
+| IMPORT | IMPORT: forget finds an import's outbox events through an index, not a scan of the outbox | review 1, finding 3 |
 
 ## Out of scope
 The Mac sink and uploader (m3-02); forget scopes `entity`, `range`, `all` and `GET /v1/me/export` (M7); derived user
@@ -133,7 +141,7 @@ state (none references an import yet); the analysis anchored to an import's last
 - `imports.wiped_at` is not written by this slice (the row is deleted); DATA_MODEL says so.
 - The red test "an import forgotten while its batch is being checked" was made stricter after the red commit: its
   fault hook counted the device's token transactions too, so it forgot before the check, not between check and insert,
-  and passed without the `FOR SHARE` recheck. It now mints the token first; it fails with the recheck removed
+  and passed without the recheck. It now mints the token first; it fails with the recheck removed
   (spot-checked) and passes with it.
 - API.md's `observations.ingested` payload row said `{ device_id, member_id, count, first_ts, last_ts }`, which m3-01
   never wrote; it now states the real payload plus `import_id`.
@@ -143,4 +151,7 @@ state (none references an import yet); the analysis anchored to an import's last
 - [x] red tests committed (`057ec31`), seen failing (16 of 16: routes 404, contracts missing)
 - [x] contracts (`82e3061`); migration 0007, routes, ingest changes, forget (`080ea1c`)
 - [x] docs (API.md, DATA_MODEL.md, ARCHITECTURE.md, SECURITY_PRIVACY.md)
-- [ ] independent review (AGENTS review gate) and the CI run; status stays `in_progress` until then
+- [x] review 1 (independent Opus read of SPEC, diff and tests; mutation spot-checks A to F): 1 major (deadlock between
+  two devices' batches on one import space: `FOR SHARE` then `UPDATE`), 3 minor (forget vs dispatcher FK race,
+  unindexed outbox lookup, upper-case import ids). All fixed, red tests first (`bd3683e`).
+- [ ] a second review of the fixes and the CI run; status stays `in_progress` until then

@@ -438,7 +438,7 @@ Required `Observation` fields per `kind`:
 8. In one transaction: insert accepted objects `ON CONFLICT DO NOTHING` (`observations` and `observation_texts` key
    `(tenant_id, device_id, object_id, day)`; `review_events` and `notice_acks` key `(tenant_id, device_id,
    object_id)`), insert `ingest_batches` with `body_sha256` and the receipt, update `devices.last_seq`, write
-   `observations.ingested` to `events_outbox`. The batch's import spaces are read again here `FOR SHARE` (forget takes
+   `observations.ingested` to `events_outbox`. The batch's import spaces are read again here `FOR NO KEY UPDATE` (forget takes
    the row `FOR UPDATE`), so objects of an import space forgotten since step 7 are `schema_invalid`; accepted imported
    objects widen `imports.first_day` and `last_day` (m3-05b).
 9. Return the receipt.
