@@ -130,3 +130,57 @@ t("PERSIST: without a week the latest week with an opportunity is read, and a st
   const open = await db.run(db.A1, (tx) => listOpportunityViews(tx, { state: "open" }));
   expect(open.map((v) => v.id)).toEqual(latest.slice(1).map((v) => v.id));
 });
+
+t("PERSIST: each option carries its saving as estimate, and an opportunity its description and goal, in the shapes the Mac decodes (review 2 finding 1)", async () => {
+  await update(fixRules());
+  const vs = await views();
+  expect(vs.length).toBeGreaterThan(0);
+  // The JSON the API sends: FixOption { id, option_no, title, detail, recommended, estimate, kind } (BuildsModels.swift).
+  const raw = JSON.parse(JSON.stringify(vs)) as Array<Record<string, any>>;
+  for (const v of raw) {
+    expect(v["description"]).toBe("");
+    expect(v["goal"]).toBeNull();
+    for (const o of v["options"]) {
+      for (const k of ["id", "option_no", "title", "detail", "recommended", "kind"]) expect(o[k]).toBeDefined();
+      expect(o["estimate"]).toEqual(o["figures"]["weekly_hours_saved"]);
+      expect(o["estimate"]["unit"]).toBe("hours_per_week");
+    }
+  }
+  // A goal named on the opportunity comes back as { id, text } (OpportunityGoal).
+  const g = "g_0123456789";
+  await db.sql.unsafe(`INSERT INTO ${db.schema}.goals (tenant_id, member_id, id, text, created_at) VALUES ($1, $2, $3, 'Close the books faster', now())`, [db.A1.tenantId, db.A1.memberId, g]);
+  await db.sql.unsafe(`UPDATE ${db.schema}.opportunities SET goal_id = $1 WHERE id = $2`, [g, vs[0]!.id]);
+  const one = JSON.parse(JSON.stringify(await db.run(db.A1, (tx) => getOpportunityView(tx, vs[0]!.id))));
+  expect(one.goal).toEqual({ id: g, text: "Close the books faster" });
+  expect(one.goal_id).toBe(g);
+  expect(one.options[0].estimate).toEqual(one.options[0].figures.weekly_hours_saved);
+});
+
+t("PERSIST: a re-ranked opportunity whose estimate gives no option keeps no stale option (review 2 finding 2)", async () => {
+  const half = (fixKind: string) => (task: { minutes: { value: number } }) =>
+    task.minutes.value <= 0 ? null : { fixKind, weeklyHoursSaved: Math.round((task.minutes.value / 60) * 50) / 100, setupHours: 3, ruleConfidence: 0.7, workKind: "email" as const };
+  const run = (fixKind: string) => db.run(db.A1, (tx) => runMemberUpdate(tx, { window: week.window, now, workspaceId: db.workspace, estimateFor: half(fixKind) }));
+  await run("agent_workflow");
+  const before = await views();
+  expect(before.length).toBeGreaterThan(0);
+  for (const v of before) expect(v.options.map((o) => o.kind)).toEqual(["agent_workflow"]);
+  // Same numbers, but a kind no option row can carry: the task stays ranked and its old option goes.
+  await run("leave_alone");
+  const after = await views();
+  expect(after.map((v) => v.id)).toEqual(before.map((v) => v.id));
+  for (const v of after) expect(v.options).toEqual([]);
+  expect((await dump(db, db.A1.memberId, ["fixes"]))["fixes"]).toEqual([]);
+});
+
+t("PERSIST: an open opportunity with a picked option is kept when it leaves the top 5 (review 2 finding 3)", async () => {
+  const rules = fixRules();
+  await update(rules);
+  const outreach = (await views()).find((v) => v.title === "Outreach emails")!;
+  await db.sql.unsafe(`UPDATE ${db.schema}.fixes SET chosen_at = now() WHERE opportunity_id = $1 AND option_no = 1`, [outreach.id]);
+  await update({ propose: (e) => (e.name === "Outreach emails" ? null : rules.propose(e)) });
+  const kept = await db.run(db.A1, (tx) => getOpportunityView(tx, outreach.id));
+  expect(kept).not.toBeNull();
+  expect(kept!.rank).toBeNull();
+  expect(kept!.options[0]!.chosen_at).not.toBeNull();
+  expect(kept!.options.length).toBe(outreach.options.length);
+});
