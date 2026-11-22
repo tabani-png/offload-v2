@@ -246,8 +246,17 @@ public enum LocalInsights {
         if !paused { open(e, at: e.ts, by: e.id) }
         lastActivity = e.ts
       case .idleStart:
-        // Readers already place idle_start at the last activity plus the threshold.
-        close(at: e.ts)
+        // Writers place idle_start the idle threshold after the last activity (m3-05's readers, the observer); it is
+        // moved back here, as m3-04's local now summary does (review 2). A span opened after that point is dropped,
+        // and any span still running past it is cut there.
+        let cutoff = e.ts.addingTimeInterval(-idleThreshold)
+        if let c = cur { close(at: max(c.start, cutoff)) }
+        var i = out.count - 1
+        while i >= 0, out[i].end > cutoff {
+          out[i].end = max(out[i].start, cutoff)
+          i -= 1
+        }
+        out.removeAll { $0.end <= $0.start }
       case .pause:
         close(at: e.ts)
         paused = true
