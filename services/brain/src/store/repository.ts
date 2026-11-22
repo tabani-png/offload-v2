@@ -380,8 +380,7 @@ async function saveOptions(tx: Tx, opp: { id: string; state: string }, workspace
   if (opp.state !== "open") return;
   const [chosen] = await rows(tx, `SELECT 1 FROM fixes WHERE ${OWN} AND opportunity_id = $1 AND chosen_at IS NOT NULL LIMIT 1`, [opp.id]);
   if (chosen !== undefined) return;
-  // Clear recommended first so the one-recommended index holds while numbers move.
-  await tx.unsafe(`UPDATE fixes SET recommended = false WHERE ${OWN} AND opportunity_id = $1 AND recommended`, [opp.id]);
+  // Only option 1 is ever recommended, so upserting by option number keeps the one-recommended index true.
   await tx.unsafe(`DELETE FROM fixes WHERE ${OWN} AND opportunity_id = $1 AND option_no > $2`, [opp.id, options.length]);
   for (const o of options) {
     await tx.unsafe(
@@ -404,10 +403,7 @@ export async function saveOpportunities(tx: Tx, input: { isoWeek: string; worksp
   guard("opportunities", input.ranked);
   if (input.options !== undefined) guard("fix options", [...input.options.values()]);
   const keys = input.ranked.map((o) => o.task_key);
-  await tx.unsafe(
-    `DELETE FROM fixes WHERE ${OWN} AND opportunity_id IN (SELECT id FROM opportunities WHERE ${OWN} AND iso_week = $1 AND source = 'finder' AND state = 'open' AND NOT (task_key = ANY($2::text[])))`,
-    [input.isoWeek, keys],
-  );
+  // Their options go with them through fixes' ON DELETE CASCADE (0002_fixes.sql).
   const gone = await rows(tx, `DELETE FROM opportunities WHERE ${OWN} AND iso_week = $1 AND source = 'finder' AND state = 'open' AND NOT (task_key = ANY($2::text[])) RETURNING task_key`, [input.isoWeek, keys]);
   for (const g of gone) await tx.unsafe(`DELETE FROM figure_index WHERE ${OWN} AND record_kind = 'opportunity' AND record_key = $1`, [`${input.isoWeek}/${g["task_key"]}`]);
   await tx.unsafe(`UPDATE opportunities SET rank = NULL WHERE ${OWN} AND iso_week = $1 AND source = 'finder' AND NOT (task_key = ANY($2::text[]))`, [input.isoWeek, keys]);

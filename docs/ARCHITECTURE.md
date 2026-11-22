@@ -423,8 +423,8 @@ chat gets no fix. The first matching rule kind gives the fix kinds to try:
 |---|---|---|
 | `report_assembly` | a cadence, a sheet or docs system, 2 or more systems | `scheduled_routine`, `script` |
 | `email_triage` | mail only, 5 or more instances, median 10 min or less | `setup_change` (mail rules), `agent_workflow` |
-| `email_to_records` | mail and another system | `agent_workflow`, `api_integration`, `browser_automation` (web), `script` (desktop) |
-| `app_to_app_copy` | 2 or more systems other than mail | `api_integration` (a connector pair), `browser_automation` (web), `script` (desktop) |
+| `email_to_records` | mail and another system | `agent_workflow`, `api_integration`, `browser_automation` (all web), `script` (a desktop app) |
+| `app_to_app_copy` | 2 or more systems other than mail | `api_integration` (a connector pair), `browser_automation` (all web), `script` (a desktop app) |
 | `single_app_entry` | one sheet, docs, web or other system | `browser_automation` (web) or `script` (desktop) |
 
 Each step's connector is resolved in [ADR 0033](adr/0033-pinned-connector-resolution-and-launch-catalog.md)'s order
@@ -435,9 +435,12 @@ fixed table per fix kind (share of the task's time taken over, review minutes pe
 confidence): weekly hours saved = (minutes × share − instances × review) / 60; setup = base + per step × steps (+1 h
 per browser step and +0.5 h per device step in a cloud kind); confidence = kind confidence × evidence factors (0.85
 under 5 instances or on one day, without a cadence) × 0.85 per browser step × 0.9 per device step; payback = setup /
-saving. All four are Figures. Options that save nothing are dropped; the rest are ordered by saving × confidence ÷
-max(1, payback), up to 3, option 1 recommended unless the best saving is under 0.5 h per week ("leave it alone"
-first). Option 1's numbers are the `FixEstimate` the score ranks; the options are stored in `fixes` with the
+saving. All four are Figures. Browser automation is offered only when every step is a web app (a browser cannot drive
+a desktop app; a script with typed actuator commands can). Options that save nothing are dropped; the rest are ordered
+with those saving at least 0.5 h per week first, then by saving × confidence ÷ max(1, payback), up to 3. Option 1 is
+recommended, so a recommended option always saves at least 0.5 h per week; when none does, "leave it alone" comes
+first and none is recommended. Option text names the app and plain mechanics ("through a connector", "in your
+browser, on your Mac"); the adapter itself is in the option's steps. Option 1's numbers are the `FixEstimate` the score ranks; the options are stored in `fixes` with the
 opportunity. Instant read and the pinning of connections are not built yet.
 
 ```mermaid

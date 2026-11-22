@@ -11,7 +11,7 @@ size: M
 parallel_group: M5-B
 owns: [services/brain/src/opportunities/**, services/brain/sql/0002_fixes.sql, services/brain/tests/m5-04-opportunity-finder/**]
 verify: bash slices/m5-04-opportunity-finder/verify.sh
-min_tests: 20
+min_tests: 27
 paths_in_scope: [services/brain/src/opportunities/**, services/brain/src/store/job.ts, services/brain/src/store/repository.ts, services/brain/src/store/migrate.ts, services/brain/sql/0002_fixes.sql, services/brain/src/records/day-record.ts, services/brain/src/records/kinds.ts, services/brain/src/understanding/job.ts, services/brain/src/index.ts, services/brain/tests/m5-04-opportunity-finder/**, docs/API.md, docs/ARCHITECTURE.md, docs/DATA_MODEL.md, docs/GLOSSARY.md, docs/ROADMAP.md, slices/m5-04-opportunity-finder/**]
 paths_out_of_scope: [ee/**, apps/**, packages/**, services/api/**, services/runtime/**, services/broker/**, services/builder/**, services/brain/src/models/**, services/brain/sql/0001_user_model.sql, services/brain/tests/p43a-user-model-core/**, services/brain/tests/p43b-user-model-store-api/**, services/brain/tests/m5-01-understanding/**, docs/adr/**, .github/**, slices/m5-04-opportunity-finder/STATUS.md]
 red_tests: [EVIDENCE, CONNECTOR, RULE, ESTIMATE, OPTIONS, RANK, PERSIST, FINDER]
@@ -89,8 +89,8 @@ m2-05, on hold), and no model is called.
    |---|---|---|
    | `report_assembly` (repeated report assembly) | a cadence, a `sheet` or `docs` system and at least 2 systems | `scheduled_routine`, `script` |
    | `email_triage` (repeated email triage) | only `email` systems, at least 5 instances, median at most 10 min | `setup_change` (mail rules), `agent_workflow` |
-   | `email_to_records` | an `email` system and another system | `agent_workflow`, `api_integration`, `browser_automation` (if a web system), `script` (if a desktop system) |
-   | `app_to_app_copy` (repeated copy between apps, e.g. two web apps) | at least 2 non-email systems | `api_integration` (connector pair), `browser_automation` (if a web system), `script` (if a desktop system) |
+   | `email_to_records` | an `email` system and another system | `agent_workflow`, `api_integration`, `browser_automation` (if every system is web), `script` (if a desktop system) |
+   | `app_to_app_copy` (repeated copy between apps, e.g. two web apps) | at least 2 non-email systems | `api_integration` (connector pair), `browser_automation` (if every system is web), `script` (if a desktop system) |
    | `single_app_entry` | one system of kind `sheet`, `docs`, `browse` or `other` | `browser_automation` (web) or `script` (desktop) |
 
 3. **Connectors** (`opportunities/connectors.ts`): `LAUNCH_CATALOG` (ADR 0033's apps as data: hosts and bundle ids
@@ -120,10 +120,12 @@ m2-05, on hold), and no model is called.
    | `browser_automation` | 0.6 | 1 | 3 | 1 | 0.5 |
    | `setup_change` | 0.3 | 0 | 0.5 | 0 | 0.6 |
 
-5. **Options** (`opportunities/rules.ts`): one to three of the rule's surviving kinds, ordered by option value = saving × confidence ÷ max(1,
-   payback) (the score's own factors), ties by the rule's order; numbered from 1; option 1 is `recommended` unless the
-   best saving is below 0.5 h per week, then `leave_alone_first` is true and none is recommended (ARCHITECTURE
-   section 7). Title and detail are code templates from masked words only (task name, host, app label, counts).
+5. **Options** (`opportunities/rules.ts`): one to three of the rule's surviving kinds; those saving at least 0.5 h per
+   week first, then by option value = saving × confidence ÷ max(1, payback) (the score's own factors), ties by the
+   rule's order; numbered from 1; option 1 is `recommended` (so it saves at least 0.5 h per week) unless no option
+   does, then `leave_alone_first` is true and none is recommended (ARCHITECTURE section 7). Title and detail are code
+   templates from masked words only (host, app label, counts, plain mechanics: "through a connector", "in your
+   browser, on your Mac", "on your Mac"); connector products stay in `steps`.
    The proposal's `estimate` (the `FixEstimate` `rankOpportunities` scores) is option 1's numbers.
 6. **Job** (`store/job.ts`): with `fixRules`, the latest week's tasks get evidence, proposals and estimates; ranking
    is unchanged (`rankOpportunities`); `saveOpportunities` stores the top 5 and upserts their options by
@@ -162,6 +164,16 @@ requires it).
 | PERSIST | PERSIST: options of a chosen opportunity are not touched and members read only their own |
 | FINDER | FINDER: an import of a repeated invoice workflow yields a ranked opportunity with a proposed fix and noise yields none |
 | FINDER | FINDER: figures of options resolve through figure_index |
+| EVIDENCE | EVIDENCE: start times over 2 h apart, different weekdays, two in one week or an instance 9 weeks back give no cadence (review 1 finding 1) |
+| RULE | RULE: browser automation is offered only when every step is a web app (review 1 finding 2) |
+| ESTIMATE | ESTIMATE: a bare estimate keeps a storable kind, and gives no option for another kind or for no saving (review 1 finding 4) |
+| OPTIONS | OPTIONS: the recommended option saves at least 0.5 h a week (review 1 finding 3) |
+| PERSIST | PERSIST: without a week the latest week with an opportunity is read, and a state filter applies within it (review 1 finding 5) |
+| FINDER | FINDER: without a workspace the fix rules are withheld and no opportunity is stored (review 1 finding 1) |
+
+Review 1 also added assertions to existing tests: device-step cost (ESTIMATE), work-kind priority (RANK), a re-run from
+2 options to 1 and a stale episode outside `day_records.episode_ids` (PERSIST), no connector product in option text
+(ESTIMATE).
 
 ## Test plan
 Pure tests on hand-built `WeekRecord`s and `Episode`s (`tests/m5-04-opportunity-finder/fixtures.ts`). Postgres tests
@@ -185,6 +197,20 @@ into `offload serve` (m1-06), `remove_step` and `small_app` rules, track record 
 - PERSIST "options of a chosen opportunity are not touched" was strengthened after the red commit (self-review
   mutation check): it now also keeps an `open` opportunity whose option has `chosen_at`, so each of the two guards in
   `saveOptions` is tested on its own. No assertion was weakened.
+- Review 1 (changes after the red commit, each with red tests first in bf541e8):
+  - Finding 2: `browser_automation` is offered only when every system is a web app (it was "a web system"). The
+    mixed mail case in RULE now expects `script` only; a browser cannot drive Mail or Excel.
+  - Finding 3: options saving at least 0.5 h per week come first, so the recommended option always clears the
+    leave-alone threshold. The OPTIONS ordering assertion checks "clears first, then by value" instead of "by value".
+  - Finding 4: `bareOption` keeps any kind `fixes` can store (`StoredFixKind` adds `small_app`, `remove_step`) and gives
+    no option for `leave_alone`, an unknown kind or a zero saving (no false payback arithmetic).
+  - Finding 6: option text says "through a connector" / "in your browser, on your Mac" instead of MCP, Composio or
+    direct API; the golden detail strings changed accordingly.
+  - Finding 1 asked for a 4-kind case asserting the 3-option cap. After finding 2 no rule yields more than 3 kinds
+    (browser automation needs all-web steps, a script needs a desktop step), so `MAX_OPTIONS` is a guard with no
+    reachable input and no test can exercise it.
+  - Finding 7: the explicit delete of a leaving opportunity's options is removed (the `ON DELETE CASCADE` does it,
+    PERSIST checks), and so is the `recommended = false` pre-clear (only option 1 is ever recommended).
 - The stand-in `estimateFor` path (p43b tests) also stores one option, built from the bare estimate, so every ranked
   finder opportunity has at least one option row.
 
@@ -199,7 +225,9 @@ into `offload serve` (m1-06), `remove_step` and `small_app` rules, track record 
   either saveOptions guard removed → PERSIST fails)
 - [x] `bash slices/m5-04-opportunity-finder/verify.sh` PASS (21 slice tests, 671 in the full suite);
   `SLICE_UPSTREAM=$(git merge-base HEAD origin/chain/m5-01-understanding) bash scripts/verify-all.sh` green
-- [ ] independent review (AGENTS.md review gate), then `status: done`
+- [x] review 1 (CHANGES): findings 2, 3, 4, 6 fixed with red tests first (bf541e8, then fc3ac0a); finding 1 and 5
+  tests added (db4edb8; 11 of 11 reverted guards now fail a test); finding 7 cleanup; docs (API.md, ARCHITECTURE 6)
+- [ ] review 2, then `status: done`
 
 Known limits (for the next slices):
 - Steps are listed in system id order, not in the workflow's order: episodes keep the set of apps and hosts, not
