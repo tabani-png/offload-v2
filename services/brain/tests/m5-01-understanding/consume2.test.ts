@@ -166,7 +166,8 @@ t("CONSUME: the analysed days are the member's timezone days", async () => {
 
 t("CONSUME: an import older than 31 days is analysed on its own days even when the member has live rows", async () => {
   const a = db.fx.a;
-  const old = [daysAgo(42), daysAgo(41), daysAgo(40)];
+  // Recordings on 42 and 40 days ago; nothing on the day between.
+  const old = [daysAgo(42), daysAgo(40)];
   const yesterday = daysAgo(1);
   // Onboarding: last month's recordings are imported today while live capture has started.
   await insertCapture(db, a, a.owner, a.devices.owner, invoiceImport(old, { perDay: 2, noise: false, menuBar: false }), todayUtc());
@@ -174,8 +175,8 @@ t("CONSUME: an import older than 31 days is analysed on its own days even when t
   await insertCapture(db, a, a.owner, a.devices.owner, recordingObservations({ start: Date.parse(`${yesterday}T10:00:00Z`), source: "live", segments: [NOISE[1]!] }, r2), yesterday);
   const r = await runUnderstanding(db.deps, await emitIngested(db, a, a.owner, a.devices.owner));
   expect(r.status).toBe("updated");
-  // Only days that hold rows are analysed: the import's three days and the live day, nothing in between.
+  // Only days that hold rows are analysed: the import's two days and the live day, not the empty day 41 days ago.
   expect(r.days).toEqual([...old, yesterday]);
   const byKey = [...(await db.sql.unsafe(`SELECT task_key, count(*)::int AS n FROM ${db.schema}.episodes WHERE member_id = $1 AND kind = 'task_instance' GROUP BY task_key`, [a.owner]))] as { n: number }[];
-  expect(byKey.map((x) => x.n).filter((n) => n > 1)).toEqual([6]);
+  expect(byKey.map((x) => x.n).filter((n) => n > 1)).toEqual([4]);
 });
