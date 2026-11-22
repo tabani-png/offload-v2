@@ -26,13 +26,13 @@ facts (M7), month and quarter records (M7), Helm (M8), all of `ee/` (M8, M9).
 Test naming: `TAG: sentence` inside the package's `tests/<slice-id>/` folder, as in
 [AGENTS.md](../AGENTS.md#slice-format). Swift slices use a suite named after the slice (for example `M302`) in
 `apps/mac/Tests/OffloadMacTests/<suite>/`. Slice specs exist for M1, M3, the Wave 1 slices m2-02, m2-03, m2-12,
-m3-03 and m5-03, and m5-10 (execution backend, [ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md)); [WAVE1.md](WAVE1.md) maps the old plan's Wave 1 workstreams (PR #42 W1-A to W1-H) to these slices,
+m3-03 and m5-03, and m5-10 and m5-12 (execution backend and n8n export, [ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md)); [WAVE1.md](WAVE1.md) maps the old plan's Wave 1 workstreams (PR #42 W1-A to W1-H) to these slices,
 with owners and the operator items each waits on. Other tasks are listed in the format
 id, depends on, tier, size, parallel group, paths: the same fields as the slice front-matter (`model_tier`, `size`,
 `parallel_group`, `owns`; [AGENTS.md](../AGENTS.md#slice-format)). Tier: Opus plans and reviews, Sonnet implements.
 Size: S (under a day), M (1 to 2 days), L (3 to 5 days). Parallel group: `M<milestone>-<letter>`, run in letter order;
 tasks in one group can run at the same time if their slices are `parallel_safe`. The slices use groups `M1-A` to
-`M1-D`, `M2-A`, `M3-A` to `M3-C`, `M5-A` and `M5-C`.
+`M1-D`, `M2-A`, `M3-A` to `M3-C`, `M5-A`, `M5-C` and `M5-D`.
 
 ## M0. Harness, architecture, operator items and spikes
 
@@ -73,6 +73,7 @@ Only the owner can do these. Lead times are typical, not promises; check each wh
 | O14 | Rotate the provider key that old `LAUNCH.md` lists as exposed, and confirm old test canaries are fake | same day | M1 (first port, m1-03) |
 | O15 | Privacy policy, terms and sub-processor list ([OQ-17](OPEN_QUESTIONS.md#oq-17-privacy-policy-terms-and-dpa)): a plain-language version for the tenant of one, counsel-reviewed before any second user | weeks | M3 (linked from "What leaves your Mac"); M8 (reviewed) |
 | O16 | Create the public repository `tabani-png/offload-v2` and push, after the checklist in [DEPLOYMENT section 6.5](DEPLOYMENT.md#65-before-the-public-push) ([OQ-27](OPEN_QUESTIONS.md#oq-27-publish-the-repository-publicly)). Agents never do this | an hour | M0 (when the owner chooses) |
+| O17 | Ask n8n (license@n8n.io) in writing how the Sustainable Use License applies to Offload's n8n export, push to a user's own n8n (self-hosted and n8n Cloud) and n8n run by Offload; record the answer in [OQ-32](OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n) | weeks (vendor reply) | M5 (switching m5-12 push on); any hosted n8n path |
 
 ### Spikes
 
@@ -489,8 +490,10 @@ Tasks after the two slices:
   fix); opportunity finder (score formula, goal alignment, decline penalty, drain boost); instant read; weekly review v1
   (one sentence checked by code, tiles vs usual week, goals, up to 4 questions); pseudonym match on the Mac ("is this
   the sheet?"); observed opportunities enter the M2 build path; Build progress on the Mac; keyframes opt-in;
-  the execution backend: `routine.json` v2, tool choice, scaffold, static validation, held-out instances, read shapes,
-  rollback and the stability record ([ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md)).
+  the execution backend: `routine.json` v2, tool choice, scaffold, static validation, the workflow design rules,
+  held-out instances, read shapes, rollback and the stability record; the n8n export of verified fixes to the
+  user's own n8n ([ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md), owner decision
+  [OQ-30](OPEN_QUESTIONS.md#oq-30-n8n-in-offload)).
 - **Exit criteria**: after one real week, Muhammad's Today shows one ranked suggested fix from observed work with 2 or
   3 options; he builds it through the same path as M2; the weekly review lands at his review slot; answers change next
   week's ranking; its saving is measured with a grade A baseline.
@@ -566,6 +569,16 @@ Tasks after the two slices:
     `VALIDATE: a transform that does not load in the isolate is transform_invalid`,
     `VALIDATE: limits above the brief are limits_above_brief`,
     `VALIDATE: every issue has a code and a JSON pointer and no fixture value`,
+    `RULES: WF1 a routine with no trigger, two triggers or a schedule without a time zone is trigger_invalid`,
+    `RULES: WF2 a step with two capabilities, a transform over 150 non-blank lines or more than 20 steps is refused`,
+    `RULES: WF3 a resolved step without an explicit on_error is error_path_missing`,
+    `RULES: WF4 a read, draft or model step without retry or timeout_ms is refused and a commit step with retry is retry_not_allowed`,
+    `RULES: WF5 a commit step without a dedupe key and a brief without item_identity are dedupe_missing`,
+    `RULES: WF6 a literal secret or a credential-like key with a literal value in args, a template, a transform or a prompt is credential_inline`,
+    `RULES: WF7 a read or model step with no recorded output for the visible instances is pinned_test_missing`,
+    `RULES: WF8 deploy with a receipt whose held-out check or held-out instances did not pass is 403 heldout_not_passed and writes no version`,
+    `RULES: the scaffold of each acceptance case and its reference artifact pass all eight rules`,
+    `RULES: every lint issue names one of the eight rule ids and a code from WORKFLOW_DESIGN_RULES and holds no fixture value`,
     `REPLAY: the native backend replays the visible instances and its items equal the expected items`,
     `REPLAY: replaying the same fixture set twice gives the same batch_hash`,
     `REPLAY: a read that fails twice with 503 then succeeds counts 2 retries on the fake clock`,
@@ -593,6 +606,49 @@ Tasks after the two slices:
     `BACKEND: a test backend that commits without an approved item hash fails the suite`,
     `BACKEND: a test backend whose compiled routine holds a secret-shaped value fails the suite`,
     `BACKEND: a test backend that writes fixture text into durable state fails the suite`
+  - Slice tests of [m5-12](../slices/m5-12-n8n-export/SPEC.md), over the same held-out cases:
+    `SCHEMA: every acceptance case export parses with N8nWorkflowFile and holds no read-only field`,
+    `SCHEMA: N8nWorkflowFile refuses an unknown top-level, settings or node field`,
+    `SCHEMA: the same build gives a byte-identical bundle and export_hash over 3 calls`,
+    `SCHEMA: export_hash is taken with the error workflow placeholder and changes when any other byte changes`,
+    `CATALOG: a node type, typeVersion or parameter key outside the pinned catalog is n8n_node_not_pinned`,
+    `CATALOG: every catalog entry has type, typeVersion, parameters, credential types, outputs, a docs.n8n.io URL and a check date`,
+    `CATALOG: the bundle names the catalog's n8n version`,
+    `MAP: a schedule trigger becomes a Schedule Trigger with the cron expression and settings.timezone set to the routine's zone`,
+    `MAP: a transform becomes a Code node running once for all items with the transform module inlined and a skip check to the skipped-items node`,
+    `MAP: a commit step becomes Remove Duplicates on previous executions with workflow scope and the rendered dedupe key, then the catalog node with retryOnFail false`,
+    `MAP: read and model nodes carry retryOnFail, maxTries and waitBetweenTries from the retry policy and HTTP Request nodes carry the timeout in milliseconds`,
+    `MAP: a skip_item read or model node uses continueErrorOutput wired to the skipped-items node and every other node uses stopWorkflow`,
+    `MAP: a model step becomes the catalog model-call node with a credential placeholder, then an output check that refuses a number field`,
+    `MAP: templates become n8n expressions of the form $json path only and any other expression is n8n_expression_invalid`,
+    `MAP: a step with runs_on mac, a browser connector, an opaque_workflow connection or no catalog node is export_unsupported and nothing is exported`,
+    `LINT: WF1 no trigger node, two trigger nodes, no settings.timezone, or an error workflow without exactly one Error Trigger is trigger_invalid`,
+    `LINT: WF2 a node that is neither a step nor a named helper, or two nodes with one name, is step_not_single_purpose`,
+    `LINT: WF3 no settings.errorWorkflow, continueRegularOutput, continueOnFail or an unwired error output is error_path_missing`,
+    `LINT: WF4 a read node without retryOnFail or an HTTP Request node without a timeout is refused and a commit node with retryOnFail is retry_not_allowed`,
+    `LINT: WF5 a commit node without a Remove Duplicates node directly before it is dedupe_missing`,
+    `LINT: WF6 a credentials id, a literal Authorization header or a secret-shaped parameter value is credential_inline`,
+    `LINT: WF7 a read or model node without pinData is pinned_test_missing`,
+    `LINT: WF8 an export from a receipt whose held-out check or held-out instances did not pass is heldout_not_passed and returns no bundle`,
+    `LINT: every issue uses a rule id and code from WORKFLOW_DESIGN_RULES or the schema, catalog and expression codes, and holds no fixture value`,
+    `PINNED: the pinned-data test returns the commit node inputs and never calls a commit node`,
+    `PINNED: pinData holds only tokenised values of visible instances, keyed by node name`,
+    `PINNED: Remove Duplicates keeps its keys across the runs of one case and drops a repeated key`,
+    `CASES: case A exports to valid n8n JSON whose pinned-data test gives the expected items over every run and each broken artifact fails`,
+    `CASES: case B exports to valid n8n JSON whose pinned-data test gives the expected items over every run and each broken artifact fails`,
+    `CASES: case C exports to valid n8n JSON whose pinned-data test gives the expected items over every run and each broken artifact fails`,
+    `EXPORT: GET n8n-export returns the bundle, export_hash and card for a ready build and 403 heldout_not_passed or 409 state_conflict otherwise`,
+    `EXPORT: the card says the workflow runs outside Offload and lists credentials to map, fixed retry waits, the 10,000-key dedupe history and unmasked model text`,
+    `EXPORT: the credential map gives a placeholder and an n8n credential type per connection and no connection id, account secret or token`,
+    `PUSH: with n8n_push off, connecting an n8n instance or pushing is 403 n8n_push_off`,
+    `PUSH: an n8n instance with an http URL or a private, loopback, link-local or metadata address is refused on Offload Cloud`,
+    `PUSH: a push without a deploy approval that binds export_hash, the connection and publish sends nothing`,
+    `PUSH: the broker creates the error workflow, then the main workflow with only settings.errorWorkflow filled, then publishes only when approved`,
+    `PUSH: a bundle whose hash differs from the approved export_hash is 403 hash_mismatch and nothing is sent`,
+    `PUSH: a journal row is written before each call and a timeout after sending leaves unknown, which is never sent again`,
+    `PUSH: a push while a routine from the same brief is active on the native backend is 409 native_active`,
+    `PUSH: the API key goes only to the connected host as X-N8N-API-KEY and never appears in logs, audit rows, durable state or the bundle`,
+    `BOUNDARY: packages/n8n-export neither depends on nor imports any n8n package or anything under ee/`
 
 | Id | Task | Depends on | Tier | Size | Parallel group | Paths |
 |---|---|---|---|---|---|---|
@@ -604,6 +660,7 @@ Tasks after the two slices:
 | m5-06 | Pseudonym match flow and Build progress on the Mac | m5-04, m3-06 | Sonnet | M | M5-B | `apps/mac/**`, `services/api/**` |
 | [m5-10](../slices/m5-10-workflow-backend/SPEC.md) | Execution backend: `routine.json` v2, native backend and conformance suite, tool choice, scaffold, static validation, replay with held-out instances, deploy, rollback, drift ([ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md)) | M2 (m2-04, m2-05, m2-07, m2-09, m2-10), m5-03 | Opus plan, Sonnet build | L | M5-C | `packages/execution-backend/**`, `packages/routine-sdk/src/**`, `services/runtime/src/backends/**`, `services/api/src/routines/**` |
 | m5-11 | Span tokenisation of `parse_text` fields in fixture capture, after [OQ-31](OPEN_QUESTIONS.md#oq-31-masked-text-fields-in-build-sandboxes) | m5-10, m2-04 | Sonnet | M | M5-D | `packages/masking/src/spans/**`, the m2-04 fixture capture module |
+| [m5-12](../slices/m5-12-n8n-export/SPEC.md) | n8n export: import-ready n8n workflow JSON for the user's own n8n, schema, pinned node catalog, workflow design rules lint, pinned-data test, optional push under a deploy approval (off until [OQ-32](OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n)) ([ADR 0039 section 9](adr/0039-routine-definition-v2-and-execution-backends.md#9-the-n8n-export)) | m5-10, m2-02, m2-03 | Opus plan, Sonnet build | L | M5-D | `packages/n8n-export/**`, `services/api/src/n8n/**`, `services/broker/src/n8n/**` |
 
 ## M6. Build and run depth
 

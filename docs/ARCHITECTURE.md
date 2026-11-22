@@ -622,9 +622,14 @@ flowchart LR
   runtime on DBOS, is the default and the only backend in core; a backend must pass the backend conformance suite
   (commits only through the gate and the broker, journal first, ids-only state). `routine.json` v2 adds per-step
   retry policies, timeouts, `skip_item`, dedupe keys and read shapes. Versions can be rolled back under a deploy
-  approval, read-shape drift puts a routine in `needs_review`, and each version has a stability record. n8n is never
-  a backend; a user's own n8n workflows can be connected as MCP tools
-  ([research](research/workflow-engines-2026-11.md), [OQ-30](OPEN_QUESTIONS.md#oq-30-n8n-in-offload)).
+  approval, read-shape drift puts a routine in `needs_review`, and each version has a stability record. Every
+  routine definition passes the eight workflow design rules (lint, [ADR 0039 section 3.4](adr/0039-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules)).
+  n8n is never a backend and Offload does not run n8n. A user's own n8n workflows can be connected as MCP tools, and
+  a verified build can be exported as n8n workflow JSON for the user's own n8n (`packages/n8n-export`), downloaded or
+  pushed by the broker under a deploy approval that binds `export_hash`; push is off until
+  [OQ-32](OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n)
+  ([research](research/workflow-engines-2026-11.md), [OQ-30](OPEN_QUESTIONS.md#oq-30-n8n-in-offload),
+  [ADR 0039 section 9](adr/0039-routine-definition-v2-and-execution-backends.md#9-the-n8n-export)).
 
 - **Routine**: a deployed fix with immutable versions (`routine_versions`), a `definition_hash`, triggers (`schedule`
   cron, `manual`, `webhook` from M6, `event`), limits and a commit mode. States `active`, `paused`, `needs_review`,
