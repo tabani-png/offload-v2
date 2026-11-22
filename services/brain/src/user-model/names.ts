@@ -10,16 +10,19 @@ const TOKEN_RE = /<[^<>]*>/g;
 const EDGE_RE = /^[\s:·,;#/|()[\]-]+|[\s:·,;#/|()[\]-]+$/g;
 export const MAX_NAME = 80;
 
-/** A storable task or episode name: no email, URL, `<…>` token or digit; one line; at most 80 characters. */
+/** A storable task or episode name: NFKC; no email, URL, `<…>` token, number character, control or format character;
+ * one line; at most 80 characters. */
 export function safeName(s: string): string {
   return s
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .normalize("NFKC")
+    .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ")
     .replace(URL_RE, " ")
     .replace(BARE_LINK_RE, " ")
     .replace(EMAIL_RE, " ")
     .replace(TOKEN_RE, " ")
     .replace(/[<>@]/g, " ")
-    .replace(/[0-9]/g, " ")
+    // Every number character, not only ASCII digits (full-width forms become ASCII under NFKC; ٣ and ① do not).
+    .replace(/\p{N}/gu, " ")
     .replace(/\s+/g, " ")
     .replace(EDGE_RE, "")
     .slice(0, MAX_NAME)

@@ -11,8 +11,8 @@ export interface UserContext {
 
 function clean(v: unknown): string | undefined {
   if (typeof v !== "string") return undefined;
-  // One line of plain text: control characters and angle brackets (block delimiters) are removed.
-  const s = v.replace(/[\u0000-\u001f\u007f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, USER_CONTEXT_MAX).trim();
+  // One line of plain text: controls, format characters, line separators and angle brackets (block delimiters) go.
+  const s = v.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}<>]/gu, " ").replace(/\s+/g, " ").trim().slice(0, USER_CONTEXT_MAX).trim();
   return s === "" ? undefined : s;
 }
 

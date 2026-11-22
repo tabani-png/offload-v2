@@ -66,8 +66,8 @@ const exactKeys = (field: string, v: Record<string, unknown>, keys: readonly str
 /** One line of plain text, at most 80 characters, no control characters and no angle brackets. */
 function line(field: string, v: unknown): string {
   if (typeof v !== "string") return fail(`${field} must be a string`);
-  if (/[\r\n]/.test(v)) fail(`${field} must be one line`);
-  if (/[\u0000-\u001f\u007f]/.test(v)) fail(`${field} must not contain control characters`);
+  if (/[\r\n\u0085\u2028\u2029]/.test(v)) fail(`${field} must be one line`);
+  if (/[\p{Cc}\p{Cf}]/u.test(v)) fail(`${field} must not contain control or invisible format characters`);
   if (/[<>]/.test(v)) fail(`${field} must not contain < or >`);
   if (hasLink(v)) fail(`${field} must not contain an email address or a link`);
   const s = v.replace(/\s+/g, " ").trim();

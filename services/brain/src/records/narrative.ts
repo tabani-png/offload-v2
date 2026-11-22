@@ -42,8 +42,14 @@ function numberWords(text: string): Array<{ word: string; value: number | null }
 const normalize = (text: string) => text.replace(/(\d),(?=\d{3}(?:\D|$))/g, "$1");
 export const MAX_SENTENCE = 300;
 
-/** A model-written text may only use numbers that are in the record, written in digits or as cardinal words. */
-export function checkNarrative(text: string, record: unknown): { ok: boolean; unknown: string[] } {
+/** Number characters other than ASCII and full-width digits (٤, ½, ², ①): refused, never interpreted. */
+const OTHER_NUMBER_RE = /[^\P{N}0-9\uff10-\uff19]/gu;
+
+/** A model-written text may only use numbers that are in the record, written in digits or as cardinal words.
+ * Full-width digits are read as ASCII (NFKC); any other number character makes the text invalid. */
+export function checkNarrative(raw: string, record: unknown): { ok: boolean; unknown: string[] } {
+  const others = raw.match(OTHER_NUMBER_RE) ?? [];
+  const text = raw.normalize("NFKC");
   const known = new Set<string>();
   const add = (n: number, ratio = false) => {
     const vs = [n, r1(n), r2(n), Math.round(n)];
@@ -60,7 +66,7 @@ export function checkNarrative(text: string, record: unknown): { ok: boolean; un
     } else if (typeof v === "object" && v !== null) for (const [k, x] of Object.entries(v)) walk(x, k);
   };
   walk(record, "");
-  const unknown = (normalize(text).match(NUMBER_RE) ?? []).filter((n) => !known.has(String(Number(n))));
+  const unknown = [...others, ...(normalize(text.replace(OTHER_NUMBER_RE, " ")).match(NUMBER_RE) ?? []).filter((n) => !known.has(String(Number(n))))];
   for (const w of numberWords(text)) if (w.value === null || !known.has(String(w.value))) unknown.push(w.word);
   return { ok: unknown.length === 0, unknown };
 }
