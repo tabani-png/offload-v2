@@ -197,6 +197,9 @@ The day grid in `.cloud` mode (needs `GET /v1/today`, m5-05's API half); "how it
   same count.
 - `TodayContent.local` takes `now:` and `TodayContent.cloud` takes `today:` and `timeZone:` (the title says "Today"
   only for today's date); the Contract's shorter signatures had no way to know which day is today.
+- Reference repos: no code was ported. The layout, timings (cells pop in at 14 ms a cell and 40 ms a row, 150 ms
+  after the screen appears) and copy follow the owner-approved mockup's `Daily` component (`source.canvas.tsx` lines
+  479 to 626); the data path is m3-10's. Nothing needs a NOTICE line.
 - `BASE` is m3-10's last commit on this stack (`d3d6651`), taken while m3-10 is still `in_progress` (its review 3 is
   done); this slice's commits are the only ones counted by the scope check (subject prefix).
 - ROADMAP puts Today's Mac screen in m5-05 (M5) with its API; the owner asked for it in the test build now. This
