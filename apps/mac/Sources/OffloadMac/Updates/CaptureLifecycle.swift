@@ -1,4 +1,5 @@
-// What the updater needs from capture. m3-02-mac-capture-upload provides the real conformer.
+// What the updater needs from capture. The real conformer is m3-02's CaptureRuntime (Composition/, m3-14), which the
+// composition root hands to the updater; `--self-check` keeps CaptureNotStarted (no Keychain, no store in CI).
 
 /// Starts capture and stops it cleanly before an update installs.
 @MainActor
@@ -9,7 +10,7 @@ protocol CaptureLifecycle {
     func prepareForUpdate()
 }
 
-/// Placeholder until m3-02: no capture exists yet, so there is nothing to start, flush or stop.
+/// For `Offload --self-check`: nothing to start, flush or stop.
 @MainActor
 final class CaptureNotStarted: CaptureLifecycle {
     init() {}

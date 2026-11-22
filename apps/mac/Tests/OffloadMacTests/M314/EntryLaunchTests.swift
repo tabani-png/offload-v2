@@ -8,7 +8,8 @@ extension M314 {
   // MARK: ENTRY
 
   @Test("ENTRY: --self-check runs the self-check before anything else, --version prints the version, anything else starts the app")
-  func entryCommand() {
+  @MainActor func entryCommand() {
+    #expect(EntryCommand.selfCheckFlag == SelfCheck.argument)
     let info: [String: Any] = [
       "CFBundleShortVersionString": "0.3.0", "CFBundleVersion": "42", "CFBundleIdentifier": "ai.offload.mac",
       "OffloadCommit": "abc1234",

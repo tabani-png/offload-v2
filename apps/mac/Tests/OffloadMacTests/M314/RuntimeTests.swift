@@ -45,7 +45,7 @@ extension M314 {
     let home = M314Fixture.tempHome()
     let c = M314App.composition(state: M314State.watchingLocally, home: home, wiring: wiring)
     defer { c.capture.stop() }
-    #expect((wiring.captureForUpdates as AnyObject?) === c.capture)
+    #expect(wiring.captureForUpdates.map { $0 as AnyObject } === c.capture)
     #expect((c.app.onboarding.services.capture as AnyObject) === c.capture)
     // Screen 2 was resolved before this launch: capture started at launch, on this Mac only.
     #expect(c.capture.isRunning)

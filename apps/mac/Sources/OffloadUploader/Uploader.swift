@@ -273,3 +273,121 @@ public actor Uploader {
         try? ledger.append(entry)
     }
 }
+
+// MARK: - import spaces (slice m3-14-mac-app-integration)
+//
+// A recordings import (m3-05) leaves the Mac only through this uploader (ADR 0035): the import space is opened and
+// forgotten with signed requests to the one API host, written to the egress ledger, and its objects are queued as
+// ordinary observation batches (detectors again, the next seqs, the same retry), sent by `flush()` with the live ones.
+
+public enum ImportUploadError: Error, Equatable, Sendable {
+    /// The server answered with this status.
+    case rejected(status: Int)
+    /// A 2xx answer without the expected body.
+    case badAnswer
+    /// An object that is not `source = "import"` with an `import_id`.
+    case notAnImportObject
+}
+
+extension Uploader {
+    /// `POST /v1/imports` with `{ source_kind }`; returns the new space's `import_id`.
+    public func openImport(sourceKind: String) async throws -> String {
+        let body = try Self.requestBody(["source_kind": sourceKind])
+        let response = try await signedPost("v1/imports", body: body)
+        guard response.status == 200 || response.status == 201 else { throw ImportUploadError.rejected(status: response.status) }
+        struct Created: Decodable {
+            let importID: String
+            enum CodingKeys: String, CodingKey { case importID = "import_id" }
+        }
+        guard let created = try? JSONDecoder().decode(Created.self, from: response.body), !created.importID.isEmpty else {
+            throw ImportUploadError.badAnswer
+        }
+        recordRequest(kind: "import_open", body: body)
+        return created.importID
+    }
+
+    /// `POST /v1/me/forget` with `{ scope: "import", import_id }`: the server wipes the space as a unit.
+    public func forgetImport(id: String) async throws {
+        let body = try Self.requestBody(["scope": "import", "import_id": id])
+        let response = try await signedPost("v1/me/forget", body: body)
+        guard (200...202).contains(response.status) else { throw ImportUploadError.rejected(status: response.status) }
+        recordRequest(kind: "forget", body: body)
+    }
+
+    /// Queues import objects as observation batches under the next seqs. Every object must be an import object and
+    /// pass the device detectors again; otherwise nothing is queued (fail closed). Returns how many were queued.
+    @discardableResult
+    public func enqueueImport(_ objects: [Observation]) throws -> Int {
+        guard !objects.isEmpty else { return 0 }
+        for o in objects {
+            guard Self.isImportObject(o) else { throw ImportUploadError.notAnImportObject }
+            try egress.inspect(o)
+        }
+        var state = try stateStore.load()
+        let now = time.now
+        var index = 0
+        while index < objects.count {
+            var n = min(config.maxObjects, objects.count - index)
+            var body = try envelope(Array(objects[index..<index + n]), seq: state.nextSeq, now: now)
+            while body.count > config.maxBytes, n > 1 {
+                n = max(1, n * 2 / 3)
+                body = try envelope(Array(objects[index..<index + n]), seq: state.nextSeq, now: now)
+            }
+            state.pending.append(PendingBatch(seq: state.nextSeq, body: body, lastId: objects[index + n - 1].id, objectCount: n, kind: "observation_batch"))
+            state.nextSeq += 1
+            index += n
+        }
+        try stateStore.save(state)
+        return objects.count
+    }
+
+    private static func isImportObject(_ o: Observation) -> Bool {
+        let tags: (ObservationSource?, String?)
+        switch o {
+        case .focus(let v): tags = (v.source, v.importId)
+        case .idleStart(let v): tags = (v.source, v.importId)
+        case .idleEnd(let v): tags = (v.source, v.importId)
+        case .inputCounts(let v): tags = (v.source, v.importId)
+        case .textSnapshot(let v): tags = (v.source, v.importId)
+        case .pause(let v): tags = (v.source, v.importId)
+        case .resume(let v): tags = (v.source, v.importId)
+        case .permissionChange(let v): tags = (v.source, v.importId)
+        }
+        return tags.0 == .import && !(tags.1 ?? "").isEmpty
+    }
+
+    private static func requestBody(_ fields: [String: String]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(fields)
+    }
+
+    /// One signed POST to the one host; a 401 refreshes the token once.
+    private func signedPost(_ path: String, body: Data) async throws -> HTTPResponse {
+        var refreshed = false
+        while true {
+            let token = try await tokens.token(forceRefresh: refreshed)
+            let signature = Base64URL.encode(try signer.sign(body))
+            let request = HTTPRequest(
+                url: config.apiBase.appendingPathComponent(path), method: "POST",
+                headers: [
+                    "Authorization": "Bearer \(token)", "Content-Type": "application/json",
+                    "Offload-Signature": "keyid=\(config.deviceID), sig=\(signature)",
+                ], body: body)
+            let response = try await transport.send(request)
+            if response.status == 401 && !refreshed {
+                refreshed = true
+                continue
+            }
+            return response
+        }
+    }
+
+    /// One sealed ledger line with the exact bytes of a request that left.
+    private func recordRequest(kind: String, body: Data) {
+        let entry = EgressRecord(
+            time: Timestamp.format(time.now), destination: egress.host, kind: kind, objectCount: 0, bytes: body.count,
+            detectors: [:], pseudonyms: [:], body: body)
+        try? ledger.append(entry)
+    }
+}

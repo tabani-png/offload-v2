@@ -72,9 +72,18 @@ and an attended actuator for device steps ([ADR 0007](adr/0007-cloud-brain-thin-
 [ADR 0025](adr/0025-execution-placement-and-mac-actuator.md)). It does no understanding, ranking or building.
 
 SwiftPM targets: `OffloadContracts` (generated types, JCS), `OffloadObserver`, `OffloadMasker`, `OffloadStore`,
-`OffloadUploader` (built in m3-02), `OffloadImport` and `OffloadActuator` (markers until their slices), and the app target
-`OffloadMac`. The observer
-depends on contracts, store and masker only and never links the uploader.
+`OffloadUploader` (built in m3-02), `OffloadImport` (recordings import, m3-05), `OffloadActuator` (a marker until its
+slice), and the app target `OffloadMac`. The observer depends on contracts, store and masker only and never links the
+uploader.
+
+The app has one entry point and one composition root (m3-14). `Offload --self-check` and `--version` exit before any
+UI; otherwise `AppComposition` builds the app once: one Never watch list (read by the screens, the observer through its
+exclusions file, and the recordings import), live capture (built on its first start, which needs screen 2 of
+onboarding), an upload runtime only when this Mac is enrolled (`BackendMode.cloud`; the test build is Local mode), and
+the updater with the same capture runtime. What starts at launch is one tested rule (`LaunchPlan`): the updater always;
+capture after screen 2 with a readable local buffer; the uploader only for a person who is sending on an enrolled Mac
+with no new notice waiting; recordings imports go through the uploader exactly when it may run, and otherwise stay on
+the Mac.
 
 Parts:
 - **Observer** ([ADR 0006](adr/0006-metadata-first-capture.md)). Accessibility first:

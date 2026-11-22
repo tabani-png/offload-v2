@@ -12,7 +12,7 @@ parallel_group: M3-D
 owns: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Tests/OffloadMacTests/M314/**]
 verify: bash slices/m3-14-mac-app-integration/verify.sh
 min_tests: 24
-paths_in_scope: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Sources/OffloadMac/CaptureRuntime.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/Onboarding/Services.swift, apps/mac/Sources/OffloadMac/Updates/CaptureLifecycle.swift, apps/mac/Sources/OffloadUploader/Uploader.swift, apps/mac/Tests/OffloadMacTests/M314/**, apps/mac/README.md, docs/ARCHITECTURE.md, slices/m3-14-mac-app-integration/**]
+paths_in_scope: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Sources/OffloadMac/CaptureRuntime.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/Onboarding/Services.swift, apps/mac/Sources/OffloadMac/Updates/CaptureLifecycle.swift, apps/mac/Sources/OffloadUploader/Uploader.swift, apps/mac/Sources/OffloadUploader/DeviceKey.swift, apps/mac/Tests/OffloadMacTests/M314/**, apps/mac/README.md, docs/ARCHITECTURE.md, slices/m3-14-mac-app-integration/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadContracts/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Tests/OffloadMacTests/M302/**, apps/mac/Tests/OffloadMacTests/M303/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**]
 red_tests: [ENTRY, LAUNCH, CAPTURE, UPLOAD, EXCLUDE, NOW, IMPORT]
 ---
@@ -163,7 +163,8 @@ passing and every tag present, then the full `swift test`. On Linux it prints SK
   `CaptureRuntime` (local) and `UploadRuntime` (cloud), see Design note. `OffloadUploader.Uploader` is named with its
   module everywhere in `OffloadMac`, because m3-04 already has a public `Uploader` protocol there.
 - **`Uploader.swift`** (slice m3-02, `done`): one additive extension for import spaces (Contract). It reuses the
-  existing envelope, ledger and retry code; nothing in the live path changes.
+  existing envelope, ledger and retry code; nothing in the live path changes. **`DeviceKey.swift`**: one read-only
+  `DeviceKey.isStored(secrets:)` so `BackendMode` can tell an enrolled Mac without creating a key.
 - **m3-04 and m3-05 files**: `Shell/AppModel.swift` (launch decisions now call `LaunchPlan`; `live()` delegates to the
   composition root), `Onboarding/Services.swift` (doc comments for the real conformers only) and `App/**`. Owned
   paths of m3-04, m3-05 and m3-09 are not touched; `RecordingsImportModel` is built through its public initialiser

@@ -56,6 +56,12 @@ public enum DeviceKey {
     static let secureEnclaveAccount = "device-key-se"
     static let softwareAccount = "device-key"
 
+    /// True when this Mac already has its key (made at enrollment). Reads only; never creates one.
+    /// (m3-14-mac-app-integration: `BackendMode` is `.cloud` only for an enrolled Mac.)
+    public static func isStored(secrets: any SecretStore) -> Bool {
+        (try? secrets.read(account: secureEnclaveAccount)) != nil || (try? secrets.read(account: softwareAccount)) != nil
+    }
+
     /// The key of this Mac and where it lives (`secure_enclave` or `keychain`, as the enroll call names it).
     public static func loadOrCreate(secrets: any SecretStore, preferSecureEnclave: Bool = true) throws -> (signer: any DeviceSigner, keyStorage: String) {
         if let blob = try secrets.read(account: secureEnclaveAccount), let key = try? SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: blob) {

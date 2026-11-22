@@ -16,7 +16,7 @@ Targets (m3-02 capture and upload, m3-05 import, m3-14 one app):
 | `OffloadObserver` | Focus, bounded Accessibility walk, OCR fallback, exclusions, pause, permissions. No networking (test enforced). `Live/` has the macOS glue |
 | `OffloadUploader` | The egress guard: one host, closed types, detectors again, signed batches, local egress ledger, device key, enrollment client |
 | `OffloadImport` | Recordings import: folder rules, frame reading, ingest through the masker and the user's exclusions (m3-05) |
-| `OffloadMac` | The app: one `@main` entry (`OffloadMac.swift`), one composition root (`App/Composition/`, m3-14) that decides at launch what starts (updater, capture, uploader) from the consent state, `CaptureRuntime` (m3-02), onboarding and shell (m3-04), recordings (m3-05) |
+| `OffloadMac` | The app: one `@main` entry (`OffloadMac.swift`), one composition root (`Composition/`, m3-14) that decides at launch what starts (updater, capture, uploader) from the consent state, `CaptureRuntime` (m3-02), onboarding and shell (m3-04), recordings (m3-05) |
 | `OffloadActuator` | Marker until its slice |
 
 Tests live in `Tests/OffloadMacTests/<slice>` (one `@Suite` per slice, for example `M302`, `M314`). The freshness test runs `bun`, so install Bun first.

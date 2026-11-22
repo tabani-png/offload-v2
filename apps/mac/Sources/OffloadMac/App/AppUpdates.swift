@@ -38,17 +38,17 @@ enum UpdateMenu {
 }
 
 /// Starts the updater once per launch and runs the after-update permission check (UpdateLifecycle.didLaunch).
-/// Capture is still `CaptureNotStarted` until m3-02 provides the real conformer.
+/// `capture` is the app's one CaptureRuntime (m3-14's composition root), so an update stops real capture first.
 @MainActor
 final class AppUpdates {
   let updater: UpdaterController
   let menu: [UpdateMenuEntry]
   private let lifecycle: UpdateLifecycle
 
-  init() {
+  init(capture: any CaptureLifecycle) {
     let settings = UserDefaults.standard
     let lifecycle = UpdateLifecycle(
-      capture: CaptureNotStarted(),
+      capture: capture,
       permissions: SystemPermissionSource(),
       settings: settings
     )

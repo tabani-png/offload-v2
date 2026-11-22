@@ -2,15 +2,21 @@ import AppKit
 import SwiftUI
 
 // The Offload app: a menu bar item and one main window. All logic and views live in the other folders of this module
-// (tested there); this file only wires the live pieces. The process entry point is `OffloadEntry` in OffloadMac.swift
-// (m3-03): it answers `--self-check` and `--version` (m3-09) before any window, menu bar item or permission check
-// exists, and otherwise starts this app.
+// (tested there); this file only shows what the one composition root built (`AppComposition.live()`, m3-14). The
+// process entry point is `OffloadEntry` in OffloadMac.swift: `EntryCommand` answers `--self-check` (m3-03) and
+// `--version` (m3-09) before any window, menu bar item or permission check exists, and otherwise starts this app.
 
 struct OffloadApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-  @StateObject private var app = AppModel.live()
-  /// Sparkle (m3-03) starts here, before any scene, as Sparkle's own SwiftUI setup does.
-  private let updates = AppUpdates()
+  @StateObject private var app: AppModel
+  /// Sparkle (m3-03), started by the composition root before any scene, as Sparkle's own SwiftUI setup does.
+  private let updates: AppUpdates?
+
+  init() {
+    let root = AppComposition.live()
+    _app = StateObject(wrappedValue: root.app)
+    updates = root.updates
+  }
 
   var body: some Scene {
     Window("Offload", id: "main") {
@@ -38,7 +44,7 @@ struct OffloadApp: App {
 /// Opens the main window from the menu bar item.
 struct MenuBarOpener: View {
   @ObservedObject var app: AppModel
-  let updates: AppUpdates
+  let updates: AppUpdates?
   @Environment(\.openWindow) private var openWindow
 
   var body: some View {
@@ -48,8 +54,8 @@ struct MenuBarOpener: View {
         openWindow(id: "main")
         NSApp.activate()
       },
-      updates: updates.menu,
-      checkForUpdates: { updates.updater.checkForUpdates(nil) }
+      updates: updates?.menu ?? [],
+      checkForUpdates: { updates?.updater.checkForUpdates(nil) }
     )
     // Hidden in Local mode and before "Start sending" (ONBOARDING section 8).
     if app.recordings?.isOffered == true {
