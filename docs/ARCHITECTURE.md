@@ -149,8 +149,9 @@ Parts:
   goal weight, confidence, decline penalty from the weekly review answers kept on this Mac). Every number is a
   `Figure` with its arithmetic ([ADR 0003](adr/0003-numbers-come-from-code.md)); no model is called and nothing is
   sent. Never watch is applied when insights are read, so a new entry applies without a new import. Only an import's
-  days are recomputed when it finishes or is removed. This diverges from [ADR 0007](adr/0007-cloud-brain-thin-mac-client.md)
-  for the test build; in `.cloud` mode the screens read the brain instead.
+  days are recomputed when it finishes or is removed. This amends [ADR 0007](adr/0007-cloud-brain-thin-mac-client.md)
+  in `.local` mode ([ADR 0039](adr/0039-local-analysis-on-the-mac-in-local-mode.md), proposed); in `.cloud` mode the
+  screens read the brain instead.
 - **Updates**: Sparkle with EdDSA signatures on a Developer ID signed, notarized app with a locked bundle id
   ([ADR 0024](adr/0024-client-stacks.md), [DEPLOYMENT.md](DEPLOYMENT.md)).
 

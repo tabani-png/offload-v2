@@ -12,8 +12,8 @@ parallel_group: M3-D
 owns: [apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Tests/OffloadMacTests/M310/**]
 verify: bash slices/m3-10-mac-recordings-analysis/verify.sh
 min_tests: 95
-paths_in_scope: [apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Sources/OffloadMac/TodayLive/TodayLiveScreen.swift, apps/mac/Sources/OffloadMac/WeeklyReview/WeeklyReviewScreen.swift, apps/mac/Sources/OffloadMac/WeeklyReview/WeeklyReviewSettings.swift, apps/mac/Sources/OffloadMac/BuildProgress/BuildProgressScreen.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M310/**, apps/mac/README.md, docs/ARCHITECTURE.md, docs/GLOSSARY.md, docs/ONBOARDING.md, docs/SECURITY_PRIVACY.md, slices/m3-10-mac-recordings-analysis/**]
-paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Tests/OffloadMacTests/SmokeTests.swift, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**]
+paths_in_scope: [apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Sources/OffloadMac/TodayLive/TodayLiveScreen.swift, apps/mac/Sources/OffloadMac/WeeklyReview/WeeklyReviewScreen.swift, apps/mac/Sources/OffloadMac/WeeklyReview/WeeklyReviewSettings.swift, apps/mac/Sources/OffloadMac/BuildProgress/BuildProgressScreen.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M310/**, apps/mac/README.md, docs/ARCHITECTURE.md, docs/GLOSSARY.md, docs/ONBOARDING.md, docs/SECURITY_PRIVACY.md, docs/adr/**, slices/m3-10-mac-recordings-analysis/**]
+paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Tests/OffloadMacTests/SmokeTests.swift, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**]
 red_tests: [OCR, MASK, SINK, WIRING, FOLDERS, INSIGHTS, SESSIONS, REPEAT, RANK, ANSWERS, INCREMENTAL, EXCLUDE, PROGRESS, NAV, BACKEND, BRAIN, BUILDS, HOST, SAMPLE, NONET, COPY]
 ---
 
@@ -252,7 +252,8 @@ on a Mac with the m3-09 test build.
 - **Faked in tests**: Vision runs for real in one test on a CoreText-rendered image (no TCC needed); every other test
   injects recognizers, clocks, stores and transports. No test touches the network, the real Application Support
   folder, Keychain or TCC.
-- **Known limits**: the interim masker has no person-name detection (m3-02's signature-block rule) and no IBAN or
+- **Known limits**: the interim masker finds person names with m3-02's "Name <email>" and signature-block rules and
+  NaturalLanguage's tagger, which misses rare names and names written in lower case; it has no IBAN or
   bank routing checks beyond digit runs; titles from screenwatch rows are masked by it before they are stored. Files
   are protected by POSIX modes and macOS file protection, not by the AES-GCM day-file sealing m3-02 brings; they move
   into the sealed store with m3-02. Vision accuracy on small menu bar text varies by display scale.
@@ -334,8 +335,8 @@ m3-12 (Weekly review) land. In Local mode onboarding skips screens 5 to 12, so t
    you repeat". The menu bar "Recordings…" entry is visible in Local mode.
 5. In Finder, `~/Library/Application Support/Offload/OnDevice/imports/` holds one `.jsonl` per import: open one and
    check there is no screen text, no email address, no file name (only app names, hosts, masked titles and hashes).
-   Masked window titles (from a screenwatch archive) are kept: the interim masker has no person-name rule, so a
-   person's name in a window title stays in the title.
+   Masked window titles (from a screenwatch archive) are kept, with person names the masker recognised as
+   `<person:h_…>`; a rare name the tagger misses can stay in a title.
 6. Add an app you saw in the recordings to Never watch from the menu bar: its name leaves the repeats without a new
    import.
 7. **Remove imported data** in Recordings: the file is gone and the repeats from it disappear.
@@ -345,8 +346,7 @@ m3-12 (Weekly review) land. In Local mode onboarding skips screens 5 to 12, so t
 - **Divergence from ARCHITECTURE section 1 and ADR 0007** ("It does no understanding, ranking or building"): the
   owner asked on 2026-11-22 for recordings to be analysed on the Mac in the test build. Local insights count and rank
   time on the Mac in code only (no model call, no upload), and only in `.local` backend mode; in `.cloud` mode the
-  screens read the brain. ARCHITECTURE section 1 gains a "Local insights" paragraph in this slice; ADR 0007 itself
-  is `docs/adr/**` (out of scope) and should get a note from the owner.
+  screens read the brain. ARCHITECTURE section 1 gains a "Local insights" paragraph in this slice; ADR 0007 is amended by [ADR 0039](../../docs/adr/0039-local-analysis-on-the-mac-in-local-mode.md) (proposed, needs the owner's sign-off; see the follow-up below).
 - **ONBOARDING section 8**: "Only offered after screen 5 was accepted. In Local mode it is hidden" becomes "offered
   in Local mode when the import is kept on this Mac (backend mode local); in the cloud only while sending". Updated
   here; `RecordingsImportModel.offerCheck` is set by `AppModel.live()` after m3-04's `OnboardingModel` sets it.
@@ -441,6 +441,20 @@ m3-12 (Weekly review) land. In Local mode onboarding skips screens 5 to 12, so t
     `OnDeviceFiles.writeOptions`: reading `FileAttributeKey.protectionKey` back depends on the CI volume supporting
     data protection, and `writeProtected` is the only writer, so the constant is the reliable check.
   - *Restored Settings window* (finding 4): one line says why it waits.
+- **ADR for the local analysis** (follow-up 2026-11-22): [ADR 0039](../../docs/adr/0039-local-analysis-on-the-mac-in-local-mode.md)
+  (status `proposed, needs Muhammad's sign-off`) amends ADR 0007 for `.local` mode: counts and ranking in code only, no
+  model call, no upload, masked data only, and what changes in `.cloud` mode. ADR 0007 gains one "Amended by" line and
+  the ADR index one row. `docs/adr/**` moves from `paths_out_of_scope` to `paths_in_scope` for this, the only ADR
+  files this slice changes.
+- **Person names in the interim masker** (follow-up 2026-11-22): `InterimTextMasker` now masks person names before
+  anything is stored, as `<person:h_…>` with m3-02's normalisation (NFKC, trimmed, lowercased, single spaces): m3-02's
+  `OffloadMasker.TextMasker` "Name <email>" and signature-block patterns and name check (2 to 4 words, no company or
+  team word), then names NaturalLanguage's tagger finds (`NLTagger`, `.nameType`, `.personalName`, names joined;
+  system framework, no Package.swift change). App names, months, weekdays and common title words are never names. The
+  name finder is injectable (`PersonNameFinder`); most tests inject one so the rules give the same result on every Mac,
+  two use the real tagger. **The m3-14 integration (branch `w1/mac-integration`) replaces this interim masker with
+  `OffloadMasker.TextMasker` once both land**; m3-02's masker has no tagger pass today, so m3-14 decides whether the
+  tagger pass moves into it.
 - **Security review needed** before `done` (SECURITY_PRIVACY section 13): the interim masker, the local sink and the
   local pseudonym key.
 - **Rebase onto the rewritten `w1/h-shell-onboarding`** (2026-11-22, after its rebase onto main): m3-03 made
