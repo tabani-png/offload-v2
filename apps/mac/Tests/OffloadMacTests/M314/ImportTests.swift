@@ -235,7 +235,7 @@ extension M314 {
     let importer = try #require(ImportComposition.importer(
       recognizer: M314Recognizer(), masker: ImportMaskerAdapter(load: { throw LoadFailed() }), sink: sink, ledger: ledger,
       neverWatch: NeverWatchStore(), protected: []))
-    let report = await importer.run(folder: root) { _ in }
+    let report = await importer.run(folder: root) { @Sendable _ in }
     #expect(report == nil)
     #expect(sink.spaces.isEmpty)
     #expect(ledger.entries.isEmpty)
@@ -244,7 +244,7 @@ extension M314 {
       recognizer: M314Recognizer(),
       masker: ImportMaskerAdapter(masker: TextMasker(pseudonymizer: Pseudonymizer(key: PseudonymKey(data: Data(repeating: 7, count: 32))))),
       sink: sink, ledger: ledger, neverWatch: NeverWatchStore(), protected: []))
-    #expect(await ok.run(folder: root) { _ in }?.filesRead == 1)
+    #expect(await ok.run(folder: root) { @Sendable _ in }?.filesRead == 1)
     #expect(ledger.entries.count == 1)
   }
 }
