@@ -2,7 +2,7 @@
 id: m3-13-mac-build-progress
 title: Build progress on the Mac (builds started on this Mac, a build's steps, status, held-out check, spend against the build cap, the exact-hash OK, build and deploy approvals, measured saving) from the builds API, with a clearly labelled sample build in local backend mode
 milestone: M3
-status: ready
+status: in_progress
 depends_on: [m3-10-mac-recordings-analysis]
 parallel_safe: true
 human_gated: true
@@ -12,9 +12,9 @@ parallel_group: M3-E
 owns: [apps/mac/Sources/OffloadMac/BuildProgress/**, apps/mac/Tests/OffloadMacTests/M313/**]
 verify: bash slices/m3-13-mac-build-progress/verify.sh
 min_tests: 60
-paths_in_scope: [apps/mac/Sources/OffloadMac/BuildProgress/**, apps/mac/Tests/OffloadMacTests/M313/**, apps/mac/README.md, docs/GLOSSARY.md, slices/m3-13-mac-build-progress/**]
+paths_in_scope: [apps/mac/Sources/OffloadMac/BuildProgress/**, apps/mac/Tests/OffloadMacTests/M313/**, apps/mac/README.md, docs/GLOSSARY.md, docs/SECURITY_PRIVACY.md, slices/m3-13-mac-build-progress/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadActuator/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Sources/OffloadMac/TodayLive/**, apps/mac/Sources/OffloadMac/WeeklyReview/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**, apps/mac/Tests/OffloadMacTests/M310/**, apps/mac/Tests/OffloadMacTests/M311/**, apps/mac/Tests/OffloadMacTests/M312/**]
-red_tests: [LIST, STEPS, ATTEMPTS, HEADLINE, HELDOUT, BUDGET, PLAN, OKBUILD, INSTALL, SAVING, POLL, SAMPLE, HANDOFF, STATES, FIGURES, COPY]
+red_tests: [LIST, STEPS, ATTEMPTS, HEADLINE, HELDOUT, BUDGET, PLAN, OKBUILD, INSTALL, SAVING, POLL, SAMPLE, HANDOFF, STATES, FIGURES, COPY, CANCEL]
 ---
 
 # m3-13-mac-build-progress
@@ -41,7 +41,7 @@ cloud backend is configured.
     this Mac (`build_id`, the opportunity or repeat name, `fix_id`, `started_at`), newest first. There is no list
     route in the API (see Scope changes).
   - `BuildProgressModel` (@MainActor): `builds: [BuildRow]`, `selected`, `detail: BuildDetail?`, `plan: PlanState?`
-    (the OK, build step), `install: InstallState`, `refresh()`, `okBuild()`, `readDefinition()`, `install()`,
+    (the OK, build step), `installState: InstallState`, `refresh()`, `okBuild()`, `readDefinition()`, `install()`,
     `cancel()`, `replaySample()`; owns the poll task.
   - `BuildDetail` (pure, Equatable), built by `BuildDetail.make(build:fix:outcome:now:)`: `title` ("Building · PR
     pre-read tool"), `headline`, `meter` ("6m 12s · $0.84 of $4.00"), `steps: [StepRow]` (5 rows), `attempts:
@@ -118,6 +118,28 @@ cloud backend is configured.
   is gone (404): the row says "This build is no longer available." with **Remove from list**; offline and errors as
   above.
 - **Provenance**: `.sample` in `.local` (m3-10's `SampleDataLabel`), `.cloud` otherwise; the two never mix.
+- **Pure first, model second, views last.** Everything the screen says is decided by pure types that tests drive
+  directly: `StepMapping.rows(build:fix:)`, `HeadlineMap.headline(_:)` and `HeadlineMap.dot(_:)`,
+  `AttemptRow.rows(_:)`, `HeldOutResult.of(_:)`, `BudgetMeter(build:now:)`, `Money.usd(_:)` (half up through `Decimal`,
+  so 0.845 is "$0.85"), `SavingLine.make(fix:installed:outcome:)`, `SampleTimeline.state(at:)` (the mockup's formula
+  ported tick for tick) and `BuildCopy`. `BuildDetail.make(build:fix:outcome:now:name:)` puts them together (the name
+  comes from the record: the API's build has none) and `BuildDetail.sample(tick:)` does the same for the sample.
+- **Loops are steps.** The model's three timed loops (the build poll, the plan poll, the sample's 100 ms ticks) are a
+  step function that returns the next delay or nil (`pollStep()`, `planStep()`, `sampleStep()`), run by one loop over
+  an injected `BuildSleeper`. Tests call the steps and the loops with a recording sleeper; nothing waits in real time.
+  `appear(pending:)` starts them and `disappear()` cancels them and makes every step return nil.
+- **The fix id.** m3-10's `Opportunity` has no `fix_id`, and an option's `id` is its fix id (`FixOption.id`, "the fix
+  id"); so the plan step reads the fix named by the hand-off's `option_id`, else the recommended option, else the
+  first. While the opportunity is `open`, `chosen`, `capturing_fixtures` or `designing` it says "Designing the fix…";
+  in `needs_connection` it says "Connect <apps> first."; in `ready_for_approval` it reads the fix, and a 404 keeps waiting;
+  `needs_you` (the design ended, ARCHITECTURE section 7) stops the plan with a sentence; an unknown state keeps waiting
+  (review4.md finding 2).
+- **The measured line** uses the outcome's `ratio` × `estimated_minutes_per_week` ÷ 60 for "saved … h/wk measured"
+  (the outcome has no single measured-per-week field; `weeks` holds per-week values whose unit the API does not name).
+  The install's `routine_id` and the install time are kept on the build's record, so the outcome is found by routine
+  in the month it was installed (UTC).
+- **Errors in words.** `BuildCopy.sentence(for: APIError)` gives every `APIError` one plain sentence; a
+  `policy_denied` shows the server's message as given; nothing shows a request id or a hash.
 
 ## Red tests (write these first, run them, see them fail)
 Folder `apps/mac/Tests/OffloadMacTests/M313/`, Swift Testing, every test `@Test("TAG: ...")` inside
@@ -142,6 +164,7 @@ port's `buildView` shape; fake `BuildsClient`, signer and clock.
 | STATES | no builds line; offline line; each `APIError` sentence |
 | FIGURES | every number in `BuildDetail` comes from the build, fix or outcome fields or the labelled sample fixture |
 | COPY | strings have no em dash, banned word or ADR 0016 term; captions lowercase with `·` items as separate items |
+| CANCEL | Cancel build offered only while live, nothing posted otherwise; the returned build replaces the one shown; an error becomes a notice; `POST /v1/builds/{id}/cancel` unsigned with no body (added by review 2) |
 
 ## Out of scope
 The builder, approvals and outcomes on the server (`services/**`); the SSE stream, cancel and retry buttons beyond
@@ -156,7 +179,7 @@ sheet?" (m5-06); any change to m3-10's folders.
 1. In Local mode, open **Builds**: one row, "Sample build"; the label "Sample data: cloud not connected" is at the top
    of the detail and stays there. The sample plays once: a worker fails one check, is fixed, and every step turns
    green; **Install** stays disabled with "Installing needs the cloud." Press **Replay**.
-2. From Today, press **OK, build** on the card: Builds opens with "Building "<repeat>" needs the cloud…" and the
+2. (Needs m3-11 or m3-12 on the same build.) From Today, press **OK, build** on the card: Builds opens with "Building "<repeat>" needs the cloud…" and the
    labelled sample. Nothing new appears in the list.
 3. Turn on Reduce Motion: the sample shows its final state at once.
 4. With a cloud backend configured (when sign-in and enrollment exist): press OK, build on a suggested fix, read the
@@ -174,5 +197,157 @@ sheet?" (m5-06); any change to m3-10's folders.
   UTC `Z` form and are shown in the person's time zone.
 - **Mockup divergence**: real builds show one row per attempt with frozen and held-out results; the 8 named workers
   with a box per check are in the sample only, because the API reports `check_groups` per attempt, not single checks.
+- **`install` renamed `installState`**: the model's property and its `install()` method cannot share a name in Swift
+  (a redeclaration), so the property is `installState`; the red tests were written against the SPEC's name and were
+  changed with this note.
+- **Implementation notes and small divergences** (m3-13 author):
+  - No third-party code was ported. The sample's timeline (`SampleTimeline.state(at:)`) is the owner's mockup
+    (`source.canvas.tsx`, "4. Build progress") ported tick for tick, with one change: a worker shows as waiting until
+    its start tick (the mockup's failing worker showed as running from tick 0). Clicky and the old Offload repo have no
+    build progress screen to pull from; m3-10's `BuildsClient`, `RequestSigner`, `RecordingTransport` and
+    `SampleDataLabel` are used as they are.
+  - The build loop's own stage names (`teeth_gate`, `worker`, `verification`, `fan_out`, `winner`, and `end` or
+    `recovered` when a build ends outside a stage) were read from the port's `loop.ts`. In the loop a first worker
+    that fails marks `verification` failed and then runs `fan_out`, so a failed stage of a build that is still live is
+    drawn as waiting (it is being fixed), and failed only once the build has ended. `end` and `recovered` are unknown
+    names here and are listed under row 3.
+  - Dots: `cancelled` and an unknown state are amber (needs you), as nothing was installed; a gone build's row is amber.
+  - The plan panel has **Close** in every phase but `starting`: it hides the plan on this Mac, posts nothing, drops the
+    kept plan and says, true to the phase, that it can't be opened here again (review5.md finding 1, review6.md
+    finding 1). In `.cloud`, a `.localRepeat` hand-off says
+    "“<name>” was counted on this Mac. Build it from a suggestion in Today once Offload has seen it." and shows no
+    sample (sample data exists only in `.local`).
+  - The start time in the list ("started 22 Nov, 11:50") is a date in the person's time zone, not a caption: its
+    month keeps its capital.
+  - The meter's elapsed time is recomputed on each poll (every 2 s while live), not every second.
+  - Views (`BuildProgressViews.swift`, `BuildProgressScreen.swift`) are not unit tested; everything they show comes
+    from the tested model and pure types.
+- **Pre-review** (the author's own independent Opus subagent read before the logged reviews; nothing compiled on Linux; its commits say "review 1"): fixed a test that would not compile
+  (`figuresSample` built its allowed numbers as an array); Remove from list moved out of the row's button so a click
+  and VoiceOver reach it; the VoiceOver dot and step words moved into `BuildCopy`; a later hand-off cancels an earlier
+  one before it answers anything; only an offline read says "Can't reach Offload. Retrying." (other failures in their
+  own words); `needs_connection` without apps keeps designing; Return no longer presses OK, build (an approval needs
+  a deliberate click). Left for the owner: the Contract's "the Mac formats them only" for hs-1 numbers versus the
+  measured line computed as `ratio` × `estimated_minutes_per_week` ÷ 60 (Design note), until the outcome carries a
+  measured-per-week Figure.
+- **Review 1** (`logs/m3-13-mac-build-progress.review1.md`, verdict CHANGES; every finding taken; its commits and code comments of that round say "review 2", renamed in comments since):
+  1. Tests now cover cancel (new tag `CANCEL`: offered only while live, the returned build replaces the one shown, an
+     error becomes a notice, the unsigned route), choosing another build (clears the definition read; refuses ids not
+     on this Mac), **Not now**, a failed answer, no fix to build and a definition the server does not have.
+  2. Disabled actions are drawn faded (`ActionLook`, 0.4) because m3-04's button styles do not read `isEnabled`; the
+     sample's Install is faded with "Installing needs the cloud." under it, and in `.cloud` "Read what it will do
+     first." is on screen until See what changed was read.
+  3. A definition read, an install or their errors are kept only for the build still chosen; an install that ends
+     after another build was chosen is still written to its own record.
+  4. The poll and the plan poll say "Retrying" only when offline, other failures in their own words; a signed-out
+     answer (401) stops polling.
+  5. Coming back to Builds resumes the plan poll; leaving while the answer is on its way is not an error (the plan
+     waits on the opportunity, which tells whether the answer arrived); an earlier plan's failure no longer stops a
+     later plan.
+  6. Hours are rounded half to even to one decimal, as hs-1 displays them (ADR 0022). **Divergence kept for the
+     owner:** the measured hours are still `ratio` × `estimated_minutes_per_week` ÷ 60 computed on the Mac, against the
+     Contract's "the Mac formats them only", until the outcome carries a measured-per-week Figure (an API gap for the
+     outcomes owners).
+  7. The builds started on this Mac live in `UserDefaults` under `ai.offload.builds.startedOnThisMac`: build, fix and
+     routine ids, the suggestion's name as shown, start and install times. **For the SECURITY_PRIVACY owners**
+     (that file is outside this slice): add the key to the list of what the Mac keeps in `UserDefaults`, and include
+     it in the Mac's forget and sign-out flows when they land; a forget path is needed because the name comes from
+     the person's activity. Until then **Remove from list** removes a gone build's entry. The glossary row is
+     corrected (it said "ids and dates only" while listing the name).
+  8. Known providers keep their brand names ("GitHub", "HubSpot", "Google Sheets"); others are title-cased. The
+     `copyLines` and `planNeedsConnection` tests had locked in "Github" and were corrected with this note.
+  9. The plan panel shows "fingerprint 7c41e2" of the brief whose hashes OK, build posts, and the new one after a
+     `hash_mismatch` re-read (`PlanSummary.fingerprint`; the `planSummary` test's expected value gained it).
+  10. An ended build without `ended_at` stops at its last stage's end (or stands still), never counting on to now.
+  11. Test plan step 2 needs m3-11 (Today) or m3-12 (Weekly review) to call `NavigationModel.startBuild`; nothing on
+      this branch does yet. The hand-off is covered by the HANDOFF tests, and Builds opens the labelled sample from
+      the sidebar.
+- **Review 2** (`logs/m3-13-mac-build-progress.review2.md`, verdict CHANGES; every finding taken; commits say
+  "review2.md"):
+  1. **The OK, build plan is kept across screens.** Leaving Builds destroys `BuildProgressScreen` and its model, and an
+     answered opportunity is no longer listed as open, so the plan was lost. `PlanRecordStore`
+     (`UserDefaultsPlanRecordStore`, key `ai.offload.builds.planWaiting`) keeps `KeptPlan` (opportunity, option and fix
+     ids, the suggestion's name as shown, the start time) while the plan is answering, designing, waiting on a
+     connection, ready or starting; it is cleared on 202, Not now, stopped, too long and already running. A new
+     screen model resumes it in `startCloud`: it reads the opportunity once at once (so a ready plan shows again even
+     after 10 minutes), never posts the answer again, then polls from the kept start time. Tests build a second model
+     over the same stores, as the app does. `.local` keeps nothing. For the SECURITY_PRIVACY owners: this second
+     `UserDefaults` key holds the same kind of data as the builds list (review 1 item 7) and belongs in the same list
+     and forget flow.
+  2. A cancel that gets 409 `state_conflict` reads the build again, so "Showing the latest." shows it (the earlier test
+     had pinned the stale headline and was corrected).
+  3. Removing a gone build chooses the next one through `select(_:)`: its fix is read, its detail made and its poll
+     started. `remove(buildID:)` is now `async`.
+  4. The measured hours stay computed on the Mac (review 1 item 6); still for the owner to decide before M4 outcomes.
+  5. The rounds are now named after their log files; code comments say "pre-review" and "review1.md".
+- **Review 3** (`logs/m3-13-mac-build-progress.review3.md`, verdict CHANGES; every finding taken; commits say
+  "review3.md"):
+  1. Past 10 minutes the plan poll stops but the kept plan stays: "Still designing. Check back later." is now true,
+     because the next visit reads the opportunity again and shows OK, build once the fix is ready. The kept plan is
+     cleared only on 202, Not now, already running or a stopped plan. While waiting on a connection, the limit stops
+     the poll but keeps "Connect <apps> first.".
+  2. Choosing a build that was never read (its first read failed) reads it, so removing a gone build loads the next
+     one; the test now uses a next build that was never loaded and fails without the change.
+  3. A kept plan whose suggestion was since set aside (`not_now`, `never`, `left_alone`), built (`building`,
+     `ready_to_ship`, `shipped`) or failed (`build_failed`) is stopped with a sentence and cleared, never offered for
+     building again.
+  4. **Not now** is shown in every phase but `starting` (OK, build on its way), and does nothing while starting.
+  5. The measured hours stay computed on the Mac, for the owner (review1.md item 6, review2.md item 4).
+- **Review 4** (`logs/m3-13-mac-build-progress.review4.md`, verdict CHANGES; every finding taken; commits say
+  "review4.md"):
+  1. `verify.sh` BASE pointed at the pre-rebase m3-10 commit (`d3d6651`, no longer in the branch), so m3-10's
+     placeholder commit was charged to this slice's owned path. BASE is now `e80962a`, the parent of "status
+     in_progress, BASE set" after the rebase; `verify.sh` passes its scope check again.
+  2. The fix is read only in `ready_for_approval`. `needs_you` says "Designing this fix stopped and needs you. Nothing
+     is built until then." and drops the kept plan; an unknown state keeps waiting (tested).
+  3. *(Superseded by review 5 item 1: no answer is posted.)* **Not now** is the glossary's answer: it posts `answer: not_now` (asked again in 4 weeks), says "Set aside.
+     Offload asks about it again in 4 weeks." and drops the plan; a failure keeps the plan and says why. A stopped
+     plan has **Close** instead, which only hides it (nothing posted; its kept plan is already dropped). The review-2
+     and review-3 tests that pinned the local-only Not now changed with this.
+  4. **API gap** (next to the missing `GET /v1/builds`): if the app quits after the server accepted OK, build but
+     before the 202 is handled, the `build_id` is never recorded and that build cannot be listed on this Mac. A later
+     visit reads the opportunity as being built and says "This suggestion is already being built or was built. A
+     build this Mac didn't record isn't listed here."
+  5. The Sample data label sits above the scrolling content, so it never scrolls away.
+  6. Actions are faded once: each disabled button by `ActionLook`, the row not again, so the saving caption keeps the
+     muted caption colour (#5D6874 on #F4F5F2, 5.19:1, above WCAG AA 4.5:1).
+  7. No milestone names in copy: a missing outcomes route says "measured after install, once Offload measures
+     outcomes"; the COPY test now rejects `M<digit>`.
+  8. The capped headline formats the build's own `cap_usd`, as the meter does.
+  9. **Scope widened** to `docs/SECURITY_PRIVACY.md` (one row, additive): the two `UserDefaults` keys
+     (`ai.offload.builds.startedOnThisMac`, `ai.offload.builds.planWaiting`) are listed with what they hold and how
+     they are removed. A forget and sign-out path that clears them is still needed when those flows land.
+  Notes kept for the owner: the build-loop port has no `GET /v1/builds/{id}/definition`, so Install cannot be enabled
+  against it (API.md wins; see API gaps); test plan step 2 needs m3-11 or m3-12; the measured hours stay computed on
+  the Mac (review1.md item 6).
+- **Review 5** (`logs/m3-13-mac-build-progress.review5.md`, verdict CHANGES; every finding taken; commits say
+  "review5.md"):
+  1. **Not now is removed; Close is local.** ARCHITECTURE section 7's state diagram allows `not_now` only from
+     `open`, and every plan on this screen is past `open` (it was answered `build`); the brain ports'
+     `applyAnswerToOpportunity` likewise updates only rows in `open`, `not_now`, `never` or `left_alone`. So a posted
+     `not_now` would be refused or silently ignored, and the Mac would have claimed "Set aside" falsely. The plan
+     panel now has **Close** in every phase but `starting`: it hides the plan on this Mac, posts nothing, drops the
+     kept plan and says "Closed on this Mac. Offload may still finish designing it." (a stopped plan closes quietly).
+     **API gap** for the API and brain owners, next to the others: there is no documented way to withdraw a `build`
+     answer or stop designing an opportunity, so design spend continues after Close.
+  2. Close is synchronous and off while OK, build is busy or starting, so it cannot be double-pressed or race the
+     build approval (the async Not now that could is gone).
+  3. The implementation notes now say Close, and review 4 item 3 is marked superseded.
+- **Review 6** (`logs/m3-13-mac-build-progress.review6.md`, verdict CHANGES; every finding taken; commits say
+  "review6.md"):
+  1. Close's notice is true to the phase and says the plan can't be opened here again (the opportunity is past
+     `open`, Today lists only open ones, and the kept plan is dropped): ready, "Closed on this Mac. This plan can't be
+     opened here again."; waiting on a connection, "Closed on this Mac. Nothing more happens until the apps are
+     connected, and it can't be opened here again."; answering, designing or too long, "Closed on this Mac. Offload
+     may still design it, but it can't be opened here again."; a stopped plan closes quietly.
+  2. A kept or polled plan whose opportunity is still `open` never reached Offload: it stops with "Your OK, build
+     didn't reach Offload. Press OK, build in Today again." and drops the kept plan (the suggestion is still open in
+     Today). The answer's own reply is already past `open`.
+  3. SECURITY_PRIVACY says the kept plan is removed when it is built, closed or stopped; the review-4 test header no
+     longer describes Not now; `planNotNow` and `notNowEveryPhase` are now `planClose` and `closeEveryPhase`.
 - `BASE` is set after m3-10 is `done`, so m3-10's placeholder commit in `BuildProgress/` is not counted against this
   slice's `owns`.
+- Rebase onto the rewritten `w1/ui-analysis` (2026-11-22): `e80962a` left the history, so `BASE` is now `da18c84`,
+  the parent of "status in_progress, BASE set" on the new stack. The conflicts were in docs only: GLOSSARY and
+  SECURITY_PRIVACY keep m3-10's rows as rewritten upstream (the interim masker masks person names) beside this
+  slice's Sample build, Builds started on this Mac and Build progress rows.
