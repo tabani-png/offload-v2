@@ -1,6 +1,7 @@
 // The member update job: runs the p43a pipeline for one analysed window inside one tenant transaction and saves it.
 // Called by the durable runtime (W1-C, m5-05) per member; running it twice with the same window leaves the same rows.
 // No network I/O: the weekly sentence is written by writeWeekNarrative, outside the data transaction.
+import type { FixRules } from "../opportunities/rules.ts";
 import { rankOpportunities, PERSISTENCE_WEEKS, type FixEstimate } from "../opportunities/score.ts";
 import { userContextOf } from "../profile/profile.ts";
 import { addWeeks, isoWeekOf, monthOfWeek, quarterOfWeek, weekDays } from "../records/dates.ts";
@@ -26,6 +27,8 @@ export interface MemberUpdateInput {
   workspaceId: string;
   /** Fix rules for a week's task (m5-04 port); null = no fix proposed. */
   estimateFor?: (task: WeekTask) => Omit<FixEstimate, "taskKey"> | null;
+  /** Fix rules (m5-04): evidence, proposed options and estimates for the latest week's tasks. `estimateFor` wins. */
+  fixRules?: FixRules;
   taskVectors?: ReadonlyMap<string, readonly number[]>;
   trackRecord?: ReadonlyMap<string, number>;
 }

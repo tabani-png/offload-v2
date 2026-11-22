@@ -10,6 +10,7 @@ import { DRAIN_KINDS, type WorkKind } from "../records/kinds.ts";
 import type { WeekRecord } from "../records/week-record.ts";
 import type { ReviewAnswer } from "../review/answers.ts";
 import { cosine } from "../user-model/ledger.ts";
+import type { FixOption } from "./types.ts";
 
 export const RESURFACE_RISE = 0.5;
 export const DRAIN_BOOST = 0.1;
@@ -55,6 +56,8 @@ export interface FixEstimate {
   /** 0..1, from the fix rules. */
   ruleConfidence: number;
   workKind: WorkKind;
+  /** The option these numbers belong to (fix rules); absent from a bare estimate. */
+  option?: FixOption;
 }
 
 export interface GoalVector {

@@ -75,15 +75,19 @@ m2-05, on hold), and no model is called.
    apps that are neither a browser nor a stand-in app (`recording.unknown`, `screenwatch.screen`; surface
    `desktop`); a stand-in says nothing about the work. `work_kind` by `kindOf` (records/kinds.ts). **Cadence**:
    `daily` when this week has one instance on each of at least 3 days, starting within a 2 h band (member timezone);
-   `weekly` when at least 2 of the 8 weeks have exactly one instance, on the same weekday, within a 2 h band.
-2. **Fix rules** (`opportunities/rules.ts`): every rule needs at least 3 instances in the week and at least one
-   system; tasks whose systems are all `code`, `meeting` or `chat` get none. First match wins:
+   `weekly` when every week of the 8 with an instance has exactly one, at least 2 such weeks, on the same weekday,
+   within a 2 h band. The hour is the median start's hour.
+2. **Fix rules** (`opportunities/rules.ts`): every rule needs at least 3 instances in the week or a cadence (a
+   cadence is repetition seen over days or weeks), and at least one system; tasks whose systems are all `code`,
+   `meeting` or `chat` get none. A cloud kind (`api_integration`, `agent_workflow`, `scheduled_routine`) is offered
+   only when at least one step has a connector (MCP, Composio or a direct API); otherwise it would be browser
+   automation under another name. First match wins:
 
    | Rule kind | Matches | Options, in order |
    |---|---|---|
    | `report_assembly` (repeated report assembly) | a cadence, a `sheet` or `docs` system and at least 2 systems | `scheduled_routine`, `script` |
    | `email_triage` (repeated email triage) | only `email` systems, at least 5 instances, median at most 10 min | `setup_change` (mail rules), `agent_workflow` |
-   | `email_to_records` | an `email` system and another system | `agent_workflow`, `api_integration`, `browser_automation` (if a web system) |
+   | `email_to_records` | an `email` system and another system | `agent_workflow`, `api_integration`, `browser_automation` (if a web system), `script` (if a desktop system) |
    | `app_to_app_copy` (repeated copy between apps, e.g. two web apps) | at least 2 non-email systems | `api_integration` (connector pair), `browser_automation` (if a web system), `script` (if a desktop system) |
    | `single_app_entry` | one system of kind `sheet`, `docs`, `browse` or `other` | `browser_automation` (web) or `script` (desktop) |
 
@@ -93,12 +97,14 @@ m2-05, on hold), and no model is called.
    ARCHITECTURE section 12); a desktop app not in the catalog has no connector (`adapter: null`, runs on the device
    through the actuator). The proposal uses the launch catalog; the verified catalog (m2-02) and the pins belong to
    the fix designer (m2-05).
-4. **Estimate** (`opportunities/estimate.ts`), per option, from `FIX_KIND_TABLE` (fixed constants, code only):
+4. **Estimate** (`opportunities/estimate.ts`), per option (`setup_change` steps are applied by the user on the device;
+   `browser_automation` web steps use the `browser` adapter on the device; `script` and the cloud kinds resolve each
+   step's connector), from `FIX_KIND_TABLE` (fixed constants, code only):
    - weekly hours saved = max(0, minutes × share − instances × review minutes) / 60, rounded to 0.01;
    - setup hours = base + per step × steps + 1 per browser step (in a cloud kind) + 0.5 per device step (in a cloud
      kind);
-   - confidence = kind confidence × instances factor (1 at 5 or more, else 0.85) × days factor (1 on 2 or more days,
-     else 0.85) × 0.85 per browser step × 0.9 per device step (cloud kinds), clamped to 0..1, rounded to 0.001;
+   - confidence = kind confidence × instances factor (1 at 5 or more or with a cadence, else 0.85) × days factor (1
+     on 2 or more days or with a cadence, else 0.85) × 0.85 per browser step × 0.9 per device step (cloud kinds), clamped to 0..1, rounded to 0.001;
    - payback weeks = setup / weekly saving (`paybackWeeks`).
    Each is a Figure with its arithmetic; evidence = the week record and the instances' episodes. An option saving
    nothing is dropped; no option left = no proposal.
@@ -112,7 +118,7 @@ m2-05, on hold), and no model is called.
    | `browser_automation` | 0.6 | 1 | 3 | 1 | 0.5 |
    | `setup_change` | 0.3 | 0 | 0.5 | 0 | 0.6 |
 
-5. **Options** (`opportunities/options.ts`): one to three, ordered by option value = saving × confidence ÷ max(1,
+5. **Options** (`opportunities/rules.ts`): one to three of the rule's surviving kinds, ordered by option value = saving × confidence ÷ max(1,
    payback) (the score's own factors), ties by the rule's order; numbered from 1; option 1 is `recommended` unless the
    best saving is below 0.5 h per week, then `leave_alone_first` is true and none is recommended (ARCHITECTURE
    section 7). Title and detail are code templates from masked words only (task name, host, app label, counts).
@@ -141,7 +147,7 @@ requires it).
 | RULE | RULE: copy between two web apps gets a connector pair through an API integration first |
 | RULE | RULE: a report assembled on a cadence gets a scheduled routine |
 | RULE | RULE: short repeated mail-only work gets mail rules as a setup change |
-| RULE | RULE: mail turned into records in other apps gets an agent workflow |
+| RULE | RULE: mail turned into records in other apps gets an agent workflow, an integration and browser automation |
 | RULE | RULE: fewer than 3 instances, or only code, meetings or chat, gets no fix |
 | ESTIMATE | ESTIMATE: golden evidence gives the exact options with Figures |
 | ESTIMATE | ESTIMATE: every figure's arithmetic reproduces its value |
@@ -178,8 +184,8 @@ into `offload serve` (m1-06), `remove_step` and `small_app` rules, track record 
   finder opportunity has at least one option row.
 
 ## Progress
-- [ ] SPEC, verify.sh, ROADMAP link
-- [ ] red tests
+- [x] SPEC, verify.sh, ROADMAP link (375d690)
+- [x] red tests: all 21 seen failing (`not implemented`, missing `fixes` table)
 - [ ] evidence, connectors, rules, estimate, options
 - [ ] migration, repository, job wiring
 - [ ] docs

@@ -29,6 +29,8 @@ export interface UnderstandingDeps {
   labelerFor?: (m: MemberRef) => SpanLabeler | undefined;
   /** Fix rules (m5-04), passed through to runMemberUpdate. */
   estimateFor?: MemberUpdateInput["estimateFor"];
+  /** Fix rules (m5-04), passed through to runMemberUpdate; withheld without a workspace, like estimateFor. */
+  fixRules?: MemberUpdateInput["fixRules"];
 }
 
 export type UnderstandingStatus = "updated" | "duplicate" | "busy" | "failed" | "empty" | "paused" | "unknown_member";

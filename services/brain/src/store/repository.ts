@@ -3,6 +3,8 @@
 // (except figure_index rows of a re-saved record and open finder opportunities that left the top 5). A write whose
 // text holds an email address or a URL is refused (old assertDerivedOnly, kept as a second line behind names.ts).
 import type { RankedOpportunity } from "../opportunities/score.ts";
+import type { FixOption } from "../opportunities/types.ts";
+import type { Figure } from "../records/figure.ts";
 import { defaultProfile, type Goal, type PatchResult, type Profile } from "../profile/profile.ts";
 import { addWeeks, weekDays } from "../records/dates.ts";
 import type { DayRecord, Episode } from "../records/day-record.ts";
@@ -286,7 +288,38 @@ export async function listReviewAnswers(tx: Tx): Promise<ReviewAnswer[]> {
   return (await rows(tx, `SELECT iso_week, subject_key, question_kind, answer, goal_id, answered_at FROM review_answers WHERE ${OWN} ORDER BY iso_week, subject_key`)).map(answerOf);
 }
 
-export async function saveOpportunities(tx: Tx, input: { isoWeek: string; workspaceId: string; ranked: readonly RankedOpportunity[]; now: number }): Promise<void> {
+/** The API `Opportunity` (docs/API.md) of a stored finder opportunity, with its options. */
+export interface OpportunityView {
+  id: string;
+  source: "finder" | "manual" | "instant_read" | "agent";
+  task_key: string | null;
+  title: string;
+  iso_week: string;
+  rank: number | null;
+  state: string;
+  not_now_until: string | null;
+  goal_id: string | null;
+  score: Figure | null;
+  factors: Partial<RankedOpportunity["factors"]>;
+  /** The best option saves under 0.5 h a week: "leave it alone" comes first and no option is recommended. */
+  leave_alone_first: boolean;
+  options: Array<FixOption & { id: string; chosen_at: string | null }>;
+}
+
+/** Task-instance and focus-block episodes of the days from..to, read through day_records.episode_ids. */
+export async function listWeekEpisodes(_tx: Tx, _from: string, _to: string): Promise<Episode[]> {
+  throw new Error("not implemented");
+}
+
+export async function listOpportunityViews(_tx: Tx, _opts: { isoWeek?: string; state?: string } = {}): Promise<OpportunityView[]> {
+  throw new Error("not implemented");
+}
+
+export async function getOpportunityView(_tx: Tx, _id: string): Promise<OpportunityView | null> {
+  throw new Error("not implemented");
+}
+
+export async function saveOpportunities(tx: Tx, input: { isoWeek: string; workspaceId: string; ranked: readonly RankedOpportunity[]; now: number; options?: ReadonlyMap<string, readonly FixOption[]> }): Promise<void> {
   guard("opportunities", input.ranked);
   const keys = input.ranked.map((o) => o.task_key);
   const gone = await rows(tx, `DELETE FROM opportunities WHERE ${OWN} AND iso_week = $1 AND source = 'finder' AND state = 'open' AND NOT (task_key = ANY($2::text[])) RETURNING task_key`, [input.isoWeek, keys]);

@@ -21,6 +21,8 @@ export interface Episode {
   ended_at: string;
   minutes: number;
   apps: string[];
+  /** Bare hosts of the instance's spans (m5-04); absent on episodes stored before migration 0002. */
+  hosts?: string[];
   task_key: string | null;
   /** Masked verb-object name. */
   name: string;
