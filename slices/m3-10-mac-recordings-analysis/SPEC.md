@@ -12,7 +12,7 @@ parallel_group: M3-D
 owns: [apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Tests/OffloadMacTests/M310/**]
 verify: bash slices/m3-10-mac-recordings-analysis/verify.sh
 min_tests: 95
-paths_in_scope: [apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Sources/OffloadMac/TodayLive/TodayLiveScreen.swift, apps/mac/Sources/OffloadMac/WeeklyReview/WeeklyReviewScreen.swift, apps/mac/Sources/OffloadMac/WeeklyReview/WeeklyReviewSettings.swift, apps/mac/Sources/OffloadMac/BuildProgress/BuildProgressScreen.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M310/**, apps/mac/README.md, docs/ARCHITECTURE.md, docs/GLOSSARY.md, docs/ONBOARDING.md, docs/SECURITY_PRIVACY.md, slices/m3-10-mac-recordings-analysis/**]
+paths_in_scope: [apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Sources/OffloadMac/TodayLive/TodayLiveScreen.swift, apps/mac/Sources/OffloadMac/WeeklyReview/WeeklyReviewScreen.swift, apps/mac/Sources/OffloadMac/WeeklyReview/WeeklyReviewSettings.swift, apps/mac/Sources/OffloadMac/BuildProgress/BuildProgressScreen.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M310/**, apps/mac/README.md, docs/ARCHITECTURE.md, docs/GLOSSARY.md, docs/ONBOARDING.md, docs/SECURITY_PRIVACY.md, slices/m3-10-mac-recordings-analysis/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Tests/OffloadMacTests/SmokeTests.swift, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**]
 red_tests: [OCR, MASK, SINK, WIRING, FOLDERS, INSIGHTS, SESSIONS, REPEAT, RANK, ANSWERS, INCREMENTAL, EXCLUDE, PROGRESS, NAV, BACKEND, BRAIN, BUILDS, HOST, SAMPLE, NONET, COPY]
 ---
@@ -190,8 +190,8 @@ on a Mac with the m3-09 test build.
     InsightsModel`. `AppModel.live()` builds the recordings model with `OnDeviceRecordings.make` instead of
     `RecordingsImportModel.live`, starts the `InsightsCoordinator`, and sets the recordings model's `offerCheck` to
     "backend mode is `.local`, or signed in and sending" (see Design note).
-  - `OffloadMacApp/OffloadApp.swift`: the main window shows `AppWindowView(app:)`; the menu bar "Recordings…" entry
-    follows the same `isOffered`.
+  - `App/OffloadApp.swift` (`OffloadMacApp/OffloadApp.swift` before the 2026-11-22 rebase): the main window shows
+    `AppWindowView(app:)`; the menu bar "Recordings…" entry follows the same `isOffered`.
 
 ## Design note
 - **Why the import is offered in Local mode now.** ONBOARDING section 8 hides the import until "Start sending"
@@ -443,3 +443,10 @@ m3-12 (Weekly review) land. In Local mode onboarding skips screens 5 to 12, so t
   - *Restored Settings window* (finding 4): one line says why it waits.
 - **Security review needed** before `done` (SECURITY_PRIVACY section 13): the interim masker, the local sink and the
   local pseudonym key.
+- **Rebase onto the rewritten `w1/h-shell-onboarding`** (2026-11-22, after its rebase onto main): m3-03 made
+  `OffloadMac` the executable target, so the SwiftUI `App` moved from `Sources/OffloadMacApp/OffloadApp.swift` to
+  `Sources/OffloadMac/App/OffloadApp.swift` (no `@main`, no `import OffloadMac`). One conflict, in that file's
+  `MenuBarOpener`: the parent's `MenuBarContent(app:openWindow:updates:checkForUpdates:)` call (the updater's lines,
+  `AppUpdates`) is kept, with this slice's comment and "Recordings…" routing below it. `paths_in_scope` adds
+  `apps/mac/Sources/OffloadMac/App/**` and keeps `apps/mac/Sources/OffloadMacApp/**` for the earlier commits;
+  `BASE` moves to the rewritten "m3-13-mac-build-progress: SPEC and verify.sh" commit.
