@@ -3,13 +3,13 @@
 Three small back-office fixes used as **acceptance cases** by the HELDOUT tests of [SPEC.md](SPEC.md) (fed to
 `evaluateCases` directly; they are fixed golden cases, not the output of `splitHeldOut`, so their instance counts
 are not bound by the 8-instance capture default), and as the golden cases of the backend conformance suite
-([ADR 0039 section 2](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#2-execution-backends-behind-a-port)).
+([ADR 0040 section 2](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#2-execution-backends-behind-a-port)).
 Words follow [GLOSSARY.md](../../docs/GLOSSARY.md).
 
 Slice [m5-12-n8n-export](../m5-12-n8n-export/SPEC.md) reuses the same three cases: each case's reference artifact
 must also export to n8n workflow JSON that passes the schema, the pinned node catalog, the design-rule lint and its
 pinned-data test over these same runs, and each broken artifact must fail there too. The reference artifacts are
-written to the workflow design rules ([ADR 0039 section 3.4](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules)):
+written to the workflow design rules ([ADR 0040 section 3.4](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules)):
 every commit step has its dedupe key, every transform is one function under 150 non-blank lines.
 
 ## How to read and encode them
@@ -18,7 +18,7 @@ every commit step has its dedupe key, every transform is one function under 150 
 - Every value is synthetic.
 - Strings are fixture tokens, `tok_` + 12 hex ([ADR 0027](../../docs/adr/0027-fixture-capture-and-connector-content.md)).
   The tokens below are written as names (`tok_SUPPLIER1`); give each a fixed hex value in the fixture file.
-- Text fields are written as the span tokeniser would leave them ([ADR 0039 section 4](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#4-fixtures-held-out-instances-read-shapes-text-fields)):
+- Text fields are written as the span tokeniser would leave them ([ADR 0040 section 4](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#4-fixtures-held-out-instances-read-shapes-text-fields)):
   people, emails, URL paths and ids are tokens; other words, numbers, dates and currency codes stay.
 - No real person, company, email or URL with a path appears ([AGENTS.md](../../AGENTS.md#privacy-rules-for-agents)).
 
@@ -35,7 +35,7 @@ every commit step has its dedupe key, every transform is one function under 150 
 - "Forbidden" means a commit capability that must never appear in any item.
 
 **Dropping and skipping.** A step returns `null` to drop an element (not counted) and `{ "$skip": "<code>" }` to
-skip it (counted under that code) ([ADR 0039 section 5](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#5-running-on-the-native-backend)).
+skip it (counted under that code) ([ADR 0040 section 5](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#5-running-on-the-native-backend)).
 
 **"Appears in the source".** A number appears in a body when some number in the body has the same value after
 removing thousands separators (`1,240.00` and `1240.00` are equal). Quotes from a model must appear verbatim.

@@ -26,7 +26,7 @@ facts (M7), month and quarter records (M7), Helm (M8), all of `ee/` (M8, M9).
 Test naming: `TAG: sentence` inside the package's `tests/<slice-id>/` folder, as in
 [AGENTS.md](../AGENTS.md#slice-format). Swift slices use a suite named after the slice (for example `M302`) in
 `apps/mac/Tests/OffloadMacTests/<suite>/`. Slice specs exist for M1, M3, the Wave 1 slices m2-02, m2-03, m2-12,
-m3-03 and m5-03, and m5-10 and m5-12 (execution backend and n8n export, [ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md)); [WAVE1.md](WAVE1.md) maps the old plan's Wave 1 workstreams (PR #42 W1-A to W1-H) to these slices,
+m3-03 and m5-03, and m5-10 and m5-12 (execution backend and n8n export, [ADR 0040](adr/0040-routine-definition-v2-and-execution-backends.md)); [WAVE1.md](WAVE1.md) maps the old plan's Wave 1 workstreams (PR #42 W1-A to W1-H) to these slices,
 with owners and the operator items each waits on. Other tasks are listed in the format
 id, depends on, tier, size, parallel group, paths: the same fields as the slice front-matter (`model_tier`, `size`,
 `parallel_group`, `owns`; [AGENTS.md](../AGENTS.md#slice-format)). Tier: Opus plans and reviews, Sonnet implements.
@@ -86,7 +86,7 @@ Only the owner can do these. Lead times are typical, not promises; check each wh
 | S5 | OAuth and MCP for his real tools: Google internal client, Notion and Linear MCP registration, Stripe restricted key | 1 day | [ADR 0033](adr/0033-pinned-connector-resolution-and-launch-catalog.md) |
 | S6 | `browser.step` mechanism (browser extension with native messaging, attended) | 2 days, before M6 | [ADR 0025](adr/0025-execution-placement-and-mac-actuator.md) |
 | S7 | Transform isolate for routine artifacts (quickjs-emscripten candidate) | inside m1-05 | [ADR 0026](adr/0026-routine-artifact-contract.md) |
-| S8 | Port one Activepieces piece (MIT; QuickBooks or Xero) into an allowlisted direct-API adapter run by the broker; record effort and the per-piece license check | 1 day, before M6 | [ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md) |
+| S8 | Port one Activepieces piece (MIT; QuickBooks or Xero) into an allowlisted direct-API adapter run by the broker; record effort and the per-piece license check | 1 day, before M6 | [ADR 0040](adr/0040-routine-definition-v2-and-execution-backends.md) |
 
 ## M1. Foundations
 
@@ -492,7 +492,7 @@ Tasks after the two slices:
   the sheet?"); observed opportunities enter the M2 build path; Build progress on the Mac; keyframes opt-in;
   the execution backend: `routine.json` v2, tool choice, scaffold, static validation, the workflow design rules,
   held-out instances, read shapes, rollback and the stability record; the n8n export of verified fixes to the
-  user's own n8n ([ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md), owner decision
+  user's own n8n ([ADR 0040](adr/0040-routine-definition-v2-and-execution-backends.md), owner decision
   [OQ-30](OPEN_QUESTIONS.md#oq-30-n8n-in-offload)).
 - **Exit criteria**: after one real week, Muhammad's Today shows one ranked suggested fix from observed work with 2 or
   3 options; he builds it through the same path as M2; the weekly review lands at his review slot; answers change next
@@ -665,9 +665,9 @@ Tasks after the two slices:
 | m5-04 | Opportunity finder, instant read, options | m5-02, m2-01 | Sonnet | M | M5-B | `services/brain/**` |
 | m5-05 | Today and weekly review APIs and Mac screens | m5-04 | Sonnet | L | M5-B | `services/api/**`, `apps/mac/**` |
 | m5-06 | Pseudonym match flow and Build progress on the Mac | m5-04, m3-06 | Sonnet | M | M5-B | `apps/mac/**`, `services/api/**` |
-| [m5-10](../slices/m5-10-workflow-backend/SPEC.md) | Execution backend: `routine.json` v2, native backend and conformance suite, tool choice, scaffold, static validation, replay with held-out instances, deploy, rollback, drift ([ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md)) | M2 (m2-04, m2-05, m2-07, m2-09, m2-10), m5-03 | Opus plan, Sonnet build | L | M5-C | `packages/execution-backend/**`, `packages/routine-sdk/src/**`, `services/runtime/src/backends/**`, `services/api/src/routines/**` |
+| [m5-10](../slices/m5-10-workflow-backend/SPEC.md) | Execution backend: `routine.json` v2, native backend and conformance suite, tool choice, scaffold, static validation, replay with held-out instances, deploy, rollback, drift ([ADR 0040](adr/0040-routine-definition-v2-and-execution-backends.md)) | M2 (m2-04, m2-05, m2-07, m2-09, m2-10), m5-03 | Opus plan, Sonnet build | L | M5-C | `packages/execution-backend/**`, `packages/routine-sdk/src/**`, `services/runtime/src/backends/**`, `services/api/src/routines/**` |
 | m5-11 | Span tokenisation of `parse_text` fields in fixture capture, after [OQ-31](OPEN_QUESTIONS.md#oq-31-masked-text-fields-in-build-sandboxes) | m5-10, m2-04 | Sonnet | M | M5-D | `packages/masking/src/spans/**`, the m2-04 fixture capture module |
-| [m5-12](../slices/m5-12-n8n-export/SPEC.md) | n8n export: import-ready n8n workflow JSON for the user's own n8n, schema, pinned node catalog, workflow design rules lint, pinned-data test, optional push under a deploy approval (off until [OQ-32](OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n)) ([ADR 0039 section 9](adr/0039-routine-definition-v2-and-execution-backends.md#9-the-n8n-export)) | m5-10, m2-02, m2-03 | Opus plan, Sonnet build | L | M5-D | `packages/n8n-export/**`, `services/api/src/n8n/**`, `services/broker/src/n8n/**` |
+| [m5-12](../slices/m5-12-n8n-export/SPEC.md) | n8n export: import-ready n8n workflow JSON for the user's own n8n, schema, pinned node catalog, workflow design rules lint, pinned-data test, optional push under a deploy approval (off until [OQ-32](OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n)) ([ADR 0040 section 9](adr/0040-routine-definition-v2-and-execution-backends.md#9-the-n8n-export)) | m5-10, m2-02, m2-03 | Opus plan, Sonnet build | L | M5-D | `packages/n8n-export/**`, `services/api/src/n8n/**`, `services/broker/src/n8n/**` |
 
 ## M6. Build and run depth
 

@@ -1,6 +1,6 @@
 # Workflow engines for Offload fixes (research, 2026-11)
 
-Research behind [ADR 0039](../adr/0039-routine-definition-v2-and-execution-backends.md). Words follow
+Research behind [ADR 0040](../adr/0040-routine-definition-v2-and-execution-backends.md). Words follow
 [GLOSSARY.md](../GLOSSARY.md). Every external fact below was checked on **2026-11-22** at the URL next to it. Facts
 marked **UNVERIFIED** could not be confirmed from a primary source that day. This is not legal advice; the license
 reading is an engineer's reading of the published texts and needs counsel and, for n8n, the vendor's written answer
@@ -49,7 +49,7 @@ A candidate execution backend has to live with these, or the product changes:
    ([ADR 0038](../adr/0038-license-mit-core-commercial-ee.md)). Code from AGPL, SSPL, BSL, Elastic or other
    non-permissive sources is never copied ([AGENTS.md](../../AGENTS.md#license-boundary-and-notices)).
 6. **What was verified is what runs** (an n8n export keeps this only up to a shape check of its node bindings;
-   [ADR 0039 section 9.3](../adr/0039-routine-definition-v2-and-execution-backends.md#93-validation)): pins fixed at design time, `definition_hash` bound by the deploy approval
+   [ADR 0040 section 9.3](../adr/0040-routine-definition-v2-and-execution-backends.md#93-validation)): pins fixed at design time, `definition_hash` bound by the deploy approval
    ([ADR 0032](../adr/0032-deploy-approval-binds-definition.md), [ADR 0033](../adr/0033-pinned-connector-resolution-and-launch-catalog.md)).
 7. **No dry run** in product, API or copy. Verification is frozen checks, held-out check and replay of real
    instances inside the build ([ADR 0016](../adr/0016-no-dry-run.md)). This page says "replay" and "static
@@ -392,7 +392,7 @@ user, told so in words, chooses it per fix.
 Why the scores:
 - **Native**:
   - Stability 4, not 5: DBOS gives durable steps and step retries, but error handling, read-shape drift and the
-    stability record are Offload's own code to write. [ADR 0039](../adr/0039-routine-definition-v2-and-execution-backends.md)
+    stability record are Offload's own code to write. [ADR 0040](../adr/0040-routine-definition-v2-and-execution-backends.md)
     adds them.
   - Coverage 3: it brings no integrations; they come from the connector layer, which every row would also need.
   - Scored as designed; most of it is not built yet (the runtime is M2 task m2-10).
@@ -431,19 +431,19 @@ backend and several integration sources.
    candidate that keeps the gate, the item journal, the broker and Postgres-only self-host as they are. Make it more
    stable in Offload's own code: per-step retry policies on top of DBOS step retries, timeouts, bounded per-item
    error handling, explicit dedupe keys, read-shape drift checks, versions with rollback, and a stability record.
-   ([ADR 0039](../adr/0039-routine-definition-v2-and-execution-backends.md).)
+   ([ADR 0040](../adr/0040-routine-definition-v2-and-execution-backends.md).)
 2. **Do not host or ship n8n.** Its license forbids Offload's use case on Offload-run n8n without an OEM or Enterprise
    agreement. Its execution model would also bypass the broker and the gate.
 3. **Build like an expert n8n engineer, and export to n8n** (owner decision of 2026-11-22):
    - Eight workflow design rules (explicit triggers; small, single-purpose steps; error workflows and branches;
      per-step retries and timeouts; idempotent writes; credentials by reference; pinned-data tests; held-out
      acceptance before activation), enforced by lint on every routine definition and every export
-     ([ADR 0039 section 3.4](../adr/0039-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules)).
+     ([ADR 0040 section 3.4](../adr/0040-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules)).
    - An n8n export of each verified fix for the user's own n8n, through node bindings whose shapes are checked against
      the pinned n8n release, a schema and a pinned node catalog, with `pinData` from the tokenised fixtures (write nodes
      pinned too), labelled as running outside Offload's gate and saying what was not verified; and a push to the user's
      own instance by its API, built but switched off until n8n answers in writing
-     ([ADR 0039 section 9](../adr/0039-routine-definition-v2-and-execution-backends.md#9-the-n8n-export)).
+     ([ADR 0040 section 9](../adr/0040-routine-definition-v2-and-execution-backends.md#9-the-n8n-export)).
    - A user can also connect their own n8n workflows to Offload as MCP tools, as before.
    - n8n run by Offload for users stays gated
      ([OQ-32](../OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n)).

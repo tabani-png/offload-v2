@@ -1,4 +1,7 @@
-# 0039. Fixes as versioned routine definitions on pluggable execution backends
+# 0040. Fixes as versioned routine definitions on pluggable execution backends
+
+Numbering: this ADR is 0040 (routine definition and execution backends); [ADR 0039](0039-local-analysis-on-the-mac-in-local-mode.md)
+is local analysis on the Mac. Earlier drafts of this ADR were numbered 0039.
 
 Status: proposed (review pending). [OQ-30](../OPEN_QUESTIONS.md#oq-30-n8n-in-offload) was decided by the owner on
 2026-11-22 (sections 3.4, 7 and 9); pushing to a user's n8n is built but switched off until

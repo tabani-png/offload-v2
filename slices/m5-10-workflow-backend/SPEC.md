@@ -20,11 +20,11 @@ red_tests: [IR, SCAFFOLD, TOOLS, VALIDATE, RULES, REPLAY, HELDOUT, DEPLOY, ROLLB
 # m5-10-workflow-backend
 
 ## Summary
-Builds the **execution backend** of [ADR 0039](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md).
+Builds the **execution backend** of [ADR 0040](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md).
 It takes one fix through every stage of that ADR and deploys it as a routine version:
 1. tool choice (code ranks the candidate connectors);
 2. code writes the scaffold `routine.json` from the brief;
-3. static validation, including the lint of the eight workflow design rules (WF1 to WF8, ADR 0039 section 3.4);
+3. static validation, including the lint of the eight workflow design rules (WF1 to WF8, ADR 0040 section 3.4);
 4. replay of the visible instances through the native backend;
 5. the held-out check over held-out instances, plus three back-office acceptance cases ([ACCEPTANCE.md](ACCEPTANCE.md))
    run by `evaluateCases` directly (they are golden cases, not output of `splitHeldOut`);
@@ -37,7 +37,7 @@ The owner called this "a workflow backend"; the glossary words are routine defin
 
 Moves the M5 exit "he builds it through the same path as M2" ([ROADMAP M5](../../docs/ROADMAP.md#m5-observed-loop))
 from one-off builds to versioned routines that survive tool changes. Implements:
-- [ADR 0039](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md) sections 1 to 6 and 8 (core rows only);
+- [ADR 0040](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md) sections 1 to 6 and 8 (core rows only);
 - the `routine.json` contract of [ADR 0026](../../docs/adr/0026-routine-artifact-contract.md), extended;
 - the deploy binding of [ADR 0032](../../docs/adr/0032-deploy-approval-binds-definition.md);
 - the pin rules of [ADR 0033](../../docs/adr/0033-pinned-connector-resolution-and-launch-catalog.md);
@@ -75,7 +75,7 @@ Open questions it builds on, with their defaults:
 - Commit steps only: `dedupe: { key: template, window_days: int 1..400 }`. `key` may reference only
   `{{ item.<field> }}`.
 - `limits.max_skipped_items: int 0..500`, at most `max_items_per_run`, default 5.
-- Class rules exactly as in [ADR 0039 section 1](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#1-routinejson-v2-is-the-ir)
+- Class rules exactly as in [ADR 0040 section 1](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#1-routinejson-v2-is-the-ir)
   (allowed `max_attempts`, defaults, where `skip_item` is allowed; commit steps take no `retry`).
 - `upgradeV1(def) → RoutineDefinitionV2` is pure.
 - `resolveDefinitionV2(def, pins, readShapes)` is the only place defaults are filled: it writes each class default
@@ -119,19 +119,19 @@ registerBackend(b: ExecutionBackend, opts: { conformance_passed: true }): void; 
   and durable steps return ids only ([ADR 0009](../../docs/adr/0009-durable-execution-on-postgres.md)).
 - A step returns `null` for a `foreach` element to drop it (not counted) or `{ "$skip": "<code>" }` to skip it
   (counted, code `^[a-z_]{1,32}$`).
-- Retries run inside the step with backoff on `ports.clock` ([ADR 0039 section 5](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#5-running-on-the-native-backend)).
+- Retries run inside the step with backoff on `ports.clock` ([ADR 0040 section 5](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#5-running-on-the-native-backend)).
 
 **Pipeline functions** (`packages/execution-backend/src/`, all pure unless stated):
 - `chooseTool(capability, candidates, stats) → ToolChoice`:
-  - the rule ids and order are those of [ADR 0039 section 3.1](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#31-tool-choice-research-the-best-tools);
+  - the rule ids and order are those of [ADR 0040 section 3.1](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#31-tool-choice-research-the-best-tools);
   - each rate is a `Figure` with arithmetic.
 - `scaffold(brief) → RoutineDefinitionV2` and `lockedFields(def)`.
 - `validateStatic(def, ctx) → Issue[]`:
   - `Issue = { code, pointer, rule? }`;
-  - the codes are the list in [ADR 0039 section 3.3](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#33-static-validation);
+  - the codes are the list in [ADR 0040 section 3.3](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#33-static-validation);
   - it calls `lintRoutine` and returns its issues too.
 - `lintRoutine(resolved, artifact, receipt?) → Issue[]` (`src/rules.ts`), the workflow design rules of
-  [ADR 0039 section 3.4](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules):
+  [ADR 0040 section 3.4](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules):
   - every issue has `rule` (`wf.trigger`, `wf.single_purpose`, `wf.error_path`, `wf.retry_timeout`,
     `wf.idempotent`, `wf.credential_ref`, `wf.pinned_test`, `wf.heldout_gate`) and one of the codes in that table;
   - WF1 to WF7 run without a receipt; WF8 runs when a receipt is given, and `deployVersion` always gives one;
@@ -265,7 +265,7 @@ Tests never call a real model or service; model steps use the recorded-output fa
 | DRIFT | DRIFT: an extra key or a missing optional key is not drift | |
 | DRIFT | DRIFT: the stability record counts runs, items, skips, dedupes and retries with arithmetic and run ids | golden Figures |
 | DRIFT | DRIFT: a commit through an opaque_workflow connection asks even in auto_commit | rule `core.commit.opaque_ask` |
-| BACKEND | BACKEND: the native backend passes the conformance suite | all 8 rules of ADR 0039 section 2 |
+| BACKEND | BACKEND: the native backend passes the conformance suite | all 8 rules of ADR 0040 section 2 |
 | BACKEND | BACKEND: a test backend that commits without an approved item hash fails the suite | |
 | BACKEND | BACKEND: a test backend whose compiled routine holds a secret-shaped value fails the suite | |
 | BACKEND | BACKEND: a test backend that writes fixture text into durable state fails the suite | |
@@ -280,7 +280,7 @@ Tests never call a real model or service; model steps use the recorded-output fa
 - **Spike S8** (porting one Activepieces piece).
 - **The public list refresh job for tool candidates.** Candidates come in as data here.
 - **Web and Mac screens** for rollback and the stability record (M8 web, M5 Mac tasks).
-- **EE rows of ADR 0039 section 8**: teams sharing, N-of-M deploy approvals, SIEM.
+- **EE rows of ADR 0040 section 8**: teams sharing, N-of-M deploy approvals, SIEM.
 - **Wiring outside the paths in scope.** Calling `splitHeldOut` and `deriveReadShape` from fixture capture, and
   `validateStatic`, `replay` and `evaluateCases` from the verification sandbox, are one-line call-site changes in the
   m2-04 and m2-07 code. If those files are outside `paths_in_scope`, widen it under "Scope changes" in the same

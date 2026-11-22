@@ -20,7 +20,7 @@ red_tests: [SCHEMA, CATALOG, MAP, LINT, PINNED, CASES, EXPORT, PUSH, DEPLOY, BOU
 # m5-12-n8n-export
 
 ## Summary
-Builds the **n8n export** of [ADR 0039 section 9](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#9-the-n8n-export),
+Builds the **n8n export** of [ADR 0040 section 9](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#9-the-n8n-export),
 the owner's decision on [OQ-30](../../docs/OPEN_QUESTIONS.md#oq-30-n8n-in-offload) (2026-11-22, verbatim: "Build
 worflow automation as an expert n8n engineer"):
 1. `exportN8n` turns a verified build (its resolved routine definition, artifact, receipt and tokenised fixtures)
@@ -29,7 +29,7 @@ worflow automation as an expert n8n engineer"):
    parameters and carries the node's input or output shape, recorded from the pinned n8n release. A step whose read
    shape does not fit is refused;
 3. the bundle is checked against Offload's schema of the n8n workflow file, the catalog and the eight workflow design
-   rules ([ADR 0039 section 3.4](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules));
+   rules ([ADR 0040 section 3.4](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules));
 4. `pinData` comes from the tokenised visible instances and the expected items, on every node that reads or writes,
    so a test run in the n8n editor writes nothing; a pinned-data test runs the bundle over each acceptance case of
    [m5-10's ACCEPTANCE.md](../m5-10-workflow-backend/ACCEPTANCE.md);
@@ -39,11 +39,11 @@ worflow automation as an expert n8n engineer"):
 
 The export is an **export target, not an execution backend**: a workflow run in the member's n8n is outside
 Offload's gate, item journal, broker and hours-saved measurement, and the card says so, together with what was and
-was not verified ([ADR 0039 section 9.3](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#93-validation)).
+was not verified ([ADR 0040 section 9.3](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#93-validation)).
 Offload's own engine stays the default runtime. n8n run by Offload is not built
 ([OQ-32](../../docs/OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n)).
 
-Implements [ADR 0039](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md) sections 3.4 (n8n
+Implements [ADR 0040](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md) sections 3.4 (n8n
 column) and 9, using the deploy binding of [ADR 0032](../../docs/adr/0032-deploy-approval-binds-definition.md), the
 broker of [ADR 0034](../../docs/adr/0034-credential-broker-and-key-providers.md), the item outcomes of
 [ADR 0004](../../docs/adr/0004-every-external-action-is-gated.md) and the C6 rules of
@@ -108,7 +108,7 @@ type N8nExport = { bundle: N8nBundle; export_hash: string; card: string[] };
 - Pinned to one n8n release, chosen when the slice starts (the latest stable 2.x; n8n 3.0 was early access on
   2026-11-22) and recorded under "Scope changes".
 - **Node bindings**, one per pinned Offload tool that can be exported
-  ([ADR 0039 section 9.2](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#92-mapping)):
+  ([ADR 0040 section 9.2](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#92-mapping)):
   - `offload`: `{ provider, rung, tool }` (the MCP or Composio tool name, or the OpenAPI operation id);
   - `n8n`: `{ type, typeVersion, credential_type }`;
   - `parameters`: rows `{ arg, parameter_path }` and fixed rows `{ parameter_path, value }`;
@@ -133,7 +133,7 @@ type N8nExport = { bundle: N8nBundle; export_hash: string; card: string[] };
 
 **Functions** (`packages/n8n-export/src/`, all pure unless stated):
 - `exportN8n(resolved, artifact, receipt, fixtures, catalog) → N8nExport | { error: "export_unsupported" | "export_shape_mismatch", step_id } | { error: "heldout_not_passed" }`.
-  Mapping as [ADR 0039 section 9.2](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#92-mapping), and:
+  Mapping as [ADR 0040 section 9.2](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#92-mapping), and:
   - a step's `args` become node parameters only through its binding's rows; an arg with no row, a step with no
     binding, `runs_on: device`, a browser connector or an `opaque_workflow` connection is `export_unsupported`;
   - each read step's `read_shape` must fit its binding's `output_shape` (`checkReadShape` with the binding's shape:
@@ -239,7 +239,7 @@ RLS as on the tables it extends; `n8n_pushes` is tenant-scoped and under the mem
 - Update [DATA_MODEL.md](../../docs/DATA_MODEL.md), [ARCHITECTURE section 11](../../docs/ARCHITECTURE.md#11-routine-runtime)
   and [SECURITY_PRIVACY.md](../../docs/SECURITY_PRIVACY.md) in the same commits: a new egress (the member's own n8n
   host) and C6-derived `pinData` leaving Offload in an export, at the member's request
-  ([ADR 0039 section 9.4](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#94-download)).
+  ([ADR 0040 section 9.4](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#94-download)).
 
 **Fixtures.** `packages/testkit/src/n8n/` holds a fake n8n server (an in-process HTTP server that records requests
 and answers the create and publish routes). `packages/testkit/fixtures/n8n/` holds hand-broken bundles for the LINT
@@ -335,7 +335,7 @@ catalog's shapes and `checked` dates come from these runs.
   record for exported workflows.
 - **Mapping nodes** that would reshape an n8n node's output to fit a read shape. A mismatch refuses the export.
 - **Importing n8n workflows into Offload.** The member's own n8n workflows still reach Offload only as MCP tools
-  ([ADR 0039 section 7](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#7-n8n-activepieces-and-other-engines)).
+  ([ADR 0040 section 7](../../docs/adr/0040-routine-definition-v2-and-execution-backends.md#7-n8n-activepieces-and-other-engines)).
 - **Exporting device steps, browser steps and `opaque_workflow` connections** (`export_unsupported`).
 - **Human approval nodes inside the exported workflow** (for example Slack "Send and Wait for Response"). The card
   says the export does not ask before each batch.

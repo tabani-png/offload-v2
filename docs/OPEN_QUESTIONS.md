@@ -300,7 +300,7 @@ Status: open.
 
 ## OQ-31: Masked text fields in build sandboxes
 
-Status: open. Raised 2026-11-22 by [ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md).
+Status: open. Raised 2026-11-22 by [ADR 0040](adr/0040-routine-definition-v2-and-execution-backends.md).
 - **Question**: Fixtures enter a build sandbox with every connector string replaced by one opaque token
   ([ADR 0027](adr/0027-fixture-capture-and-connector-content.md)). A fix that must read a mail body or a notes
   document (an invoice total, the action items of a meeting) cannot be built or replayed against that. May the build
@@ -411,7 +411,7 @@ Status: open.
 
 Status: **Decided 2026-11-22 (owner). Resolved.** Raised 2026-11-22 by your ask ("maybe even through like n8n");
 research in [workflow engines 2026-11](research/workflow-engines-2026-11.md), decision in
-[ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md) (still proposed).
+[ADR 0040](adr/0040-routine-definition-v2-and-execution-backends.md) (still proposed).
 - **Question**: How far should Offload go with n8n? n8n's Sustainable Use License FAQ does not allow letting users
   have workflows built for them on n8n "via a custom UI, our API, MCP, or an AI agent acting on the user's behalf"
   without an Enterprise or OEM agreement, and n8n holds credentials itself, which bypasses Offload's gate and broker.
@@ -424,14 +424,14 @@ research in [workflow engines 2026-11](research/workflow-engines-2026-11.md), de
      workflows and error branches; per-step retries and timeouts; idempotent writes with dedupe keys; credentials by
      reference only; pinned-data test runs; held-out acceptance checks that pass before activation. Each rule is a
      lint rule with an issue code, so a definition or export that breaks one is refused
-     ([ADR 0039 section 3.4](adr/0039-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules);
+     ([ADR 0040 section 3.4](adr/0040-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules);
      slice [m5-10](../slices/m5-10-workflow-backend/SPEC.md), tag `RULES`).
   2. **n8n export.** Offload turns a verified build into import-ready n8n workflow JSON that you run in your own n8n:
      checked against Offload's schema of the n8n workflow file and a pinned node catalog (node types and
      `typeVersion`s), with `pinData` from the tokenised fixtures and credentials as names you map on import. If you
      connect your own n8n (an API key you give, kept by the credential broker), Offload can push it there, only under
      a deploy approval whose hash binds the exact JSON
-     ([ADR 0039 section 9](adr/0039-routine-definition-v2-and-execution-backends.md#9-the-n8n-export);
+     ([ADR 0040 section 9](adr/0040-routine-definition-v2-and-execution-backends.md#9-the-n8n-export);
      slice [m5-12](../slices/m5-12-n8n-export/SPEC.md)). An exported workflow runs outside Offload's gate, item
      journal, broker and hours-saved measurement, and the export card says so in words.
   3. **Offload's own engine stays the default runtime.** "Offload builds and runs it inside n8n for you" (n8n hosted
@@ -452,7 +452,7 @@ research in [workflow engines 2026-11](research/workflow-engines-2026-11.md), de
 - **Affects**: [ADR 0010](adr/0010-mcp-first-connectors.md), [ADR 0032](adr/0032-deploy-approval-binds-definition.md),
   [ADR 0033](adr/0033-pinned-connector-resolution-and-launch-catalog.md),
   [ADR 0034](adr/0034-credential-broker-and-key-providers.md),
-  [ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md), [OPEN_CORE.md](OPEN_CORE.md).
+  [ADR 0040](adr/0040-routine-definition-v2-and-execution-backends.md), [OPEN_CORE.md](OPEN_CORE.md).
 
 ## OQ-32: Written license confirmation from n8n
 
@@ -489,7 +489,7 @@ Status: open. Raised 2026-11-22 as the follow-up to [OQ-30](#oq-30-n8n-in-offloa
   - These readings are ours, not n8n's, and not legal advice. n8n Cloud's own terms were not found on 2026-11-22.
   - Export file: moderate, unconfirmed. Push: real.
 - **Blocks**: switching push on for users (m5-12 ships it off); any hosted n8n path.
-- **Affects**: [ADR 0039 section 9](adr/0039-routine-definition-v2-and-execution-backends.md#9-the-n8n-export),
+- **Affects**: [ADR 0040 section 9](adr/0040-routine-definition-v2-and-execution-backends.md#9-the-n8n-export),
   [research section 7](research/workflow-engines-2026-11.md#7-license-risks-stated-plainly).
 
 ## OQ-27: Publish the repository publicly
