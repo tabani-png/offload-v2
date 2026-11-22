@@ -65,6 +65,8 @@ public struct FixOptionRow: Equatable, Sendable, Identifiable {
   public var recommended: Bool
   /// Picking it makes the primary button Leave it alone.
   public var leavesAlone: Bool
+  /// "how: …" of the saving, shown under the picked option.
+  public var how: String?
 }
 
 /// The one suggested fix.
@@ -82,6 +84,8 @@ public struct FixCard: Equatable, Sendable {
   public var title: String
   /// The count in the title, when it has one.
   public var figure: Figure?
+  /// "how: …" of that count, one click on the title away.
+  public var how: String?
   public var options: [FixOptionRow]
   /// The option picked at first (the recommended one); nil without options.
   public var defaultSelection: Int?
@@ -196,7 +200,7 @@ public struct TodayContent: Equatable, Sendable {
       FixCard(source: .localRepeat(key: t.pattern.key, name: t.pattern.name, minutesPerWeek: Int(t.pattern.minutesPerWeek.value),
                                    isoWeek: week.isoWeek),
               status: TodayCopy.topRepeatStatus, title: TodayCopy.localFixTitle(name: t.pattern.name, times: Int(t.row.times.value)),
-              figure: t.row.times, options: [], defaultSelection: nil)
+              figure: t.row.times, how: TodayCopy.how(t.row.times.arithmetic, weekdays: nil), options: [], defaultSelection: nil)
     }
 
     return TodayContent(title: TodayCopy.title(day: label, today: today, timeZone: timeZone),
@@ -220,8 +224,8 @@ public struct TodayContent: Equatable, Sendable {
     ]
     let kindList = descending(record.byKind.filter { $0.minutes.value > 0 }) { $0.minutes.value }
     var kinds: [KindRow] = []
-    for (i, k) in kindList.enumerated() {
-      kinds.append(KindRow(kind: TodayCopy.kindName(k.kind), colorHex: DayGrid.palette[i % DayGrid.palette.count],
+    for k in kindList {
+      kinds.append(KindRow(kind: TodayCopy.kindName(k.kind), colorHex: kindColor(k.kind),
                            figure: k.minutes, duration: TodayCopy.duration(minutes: Int(k.minutes.value.rounded()))))
     }
     let did: [DidRow] = record.byTask.filter { $0.minutes.value > 0 }.map { task in
@@ -232,7 +236,7 @@ public struct TodayContent: Equatable, Sendable {
     let repeats: [RepeatRow] = taskList.map { task in
       RepeatRow(key: task.taskKey, name: task.name, strip: nil, times: task.instances, minutes: task.minutes,
                 count: TodayCopy.repeatCount(times: Int(task.instances.value.rounded()), minutes: task.minutes.value),
-                how: TodayCopy.how(task.minutes.arithmetic, weekdays: nil))
+                how: TodayCopy.how(task.instances.arithmetic + " · " + task.minutes.arithmetic, weekdays: nil))
     }
     let open = opportunities.filter { $0.state == .open }
     var first: Opportunity?
@@ -265,17 +269,27 @@ public struct TodayContent: Equatable, Sendable {
     var rows: [FixOptionRow] = real.enumerated().map { i, f in
       FixOptionRow(id: f.id, number: i + 1, title: f.title, detail: f.detail,
                    saves: f.estimate.map { TodayCopy.saves(hoursPerWeek: hoursPerWeek($0)) }, saving: f.estimate,
-                   recommended: f.recommended, leavesAlone: false)
+                   recommended: f.recommended, leavesAlone: false,
+                   how: f.estimate.map { TodayCopy.how($0.arithmetic, weekdays: nil) })
     }
     let leave = o.options.first { $0.kind == "leave_alone" }
     rows.append(FixOptionRow(id: leave?.id ?? "leave_alone", number: rows.count + 1,
                              title: (leave?.title.isEmpty == false ? leave?.title : nil) ?? TodayCopy.leaveAlone,
                              detail: leave?.detail ?? TodayCopy.leaveAloneDetail, saves: nil, saving: nil, recommended: false,
-                             leavesAlone: true))
+                             leavesAlone: true, how: nil))
     let status = o.goal.map { TodayCopy.rankedFirst(goal: $0.text) } ?? TodayCopy.suggestedFix
-    return FixCard(source: .opportunity(id: o.id), status: status, title: o.title, figure: nil, options: rows,
+    return FixCard(source: .opportunity(id: o.id), status: status, title: o.title, figure: nil, how: nil, options: rows,
                    defaultSelection: rows.firstIndex { $0.recommended } ?? 0)
   }
+
+  /// One colour per kind of work (the brain's `WORK_KINDS`), so a kind keeps its colour whatever its rank that day: the
+  /// mockup's coding blue, email amber and meetings purple; an unknown kind and `other` take Other's colour.
+  public static let kindColors: [String: UInt32] = [
+    "code": Tokens.Palette.working, "docs": Tokens.Palette.cyan, "email": Tokens.Palette.needsYou, "meeting": 0xB48CFF,
+    "browse": Tokens.Palette.done, "chat": 0xFF8FA3, "sheet": 0xE8D67A,
+  ]
+
+  public static func kindColor(_ kind: String) -> UInt32 { kindColors[kind] ?? DayGrid.otherColor }
 
   /// Highest `key` first; equal keys keep their order.
   static func descending<T>(_ items: [T], by key: (T) -> Double) -> [T] {
