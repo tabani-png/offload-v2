@@ -92,7 +92,12 @@ export class PgBuildStore implements BuildStore {
   async insertQueued(b: NewBuild, now: number, stale_after_ms: number): Promise<BuildRow> {
     try {
       return await this.tx(b.tenant_id, async (tx) => {
-        const live = await tx`SELECT id, heartbeat_at, stages FROM builds WHERE tenant_id = ${b.tenant_id} AND brief_id = ${b.brief_id} AND state IN ${tx(LIVE)} FOR UPDATE`;
+        const liveQuery = () => tx`SELECT id, heartbeat_at, stages FROM builds WHERE tenant_id = ${b.tenant_id} AND brief_id = ${b.brief_id} AND state IN ${tx(LIVE)} FOR UPDATE`;
+        await liveQuery();
+        // Read again once the lock is held: a concurrent OK that recovered the same stale build and committed while this
+        // one waited is now visible (a new statement, a new snapshot), so this one answers already_running rather than
+        // finding that build's held-out hash in the used check below (review round 5).
+        const live = await liveQuery();
         for (const x of live as Array<Record<string, unknown>>) if (now - ms(x["heartbeat_at"])! <= stale_after_ms) throw new BuildConflict("already_running");
         const used = await tx`SELECT EXISTS (SELECT 1 FROM builds WHERE tenant_id = ${b.tenant_id} AND brief_id = ${b.brief_id} AND bound_hashes->>'held_out_hash' = ${b.bound_hashes["held_out_hash"] ?? ""}) AS used`;
         if ((used[0] as { used: boolean }).used) throw new HeldOutUsed();
