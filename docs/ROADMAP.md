@@ -451,6 +451,7 @@ Tasks after the two slices:
 | [m3-03](../slices/m3-03-mac-signing-sparkle/SPEC.md) | App bundle, signing, notarization and Sparkle in the CI `mac` job | m3-02; O1 to O3, O11 for the first real release | Sonnet | M | M3-C | `.github/workflows/**`, `apps/mac/Package.swift`, `apps/mac/Packaging/**`, `OffloadMac/Updates/**` |
 | m3-04 | Onboarding permissions step, local now line, Never watch | m3-02 | Sonnet | M | M3-C | `apps/mac/**` |
 | m3-05 | Recordings import into an import space; imported objects skip `too_old` and use the ingest date as `day` ([ADR 0020](adr/0020-device-ingest-protocol.md)) | m3-02 | Sonnet | M | M3-C | `apps/mac/**`, `services/api/**` |
+| [m3-05c](../slices/m3-05c-import-signals/SPEC.md) | Recordings import signals: app cues from window chrome (URL-bar hosts, known window titles) when a recording has no menu bar, and start times from the container creation date, else the name, else a stable per-file order; the cue table as JSON for m5-01 | m3-05 | Opus | M | M3-C | `apps/mac/Sources/OffloadImport/**`, `packages/contracts/rules/**` |
 | m3-06 | Pseudonym key wraps for a second Mac and the recovery code | m3-02 | Opus plan, Sonnet build | M | M3-C | `apps/mac/**`, `services/api/**` |
 
 ## M4. Measured saving, loop closed

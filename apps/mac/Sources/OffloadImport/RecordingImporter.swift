@@ -72,16 +72,26 @@ public struct RecordingImporter: Sendable {
   public struct Readers: Sendable {
     public var openVideo: @Sendable (URL) throws -> any RecordingFrameSource
     public var openImage: @Sendable (URL) throws -> ImportFrame
+    /// A video's container creation date (m3-05c). None by default.
+    public var creationDates: any RecordingCreationDates
+    /// A video's length without reading frames, for planning starts (m3-05c); nil opens the video to read it.
+    public var duration: (@Sendable (URL) -> TimeInterval?)?
 
     public init(openVideo: @escaping @Sendable (URL) throws -> any RecordingFrameSource,
-                openImage: @escaping @Sendable (URL) throws -> ImportFrame) {
+                openImage: @escaping @Sendable (URL) throws -> ImportFrame,
+                creationDates: any RecordingCreationDates = NoRecordingCreationDates(),
+                duration: (@Sendable (URL) -> TimeInterval?)? = nil) {
       self.openVideo = openVideo
       self.openImage = openImage
+      self.creationDates = creationDates
+      self.duration = duration
     }
 
     public static let live = Readers(
       openVideo: { try AVRecordingFrameSource(url: $0) },
-      openImage: { try ImageFileFrameSource.frame(url: $0) }
+      openImage: { try ImageFileFrameSource.frame(url: $0) },
+      creationDates: AVRecordingCreationDates(),
+      duration: { AVRecordingFrameSource.duration(of: $0) }
     )
   }
 
@@ -157,10 +167,18 @@ public struct RecordingImporter: Sendable {
     var report = ImportReport(space: nil, filesRead: 0, skipped: 0, failed: 0, stillWriting: waiting.count, moments: 0,
                               observations: 0, firstDay: nil, lastDay: nil)
     var todo: [(file: ScannedFile, fingerprint: String)] = []
+    // Videos read in an earlier import, with the start they were read at (m3-05c: new files keep clear of them).
+    var imported: [(url: URL, start: Date)] = []
+    let ledgerStarts = Dictionary(ledger.entries.map { ($0.fingerprint, $0.recordedAt) }, uniquingKeysWith: { a, _ in a })
     for file in ready {
       let (size, modified) = Self.attributes(file.url)
       let fp = RecordingFingerprint.of(path: file.url.standardizedFileURL.path, size: size, modified: modified ?? Date(timeIntervalSince1970: 0))
-      if ledger.contains(fp) { report.skipped += 1 } else { todo.append((file, fp)) }
+      if ledger.contains(fp) {
+        report.skipped += 1
+        if file.kind == .video, let start = ledgerStarts[fp] { imported.append((file.url, start)) }
+      } else {
+        todo.append((file, fp))
+      }
     }
     guard !todo.isEmpty else {
       progress(.finished(report))
@@ -177,7 +195,10 @@ public struct RecordingImporter: Sendable {
     }
     report.space = space
 
-    // 4. Read, write, record. Screenshots taken within a run's gap of each other are read as one span.
+    // 4. Plan every new video's start (m3-05c: creation date, name, then a stable order of modified times).
+    let planned = planStarts(todo.map(\.file), imported: imported, now: clock.now())
+
+    // 5. Read, write, record. Screenshots taken within a run's gap of each other are read as one span.
     var i = 0
     while i < todo.count {
       var group = [todo[i]]
@@ -192,16 +213,40 @@ public struct RecordingImporter: Sendable {
       if todo[i].file.kind != .image { progress(.reading(file: i + 1, of: todo.count)) }
       // Read again before each file, so a Never watch entry added meanwhile applies from here on.
       let rules = exclusions.currentRules()
-      readGroup(group, space: space, rules: rules, exclusions: exclusions, fileOffset: i, total: todo.count, report: &report,
-                progress: progress)
+      readGroup(group, space: space, rules: rules, exclusions: exclusions, planned: planned, fileOffset: i, total: todo.count,
+                report: &report, progress: progress)
       i += group.count
     }
     progress(.finished(report))
     return report
   }
 
+  /// Each new video's start (`RecordingStartTime.plan`); a nil value means it would end in the future.
+  private func planStarts(_ files: [ScannedFile], imported: [(url: URL, start: Date)], now: Date) -> [URL: RecordingStart?] {
+    let videos = files.filter { $0.kind == .video }
+    guard !videos.isEmpty else { return [:] }
+    let times = videos.map { file -> RecordingTimes in
+      let modified = Self.attributes(file.url).modified ?? file.modified
+      return RecordingTimes(name: file.url.standardizedFileURL.path, created: readers.creationDates.creationDate(of: file.url),
+                            nameDate: file.nameDate, modified: modified, duration: length(of: file.url))
+    }
+    let occupied = imported.map { DateInterval(start: $0.start, duration: length(of: $0.url) ?? 0) }
+    var out: [URL: RecordingStart?] = [:]
+    for (file, start) in zip(videos, RecordingStartTime.plan(times, now: now, futureSlack: Self.futureSlack, occupied: occupied)) {
+      out.updateValue(start, forKey: file.url)
+    }
+    return out
+  }
+
+  /// A video's length: the cheap reader first, else the video is opened (review 1: an unknown length planned as 0
+  /// would overlap the next recording).
+  private func length(of url: URL) -> TimeInterval? {
+    readers.duration.flatMap { $0(url) } ?? (try? readers.openVideo(url))?.duration
+  }
+
   private func readGroup(_ group: [(file: ScannedFile, fingerprint: String)], space: ImportSpace,
-                         rules: [ImportExclusionRule], exclusions: any ImportExclusionSource, fileOffset: Int, total: Int,
+                         rules: [ImportExclusionRule], exclusions: any ImportExclusionSource,
+                         planned: [URL: RecordingStart?], fileOffset: Int, total: Int,
                          report: inout ImportReport,
                          progress: (ImportProgress) -> Void) {
     let now = clock.now()
@@ -212,12 +257,22 @@ public struct RecordingImporter: Sendable {
       switch first.kind {
       case .video:
         let source = try readers.openVideo(first.url)
-        // A recorder writes until the recording ends, so without a name time the start is the last write minus the
-        // length. The file may have grown while the gate waited, so its time is read again here.
-        let modified = Self.attributes(first.url).modified ?? first.modified
-        var start = first.nameDate ?? modified.addingTimeInterval(-source.duration)
-        if start.addingTimeInterval(source.duration) > now.addingTimeInterval(Self.futureSlack) {
-          start = modified.addingTimeInterval(-source.duration)
+        var start: Date
+        if let entry = planned[first.url] {
+          // The planned start (m3-05c): creation date, name, or the stable order of modified times.
+          guard let plannedStart = entry else {
+            progress(.warning(.futureTime(file: first.url.lastPathComponent)))
+            return
+          }
+          start = plannedStart.start
+        } else {
+          // A recorder writes until the recording ends, so without a name time the start is the last write minus the
+          // length. The file may have grown while the gate waited, so its time is read again here.
+          let modified = Self.attributes(first.url).modified ?? first.modified
+          start = first.nameDate ?? modified.addingTimeInterval(-source.duration)
+          if start.addingTimeInterval(source.duration) > now.addingTimeInterval(Self.futureSlack) {
+            start = modified.addingTimeInterval(-source.duration)
+          }
         }
         guard start.addingTimeInterval(source.duration) <= now.addingTimeInterval(Self.futureSlack) else {
           progress(.warning(.futureTime(file: first.url.lastPathComponent)))

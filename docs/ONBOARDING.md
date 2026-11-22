@@ -339,9 +339,11 @@ week of capture.
   leave.
 - A file is read only once its size has stopped changing for 3 s. A fingerprint ledger (SHA-256 only, no names or
   paths) prevents reading a file twice.
-- Recording names give the time (macOS default names with a narrow no-break space before AM/PM, `(2)` copies,
-  24-hour names, CleanShot and QuickTime); otherwise the file's modified time (minus its length, for a recording).
-  Times are kept as they are, never moved; a file whose time is in the future is skipped and named in the panel.
+- A recording's time is the creation date its file records, else its name's time (macOS default names with a narrow
+  no-break space before AM/PM, `(2)` copies, 24-hour names, CleanShot and QuickTime), else its modified time minus
+  its length; copied recordings that share a modified time are placed one after the other in file order, 3 minutes
+  apart, instead of on one minute. A screenshot's time is its name's, else its modified time. Times are kept as they
+  are, never moved into the retention window; a file whose time is in the future is skipped and named in the panel.
 - The folder may also hold screenshots (png, jpg, heic, webp, up to 3 folders deep) or be a screenwatch archive
   (`days/DATE/log.jsonl`, rows with app, window and URL become masked focus observations).
 - Settings, Recordings (and "Recordings…" in the menu bar item) shows the same folder and Import, and each import
@@ -352,8 +354,10 @@ week of capture.
   this folder**, and "counted on this Mac".
 - A recording has no window title or URL, so the person's host and title exclusions, banking sites and private
   windows are matched against the text on each frame; a frame that shows one gets no text and no keyframe. An app
-  name is read off the menu bar only when it is followed by menu titles and the masker leaves it unchanged; otherwise
-  the app is "Screen". Never watch apps match a recording by the names the app is shown by (looked up when each
+  name is read off the menu bar only when it is followed by menu titles and the masker leaves it unchanged. A
+  recording without a menu bar takes its app from the window's own top edge: the address bar's site (Gmail for
+  `mail.google.com`, otherwise "Browser" and the site) or a known window title (Gmail, QuickBooks, HubSpot, Slack,
+  Excel, Google Sheets and others in a fixed list); otherwise the app is "Screen". Never watch apps match a recording by the names the app is shown by (looked up when each
   import starts, localized too), so an app chosen on screen 9 is skipped in a recording that shows its menu bar.
   Menu bars are read in English, German, French and Spanish.
 - In `.local` backend mode (the test build) the import runs fully on this Mac (m3-10): Vision reads the frames, the
