@@ -96,8 +96,10 @@ export async function runMemberUpdate(tx: Tx, input: MemberUpdateInput): Promise
         const e = input.estimateFor(t);
         if (e === null) continue;
         estimates.push({ ...e, taskKey: t.task_key });
+        // No storable option: an empty list, so a re-ranked opportunity drops the options of an earlier run (review 2
+        // finding 2) and its options never disagree with the estimate it is ranked by.
         const option = e.option ?? bareOption({ ...e, taskKey: t.task_key }, latest);
-        if (option !== null) options.set(t.task_key, [option]);
+        options.set(t.task_key, option === null ? [] : [option]);
       }
     } else {
       // Fix rules (m5-04): the episodes of the last 8 weeks, read through the day records, give each task's evidence.
