@@ -132,18 +132,17 @@ extension M311 {
 
   @MainActor @Test("ANSWER: cloud Not now posts POST /v1/opportunities/{id}/answer with the exact body")
   func answerCloudBody() async throws {
-    let opps = try JSONEncoder().encode([M311Cloud.opportunity("opp_1", rank: 1)])
     let transport = RecordingTransport(replies: [
-      .status(200, body: opps),
       .json(200, #"{"id":"opp_1","title":"","state":"not_now"}"#),
+      .json(200, "[]"),
     ])
     let core = APIClientCore(config: M311Backends.config, transport: transport)
     let app = M311Kit().app(backends: M311Backends.cloud(brain: M311Brain(), builds: HTTPBuildsClient(core: core)))
-    let model = TodayLiveModel(app: app, now: M311Now().clock, reloadRanking: {})
+    let model = TodayLiveModel(app: app, now: M311Now().clock, reloadRanking: {}, todayAPI: true, todayClient: M311Today())
     await model.refresh(force: true)
     #expect(model.ready?.fix?.source == .opportunity(id: "opp_1"))
     await model.notNow()
-    let post = try #require(transport.requests.last)
+    let post = try #require(transport.requests.first)
     #expect(post.httpMethod == "POST")
     #expect(post.url?.absoluteString == "https://api.example.test/v1/opportunities/opp_1/answer")
     #expect(String(decoding: post.httpBody ?? Data(), as: UTF8.self) == #"{"answer":"not_now"}"#)
@@ -198,18 +197,20 @@ extension M311 {
 
   // MARK: CLOUD
 
-  @MainActor @Test("CLOUD: the day and week records and the open opportunities fill the screen")
+  @MainActor @Test("CLOUD: the day record and GET /v1/today fill the screen; the week record and the list are not read")
   func cloudModel() async throws {
     let brain = M311Brain()
     let builds = M311Builds()
-    let (model, _) = M311Kit.cloudModel(brain: brain, builds: builds)
+    let today = M311Today()
+    let (model, _) = M311Kit.cloudModel(brain: brain, builds: builds, today: today)
     await model.refresh(force: true)
     #expect(brain.dayCalls == ["2026-11-12"])
-    #expect(brain.weekCalls == ["2026-W46"])
-    #expect(builds.calls == 1)
+    #expect(today.calls == ["2026-11-12"])
+    #expect(brain.weekCalls.isEmpty)
+    #expect(builds.calls == 0)
     let c = try #require(model.ready)
     #expect(c.headline == "7 h 40 m of work.")
-    #expect(c.kinds.count == 3)
+    #expect(c.grid != nil)
     #expect(c.did.count == 2)
     #expect(c.repeats.count == 3)
     #expect(c.fix?.source == .opportunity(id: "opp_1"))

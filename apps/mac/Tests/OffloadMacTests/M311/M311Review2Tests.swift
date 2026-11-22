@@ -97,7 +97,7 @@ extension M311 {
 
   @Test("HOW: the cloud card's count opens to the week task's instances when the opportunity names that task")
   func howCloudCardCount() throws {
-    let c = try #require(TodayContent.cloud(day: M311Cloud.day(), week: M311Cloud.week(),
+    let c = try #require(M311Cloud.content(day: M311Cloud.day(), week: M311Cloud.week(),
                                             opportunities: [M311Cloud.opportunity("opp_1", rank: 1)], today: M311Clock.today,
                                             timeZone: M311Clock.utc))
     let card = try #require(c.fix)
@@ -105,7 +105,7 @@ extension M311 {
     #expect(card.how == "how: sum of the task's instances = 6.0")
     #expect(c.figures.contains { $0 == card.figure })
     // Without the week record there is nothing to open: no how line.
-    let bare = try #require(TodayContent.cloud(day: M311Cloud.day(), week: nil,
+    let bare = try #require(M311Cloud.content(day: M311Cloud.day(), week: nil,
                                                opportunities: [M311Cloud.opportunity("opp_1", rank: 1)], today: M311Clock.today,
                                                timeZone: M311Clock.utc))
     #expect(bare.fix?.how == nil)
@@ -116,7 +116,7 @@ extension M311 {
   @MainActor @Test("STATES: .cloud without a brain client says Sign in again instead of reading forever")
   func cloudWithoutBrain() async {
     let app = M311Kit().app(backends: Backends(mode: .cloud(M311Backends.config), brain: nil, builds: nil, provenance: .cloud))
-    let model = TodayLiveModel(app: app, now: M311Now().clock, reloadRanking: {})
+    let model = TodayLiveModel(app: app, now: M311Now().clock, reloadRanking: {}, todayAPI: true)
     await model.refresh(force: true)
     #expect(model.state == .failed(.signIn))
     #expect(!model.isLoading)

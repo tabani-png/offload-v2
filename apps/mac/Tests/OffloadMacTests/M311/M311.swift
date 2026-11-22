@@ -244,6 +244,144 @@ enum M311Cloud {
   }
 }
 
+extension M311Cloud {
+  /// The planned `GET /v1/today` payload the server would send for these records: What you did from the day's tasks,
+  /// the repeats from the week's tasks, the suggested fix the open opportunity ranked first, no grid cells.
+  static func payload(day: DayRecord = day(), week: WeekRecord? = week(), opportunities: [Opportunity] = []) -> TodayPayload {
+    TodayPayload(
+      date: day.day, dayGrid: TodayDayGridPayload(categories: [], cells: [], switchBursts: []),
+      whatYouDid: day.byTask.map { TodayDidItem(taskKey: $0.taskKey, name: $0.name, start: nil, minutes: $0.minutes) },
+      repeats: (week?.tasks ?? []).map {
+        TodayRepeatItem(taskKey: $0.taskKey, name: $0.name, instances: $0.instances, minutes: $0.minutes,
+                        medianMinutes: $0.medianMinutes)
+      },
+      suggestedFix: TodayContent.nextOpportunity(opportunities, excluding: []))
+  }
+
+  /// The cloud content from the records' shapes, through the planned payload (the tests written before `GET /v1/today`
+  /// keep their fixtures).
+  static func content(day: DayRecord, week: WeekRecord?, opportunities: [Opportunity], today: String,
+                      timeZone: TimeZone) -> TodayContent? {
+    TodayContent.cloud(day: day, payload: payload(day: day, week: week, opportunities: opportunities), rhythm: nil,
+                       today: today, timeZone: timeZone)
+  }
+}
+
+/// Real-shaped JSON for the planned `GET /v1/today?date=` (API.md "Today, records and review"; field names as the
+/// brain's records: snake_case, every number a Figure with `source_purged_at`).
+enum M311TodayJSON {
+  static func fig(_ id: String, _ value: String, _ unit: String, _ arithmetic: String) -> String {
+    """
+    {"id":"fig_\(id)","value":\(value),"unit":"\(unit)","arithmetic":"\(arithmetic)",\
+    "evidence":[{"kind":"episode","id":"ep_01J\(id)"}],"source_purged_at":null}
+    """
+  }
+
+  static let opportunity = """
+    {"id":"opp_1","source":"finder","task_key":"k_t2","title":"You've reviewed agent PRs 6 times this week.",
+     "description":"Agent PR reviews","iso_week":"2026-W46","rank":1,"state":"open","score":0.82,
+     "factors":{"weekly_hours_saved":\(fig("f001", "1.4", "hours_per_week", "31 min × 6 × 0.45 = 1.4 h/wk")),
+                "confidence":"high"},
+     "options":[
+       {"id":"fix_2","option_no":2,"kind":"routine","recommended":false,"title":"Batch reviews into one 45-min block",
+        "detail":"setup · a calendar block and one notification a day",
+        "estimate":\(fig("f002", "0.6", "hours_per_week", "0.6 h/wk")),"confidence":"medium","effort_hours":1},
+       {"id":"fix_1","option_no":1,"kind":"tool","recommended":true,"title":"A checklist tool that pre-reads each agent PR",
+        "detail":"tool · flags missing tests and risky files",
+        "estimate":\(fig("f003", "1.4", "hours_per_week", "31 min × 6 × 0.45 = 1.4 h/wk")),"confidence":"high","effort_hours":3}
+     ],
+     "missing_connections":[],"goal":{"id":"g_1","text":"ship a product"},"not_now_until":null,
+     "created_at":"2026-11-12T08:00:00.000Z"}
+    """
+
+  /// Thu 12 Nov: three kinds over 09:00 to 10:15 plus one email cell at 07:45, a burst at 10:00, two tasks done, four
+  /// week tasks (one only once), the suggested fix above, and an item of each list that does not decode.
+  static let full = """
+    {
+      "date":"2026-11-12",
+      "day_grid":{
+        "categories":[
+          {"key":"code","name":"Coding","minutes":\(fig("c01", "200", "minutes", "active time of 10 code spans = 200 min"))},
+          {"key":"docs","minutes":\(fig("c02", "120", "minutes", "active time of 6 docs spans = 120 min"))},
+          {"key":"email","minutes":\(fig("c03", "60", "minutes", "active time of 5 email spans = 60 min"))}
+        ],
+        "cells":[
+          {"start":"07:45","category":"email"},
+          {"start":"09:00","category":"code"},
+          {"start":"09:15","category":"code"},
+          {"start":"09:30","category":null},
+          {"start":"10:00","category":"docs"},
+          {"start":"nonsense","category":"code"}
+        ],
+        "switch_bursts":[{"start":"10:00","switches":\(fig("b01", "5", "count", "5 app switches in 10:00 to 10:15"))}]
+      },
+      "what_you_did":[
+        {"task_key":"k_0123456789ab","name":"Reconcile invoices","start":"09:00",
+         "minutes":\(fig("d01", "65", "minutes", "3 instances = 65 min"))},
+        {"task_key":"k_1123456789ab","name":"Review agent PRs","start":"13:05",
+         "minutes":\(fig("d02", "90", "minutes", "2 instances = 90 min"))},
+        {"name":"No minutes, so not drawn"}
+      ],
+      "repeats":[
+        {"task_key":"k_t1","name":"Reconcile invoices","instances":\(fig("r01", "3", "count", "3 instances")),
+         "minutes":\(fig("r02", "62", "minutes", "sum of 3 instances = 62 min")),
+         "median_minutes":\(fig("r03", "20", "minutes", "median 20 min"))},
+        {"task_key":"k_t2","name":"Review agent PRs","instances":\(fig("r04", "6", "count", "Mon 1 + Tue 1 + Wed 2 + Thu 2 = 6")),
+         "minutes":\(fig("r05", "186", "minutes", "sum of 6 instances = 186 min"))},
+        {"task_key":"k_t3","name":"Once only","instances":\(fig("r06", "1", "count", "1 instance")),
+         "minutes":\(fig("r07", "300", "minutes", "300 min"))},
+        {"task_key":"k_t4","name":"Customer follow-up","instances":\(fig("r08", "5", "count", "5 instances")),
+         "minutes":\(fig("r09", "48", "minutes", "sum of 5 instances = 48 min"))},
+        {"task_key":"k_bad","name":"A plain number","instances":4,"minutes":40}
+      ],
+      "suggested_fix":\(opportunity)
+    }
+    """
+
+  static func payload(_ text: String = full) throws -> TodayPayload {
+    try JSONDecoder().decode(TodayPayload.self, from: Data(text.utf8))
+  }
+}
+
+/// A Today client that answers from a payload and records the days asked for.
+final class M311Today: TodayClient, @unchecked Sendable {
+  private let lock = NSLock()
+  private var _calls: [String] = []
+  private var result: @Sendable (String) throws -> TodayPayload
+
+  init(_ result: @escaping @Sendable (String) throws -> TodayPayload = { day in
+    var p = try M311TodayJSON.payload()
+    p.date = day
+    return p
+  }) {
+    self.result = result
+  }
+
+  var calls: [String] {
+    lock.lock()
+    defer { lock.unlock() }
+    return _calls
+  }
+
+  func set(_ f: @escaping @Sendable (String) throws -> TodayPayload) {
+    lock.lock()
+    result = f
+    lock.unlock()
+  }
+
+  // NSLock may not be used directly in an async function (Swift 6): a synchronous helper takes the call.
+  private func take(_ day: String) -> @Sendable (String) throws -> TodayPayload {
+    lock.lock()
+    defer { lock.unlock() }
+    _calls.append(day)
+    return result
+  }
+
+  func today(date: String) async throws -> TodayPayload {
+    try take(date)(date)
+  }
+}
+
 /// A brain client that answers from fixtures and counts calls.
 final class M311Brain: BrainClient, @unchecked Sendable {
   private let lock = NSLock()
@@ -326,10 +464,27 @@ final class M311Builds: BuildsClient, @unchecked Sendable {
   let open: [Opportunity]
   /// When set, every answer fails with it.
   let answerFailure: APIError?
+  /// What `GET /v1/opportunities/{id}` answers, by id (else 404).
+  let full: [String: Opportunity]
+  private var _opportunityCalls: [String] = []
 
-  init(open: [Opportunity] = [M311Cloud.opportunity("opp_1", rank: 1)], answerFailure: APIError? = nil) {
+  init(open: [Opportunity] = [M311Cloud.opportunity("opp_1", rank: 1)], answerFailure: APIError? = nil,
+       full: [String: Opportunity] = [:]) {
     self.open = open
     self.answerFailure = answerFailure
+    self.full = full
+  }
+
+  var opportunityCalls: [String] {
+    lock.lock()
+    defer { lock.unlock() }
+    return _opportunityCalls
+  }
+
+  private func noteOpportunity(_ id: String) {
+    lock.lock()
+    _opportunityCalls.append(id)
+    lock.unlock()
   }
 
   var calls: Int {
@@ -362,7 +517,11 @@ final class M311Builds: BuildsClient, @unchecked Sendable {
     count()
     return open
   }
-  func opportunity(id: String) async throws -> Opportunity { throw APIError.notFound }
+  func opportunity(id: String) async throws -> Opportunity {
+    noteOpportunity(id)
+    guard let o = full[id] else { throw APIError.notFound }
+    return o
+  }
   func answerOpportunity(id: String, answer: OpportunityAnswer, optionID: String?) async throws -> Opportunity {
     if let answerFailure { throw answerFailure }
     record(id, answer, optionID)
@@ -431,10 +590,13 @@ enum M311Backends {
     return (model, app)
   }
 
+  /// A `.cloud` model. `todayAPI` is the `TodayAPI.available` flag (on here: the planned `GET /v1/today` is read
+  /// through `today`); off shows the labelled sample.
   static func cloudModel(brain: M311Brain = M311Brain(), builds: any BuildsClient = M311Builds(),
+                         today: M311Today = M311Today(), todayAPI: Bool = true,
                          now: M311Now = M311Now()) -> (TodayLiveModel, AppModel) {
     let app = M311Kit().app(backends: M311Backends.cloud(brain: brain, builds: builds))
-    let model = TodayLiveModel(app: app, now: now.clock, reloadRanking: {})
+    let model = TodayLiveModel(app: app, now: now.clock, reloadRanking: {}, todayAPI: todayAPI, todayClient: today)
     return (model, app)
   }
 }

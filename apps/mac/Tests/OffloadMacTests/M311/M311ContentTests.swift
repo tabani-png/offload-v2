@@ -281,7 +281,7 @@ extension M311 {
                 estimate: M311Cloud.fig(Double(n) / 2, "hours_per_week", "estimate \(n)"))
     }
     let opp = M311Cloud.opportunity("opp_1", rank: 1, options: options)
-    let c = try #require(TodayContent.cloud(day: M311Cloud.day(), week: M311Cloud.week(), opportunities: [opp],
+    let c = try #require(M311Cloud.content(day: M311Cloud.day(), week: M311Cloud.week(), opportunities: [opp],
                                             today: M311Clock.today, timeZone: M311Clock.utc))
     let card = try #require(c.fix)
     #expect(card.options.map(\.title) == ["Option 1", "Option 2", "Option 3", "Leave it alone"])
@@ -297,7 +297,7 @@ extension M311 {
 
   @Test("FIX: picking Leave it alone turns the primary button into Leave it alone")
   func fixLeaveAloneLabel() throws {
-    let c = try #require(TodayContent.cloud(day: M311Cloud.day(), week: nil, opportunities: [M311Cloud.opportunity("opp_1", rank: 1)],
+    let c = try #require(M311Cloud.content(day: M311Cloud.day(), week: nil, opportunities: [M311Cloud.opportunity("opp_1", rank: 1)],
                                             today: M311Clock.today, timeZone: M311Clock.utc))
     let card = try #require(c.fix)
     #expect(card.options.map(\.title) == ["A checklist tool that pre-reads each agent PR", "Batch reviews into one 45-min block", "Leave it alone"])
@@ -308,7 +308,7 @@ extension M311 {
       FixOption(id: "fix_a", optionNo: 1, title: "A routine", recommended: true),
       FixOption(id: "fix_la", optionNo: 2, title: "Leave it alone", detail: "it's the job", kind: "leave_alone"),
     ])
-    let c2 = try #require(TodayContent.cloud(day: M311Cloud.day(), week: nil, opportunities: [server], today: M311Clock.today,
+    let c2 = try #require(M311Cloud.content(day: M311Cloud.day(), week: nil, opportunities: [server], today: M311Clock.today,
                                              timeZone: M311Clock.utc))
     #expect(c2.fix?.options.map(\.id) == ["fix_a", "fix_la"])
     #expect(c2.fix?.primaryLabel(selected: 1) == "Leave it alone")
@@ -320,12 +320,12 @@ extension M311 {
     #expect(c.fix == nil)
     let declined = M311Fixture.pattern(key: "k_x00000000000", name: "X", occurrences: [("2026-11-10", 30)], score: 0, penalty: 0)
     #expect(M311Fixture.local(M311Fixture.snapshot([M311Fixture.workday], repeats: [declined]))?.fix == nil)
-    let cloud = try #require(TodayContent.cloud(day: M311Cloud.day(), week: nil, opportunities: [], today: M311Clock.today,
+    let cloud = try #require(M311Cloud.content(day: M311Cloud.day(), week: nil, opportunities: [], today: M311Clock.today,
                                                 timeZone: M311Clock.utc))
     #expect(cloud.fix == nil)
     var shipped = M311Cloud.opportunity("opp_s", rank: 1)
     shipped.state = .shipped
-    #expect(TodayContent.cloud(day: M311Cloud.day(), week: nil, opportunities: [shipped], today: M311Clock.today,
+    #expect(M311Cloud.content(day: M311Cloud.day(), week: nil, opportunities: [shipped], today: M311Clock.today,
                                timeZone: M311Clock.utc)?.fix == nil)
   }
 
@@ -333,7 +333,7 @@ extension M311 {
   func fixCloudRank() throws {
     let opps = [M311Cloud.opportunity("opp_3", rank: 3), M311Cloud.opportunity("opp_none", rank: nil),
                 M311Cloud.opportunity("opp_1", rank: 1, goal: nil)]
-    let c = try #require(TodayContent.cloud(day: M311Cloud.day(), week: nil, opportunities: opps, today: M311Clock.today,
+    let c = try #require(M311Cloud.content(day: M311Cloud.day(), week: nil, opportunities: opps, today: M311Clock.today,
                                             timeZone: M311Clock.utc))
     #expect(c.fix?.source == .opportunity(id: "opp_1"))
     #expect(c.fix?.status == "Suggested fix")
@@ -343,7 +343,7 @@ extension M311 {
 
   @Test("CLOUD: the day record maps to the header, Time by kind and What you did")
   func cloudDay() throws {
-    let c = try #require(TodayContent.cloud(day: M311Cloud.day(), week: M311Cloud.week(), opportunities: [],
+    let c = try #require(M311Cloud.content(day: M311Cloud.day(), week: M311Cloud.week(), opportunities: [],
                                             today: M311Clock.today, timeZone: M311Clock.utc))
     #expect(c.title == "Today · Thu, Nov 12")
     #expect(c.headline == "7 h 40 m of work.")
@@ -360,7 +360,7 @@ extension M311 {
 
   @Test("CLOUD: the week record's tasks with 2 or more instances are the repeats, by minutes, with their how lines")
   func cloudWeek() throws {
-    let c = try #require(TodayContent.cloud(day: M311Cloud.day(), week: M311Cloud.week(), opportunities: [],
+    let c = try #require(M311Cloud.content(day: M311Cloud.day(), week: M311Cloud.week(), opportunities: [],
                                             today: M311Clock.today, timeZone: M311Clock.utc))
     #expect(c.repeats.map(\.name) == ["Review agent PRs", "Reconcile invoices", "Customer follow-up"])
     #expect(c.repeats.map(\.count) == ["6× · 3.1 h", "3× · 1 h", "5× · 0.8 h"])
@@ -370,7 +370,7 @@ extension M311 {
 
   @Test("CLOUD: zero active minutes builds no content")
   func cloudZero() {
-    #expect(TodayContent.cloud(day: M311Cloud.day(activeMinutes: 0), week: nil, opportunities: [], today: M311Clock.today,
+    #expect(M311Cloud.content(day: M311Cloud.day(activeMinutes: 0), week: nil, opportunities: [], today: M311Clock.today,
                                timeZone: M311Clock.utc) == nil)
   }
 
@@ -417,7 +417,7 @@ extension M311 {
 
   @Test("FIGURES: every number in the cloud content traces to a Figure")
   func figuresCloud() throws {
-    let c = try #require(TodayContent.cloud(day: M311Cloud.day(), week: M311Cloud.week(),
+    let c = try #require(M311Cloud.content(day: M311Cloud.day(), week: M311Cloud.week(),
                                             opportunities: [M311Cloud.opportunity("opp_1", rank: 1)], today: M311Clock.today,
                                             timeZone: M311Clock.utc))
     for f in c.figures {

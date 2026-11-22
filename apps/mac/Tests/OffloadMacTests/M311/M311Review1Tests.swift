@@ -18,7 +18,7 @@ extension M311 {
 
   @Test("HOW: each option's saving opens to its arithmetic; Leave it alone has none")
   func howOptionSaving() throws {
-    let c = try #require(TodayContent.cloud(day: M311Cloud.day(), week: nil, opportunities: [M311Cloud.opportunity("opp_1", rank: 1)],
+    let c = try #require(M311Cloud.content(day: M311Cloud.day(), week: nil, opportunities: [M311Cloud.opportunity("opp_1", rank: 1)],
                                             today: M311Clock.today, timeZone: M311Clock.utc))
     let options = try #require(c.fix?.options)
     #expect(options.map(\.how) == ["how: 31 min × 6 × 0.45 = 1.4 h/wk", "how: 0.6 h/wk", nil])
@@ -26,7 +26,7 @@ extension M311 {
 
   @Test("HOW: a cloud repeat's how line says how the times and the minutes were counted")
   func howCloudRepeat() throws {
-    let c = try #require(TodayContent.cloud(day: M311Cloud.day(), week: M311Cloud.week(), opportunities: [],
+    let c = try #require(M311Cloud.content(day: M311Cloud.day(), week: M311Cloud.week(), opportunities: [],
                                             today: M311Clock.today, timeZone: M311Clock.utc))
     for r in c.repeats {
       #expect(r.how.contains(r.times.arithmetic))
@@ -184,7 +184,7 @@ extension M311 {
       KindMinutes(kind: "code", minutes: M311Cloud.fig(100, "minutes", "100 min of code")),
       KindMinutes(kind: "mystery", minutes: M311Cloud.fig(50, "minutes", "50 min of mystery")),
     ]
-    let c = try #require(TodayContent.cloud(day: day, week: nil, opportunities: [], today: M311Clock.today, timeZone: M311Clock.utc))
+    let c = try #require(M311Cloud.content(day: day, week: nil, opportunities: [], today: M311Clock.today, timeZone: M311Clock.utc))
     #expect(c.kinds.map(\.kind) == ["Email", "Code", "Mystery"])
     #expect(c.kinds.map(\.colorHex) == [Tokens.Palette.needsYou, Tokens.Palette.working, DayGrid.otherColor])
     #expect(TodayContent.kindColor("code") == Tokens.Palette.working)
