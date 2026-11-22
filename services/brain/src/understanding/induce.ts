@@ -10,6 +10,7 @@
 import { createHash } from "node:crypto";
 import { kindOf } from "../records/kinds.ts";
 import type { WindowInstance, WindowTask } from "../user-model/ports.ts";
+import { isStandInApp } from "./cues.ts";
 import { cosine } from "./embed.ts";
 import { uuidFrom } from "./ids.ts";
 import type { SpanDescription } from "./types.ts";
@@ -200,7 +201,9 @@ function toTask(instances: readonly Building[], vectors: ReadonlyMap<string, rea
   // understanding; the name is stored in the ledger and episodes).
   const skip = new Set([lead.verb, ...lead.appName.toLowerCase().split(/[^\p{L}]+/u)]);
   const noun = lead.object !== "" ? lead.object : lead.titleWords.filter((w) => !skip.has(w)).slice(0, 2).join(" ");
-  const where = lead.standIn && !lead.cued ? " on screen" : ` in ${lead.appName}`;
+  // A stand-in cued only by its host is named on the host: "Screen" is not an app the person used.
+  const appKnown = !isStandInApp(lead.appBundleId, lead.appName);
+  const where = appKnown ? ` in ${lead.appName}` : lead.host !== "" ? ` on ${lead.host}` : " on screen";
   const all = instances.flatMap((i) => i.members);
   const vecs = all.map((m) => vectors.get(m.spanId)).filter((v): v is readonly number[] => v !== undefined);
   let centroid: number[] | null = null;

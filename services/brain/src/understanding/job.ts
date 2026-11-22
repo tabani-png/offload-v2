@@ -48,6 +48,10 @@ export { MAX_ATTEMPTS };
 
 /** The longest run of days one event analyses (the raw TTL is 30 days). */
 export const MAX_ANALYSIS_DAYS = 31;
+/** How late a live batch can arrive: ingest accepts live objects up to 7 days old (`too_old`, ADR 0020) and stores
+ * them with partition `day` = the UTC date of `ts`. Without first_ts/last_ts the event's range covers rows whose
+ * partition day is within this many days before the event. */
+export const LIVE_LATE_DAYS = 7;
 /** Margin around the asked days when reading by ts: covers every timezone offset. */
 const TZ_MARGIN_MS = 14 * 3_600_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -73,14 +77,15 @@ function daysBetween(first: string, last: string): string[] {
 }
 
 /** The ts range an event touched: first_ts/last_ts when present, else the member's rows ingested on the event's UTC
- * day or the day before (live rows: day = UTC date of ts; imported rows: day = the ingest date). */
+ * day or the LIVE_LATE_DAYS days before it (live rows: day = UTC date of ts, up to 7 days late; imported rows: day =
+ * the ingest date). */
 async function rangeOf(capture: CaptureStore, ref: MemberRef, ev: IngestedEvent): Promise<{ min: number; max: number } | null> {
   const a = Date.parse(ev.payload.first_ts ?? "");
   const b = Date.parse(ev.payload.last_ts ?? "");
   if (Number.isFinite(a) && Number.isFinite(b)) return { min: Math.min(a, b), max: Math.max(a, b) };
   const day = new Date(ev.createdAt).toISOString().slice(0, 10);
-  const before = new Date(ev.createdAt - DAY_MS).toISOString().slice(0, 10);
-  return capture.tsRangeOfDays(ref, before, day);
+  const earliest = new Date(ev.createdAt - LIVE_LATE_DAYS * DAY_MS).toISOString().slice(0, 10);
+  return capture.tsRangeOfDays(ref, earliest, day);
 }
 
 export async function runUnderstanding(deps: UnderstandingDeps, ev: IngestedEvent): Promise<UnderstandingResult> {
@@ -91,6 +96,8 @@ export async function runUnderstanding(deps: UnderstandingDeps, ev: IngestedEven
 async function runClaimed(deps: UnderstandingDeps, ev: IngestedEvent): Promise<UnderstandingResult> {
   const { capture } = deps;
   if (await capture.isDelivered(ev.tenantId, ev.eventId)) return result("duplicate", ev);
+  // The cap holds on every path (drain and durable workflow): an exhausted event is not run again.
+  if ((await capture.attempts(ev.tenantId, ev.eventId)) >= MAX_ATTEMPTS) return result("failed", ev, { error: "attempts_exhausted" });
   try {
     const memberId = ev.payload.member_id ?? "";
     const ref: MemberRef = { tenantId: ev.tenantId, memberId };

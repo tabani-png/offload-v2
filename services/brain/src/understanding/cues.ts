@@ -32,7 +32,13 @@ const CODE_SUFFIXES = new Set([
   "toml", "txt", "csv", "pdf", "docx", "xlsx", "pptx", "html", "css", "sql", "vue", "php", "dart", "png", "jpg", "jpeg", "gif", "mov", "mp4", "zip", "log",
 ]);
 const TOKEN_RE = /<[^<>]*>/g;
-const HOST_RE = /(?<![\w@.-])(?:https?:\/\/)?((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,63}))(?![\w-])/gi;
+/** Lowercase as read (a URL bar shows hosts in lowercase; "Mr.Smith" or "update.Regards" never match). */
+const HOST_RE = /(?<![\w@.-])(https?:\/\/|www\.)?((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,63}))(?![\w-])/g;
+/** Top-level domains a two-label host without a scheme may end in (plus the reserved `example` and `test`). */
+const COMMON_TLDS = new Set(
+  ("com net org io co app dev ai us uk de fr es it nl ca au in jp br ch se no dk fi pl be at ie nz sg hk eu info biz me tv xyz cloud so " +
+    "example test").split(" "),
+);
 
 export interface Cue {
   appBundleId?: string;
@@ -40,11 +46,21 @@ export interface Cue {
   host?: string;
 }
 
-function hostIn(text: string): { host: string; at: number } | null {
+/** The host a URL bar shows. OCR often drops the space after a period ("Thanks for the update.Regards", "Mr.Smith"),
+ * so a host-shaped token counts only when it looks like a URL bar: lowercase as read, and either after a scheme or
+ * `www.`, or on a chrome line (the first CHROME_LINES lines) with three labels or a common top-level domain. */
+function hostIn(text: string): { host: string } | null {
+  const chrome = text.split(/\r?\n/).slice(0, CHROME_LINES).join("\n").length;
   for (const m of text.matchAll(HOST_RE)) {
-    const tld = m[2]!.toLowerCase();
-    if (CODE_SUFFIXES.has(tld)) continue;
-    return { host: m[1]!.toLowerCase().replace(/^www\./, ""), at: m.index ?? 0 };
+    const tld = m[3]!;
+    if (CODE_SUFFIXES.has(tld) || /^\d+$/.test(m[2]!.split(".")[0]!)) continue;
+    const prefixed = m[1] !== undefined;
+    const onChrome = (m.index ?? 0) < chrome;
+    const labels = m[2]!.split(".").length;
+    if (prefixed || (onChrome && (labels >= 3 || COMMON_TLDS.has(tld)))) {
+      const host = m[1] === "www." ? m[2]! : m[2]!.replace(/^www\./, "");
+      return { host };
+    }
   }
   return null;
 }

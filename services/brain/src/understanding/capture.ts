@@ -34,6 +34,8 @@ export interface CaptureStore {
   withEventLock<T>(tenantId: string, eventId: string, fn: () => Promise<T>): Promise<{ locked: true; value: T } | { locked: false }>;
   getEvent(tenantId: string, eventId: string): Promise<IngestedEvent | null>;
   isDelivered(tenantId: string, eventId: string): Promise<boolean>;
+  /** Attempts recorded for the event (0 when none). */
+  attempts(tenantId: string, eventId: string): Promise<number>;
   /** Records one attempt; `error` (a code, never text) null marks the event delivered. */
   recordAttempt(tenantId: string, eventId: string, error: string | null): Promise<void>;
   /** The member exists in this tenant and is neither departed nor frozen (as the resolvers, DATA_MODEL section 3). */
@@ -57,7 +59,15 @@ const eventOf = (tenantId: string, r: Row): IngestedEvent => ({
   tenantId, eventId: r["id"], createdAt: ms(r["created_at"]), payload: (r["payload"] ?? {}) as IngestedEvent["payload"],
 });
 
-export function pgCaptureStore(pool: WithTenantPool): CaptureStore {
+export interface CaptureStoreOptions {
+  /** Pool for event claims. Each running event holds one of its connections (a session advisory lock) while its work
+   * takes connections from `pool`; with one shared pool, as many concurrent claims as connections would leave no
+   * connection for the work. `offload serve` passes a small dedicated pool here. Default: `pool`. */
+  claimPool?: WithTenantPool;
+}
+
+export function pgCaptureStore(pool: WithTenantPool, opts: CaptureStoreOptions = {}): CaptureStore {
+  const claimPool = opts.claimPool ?? pool;
   return {
     pendingEvents: (tenantId, limit, maxAttempts = MAX_ATTEMPTS) =>
       withTenant(pool, service(tenantId), async (tx) =>
@@ -73,17 +83,21 @@ export function pgCaptureStore(pool: WithTenantPool): CaptureStore {
     withEventLock: async (tenantId, eventId, fn) => {
       const key = `${UNDERSTANDING_CONSUMER}:${tenantId}:${eventId}`;
       // A plain session (no transaction is held open, so the network guard and the no-I/O rule are kept).
-      const c = await pool.connect();
+      const c = await claimPool.connect();
+      // A connection whose unlock failed may still hold the lock: destroy it instead of returning it to the pool.
+      let broken: Error | undefined;
       try {
         const got = (await c.query("select pg_try_advisory_lock(hashtextextended($1, 0)) as ok", [key])).rows[0]?.ok === true;
         if (!got) return { locked: false as const };
         try {
           return { locked: true as const, value: await fn() };
         } finally {
-          await c.query("select pg_advisory_unlock(hashtextextended($1, 0))", [key]);
+          await c.query("select pg_advisory_unlock(hashtextextended($1, 0))", [key]).catch((e: unknown) => {
+            broken = e instanceof Error ? e : new Error("unlock failed");
+          });
         }
       } finally {
-        c.release();
+        c.release(broken);
       }
     },
     getEvent: (tenantId, eventId) =>
@@ -91,6 +105,10 @@ export function pgCaptureStore(pool: WithTenantPool): CaptureStore {
         const r = (await tx.query("select id, payload, created_at from events_outbox where id = $1 and type = 'observations.ingested'", [eventId])).rows[0];
         return r === undefined ? null : eventOf(tenantId, r);
       }),
+    attempts: (tenantId, eventId) =>
+      withTenant(pool, service(tenantId), async (tx) =>
+        Number((await tx.query("select attempts from outbox_deliveries where event_id = $1 and consumer = $2", [eventId, UNDERSTANDING_CONSUMER])).rows[0]?.["attempts"] ?? 0),
+      ),
     isDelivered: (tenantId, eventId) =>
       withTenant(pool, service(tenantId), async (tx) =>
         (await tx.query("select 1 from outbox_deliveries where event_id = $1 and consumer = $2 and delivered_at is not null", [eventId, UNDERSTANDING_CONSUMER])).rows.length > 0,
