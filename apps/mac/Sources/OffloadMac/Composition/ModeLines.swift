@@ -7,15 +7,19 @@ public enum ModeLines {
   public static let local = "Local mode: nothing leaves this Mac"
   public static let importComing = "Recordings import is coming: it needs on-device text reading"
   public static let importAfterSending = "Recordings import starts after Start sending"
+  /// An on-device import held back until setup is past screen 2 (ImportOffer): sending has nothing to do with it.
+  public static let importAfterSetup = "Recordings import opens once the first setup steps are done"
 
-  /// Local mode first; then why the recordings import is not offered, if it is not.
-  public static func lines(local isLocal: Bool, importerReady: Bool, importOffered: Bool) -> [String] {
+  /// Local mode first; then why the recordings import is not offered, if it is not: no importer yet, or (by where the
+  /// import goes) not sending yet for the uploader, setup not far enough for the on-device import.
+  public static func lines(local isLocal: Bool, importerReady: Bool, importOffered: Bool,
+                           choice: ImportSinkChoice) -> [String] {
     var out: [String] = []
     if isLocal { out.append(Self.local) }
     if !importerReady {
       out.append(Self.importComing)
     } else if !importOffered {
-      out.append(Self.importAfterSending)
+      out.append(choice == .uploader ? Self.importAfterSending : Self.importAfterSetup)
     }
     return out
   }
