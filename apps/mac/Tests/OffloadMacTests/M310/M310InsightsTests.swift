@@ -313,15 +313,15 @@ extension M310 {
 
   @Test("RANK: ties are broken by key")
   func rankTies() {
-    let ranked = LocalInsights.rank([m310Pattern(key: "k_bbbbbbbbbbbb", score: 1), m310Pattern(key: "k_aaaaaaaaaaaa", score: 1),
-                                     m310Pattern(key: "k_cccccccccccc", score: 2)])
+    let ranked = LocalInsights.rank([m310Ranked(key: "k_bbbbbbbbbbbb", score: 1), m310Ranked(key: "k_aaaaaaaaaaaa", score: 1),
+                                     m310Ranked(key: "k_cccccccccccc", score: 2)])
     #expect(ranked.map(\.key) == ["k_cccccccccccc", "k_aaaaaaaaaaaa", "k_bbbbbbbbbbbb"])
   }
 
   @Test("RANK: only the top 5 not declined are things you repeat")
   func rankTopFive() {
-    var all = (0..<7).map { m310Pattern(key: "k_00000000000\($0)", score: Double(10 - $0)) }
-    all.append(m310Pattern(key: "k_declined0000", score: 0, penalty: 0))
+    var all = (0..<7).map { m310Ranked(key: "k_00000000000\($0)", score: Double(10 - $0)) }
+    all.append(m310Ranked(key: "k_declined0000", score: 0, penalty: 0))
     let top = LocalInsights.top(LocalInsights.rank(all))
     #expect(top.count == 5)
     #expect(top.map(\.key) == (0..<5).map { "k_00000000000\($0)" })

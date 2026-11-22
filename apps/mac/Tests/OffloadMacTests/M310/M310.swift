@@ -105,7 +105,7 @@ func m310Day(_ y: Int, _ m: Int, _ d: Int, sessions: [(hour: Int, steps: [(app: 
 }
 
 /// A ranked pattern with only the fields a ranking test needs.
-func m310Pattern(key: String, score: Double, penalty: Double = 1, minutesPerWeek: Int = 60) -> RepeatPattern {
+func m310Ranked(key: String, score: Double, penalty: Double = 1, minutesPerWeek: Int = 60) -> RepeatPattern {
   RepeatPattern(key: key, name: "Xcode, then Slack", steps: [], occurrences: [], days: ["2026-11-16", "2026-11-17"],
                 medianMinutes: 20, totalMinutes: 60, minutesPerWeek: Figure.local(Double(minutesPerWeek), unit: "minutes_per_week",
                                                                                    arithmetic: "fixture", evidence: []),
@@ -117,6 +117,14 @@ func m310Pattern(key: String, score: Double, penalty: Double = 1, minutesPerWeek
 final class M310Reader: InsightEventReader, @unchecked Sendable {
   private let lock = NSLock()
   private var all: [InsightEvent]
+  private var count = 0
+
+  /// How many times the imports were read (events or day labels).
+  var reads: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return count
+  }
 
   init(_ events: [InsightEvent] = []) { all = events }
 
@@ -129,12 +137,14 @@ final class M310Reader: InsightEventReader, @unchecked Sendable {
   func events(in interval: DateInterval) -> [InsightEvent] {
     lock.lock()
     defer { lock.unlock() }
+    count += 1
     return all.filter { $0.ts >= interval.start && $0.ts < interval.end }
   }
 
   func dayLabels(timeZone: TimeZone) -> [String] {
     lock.lock()
     defer { lock.unlock() }
+    count += 1
     return Array(Set(all.map { LocalDays.label($0.ts, timeZone: timeZone) })).sorted()
   }
 }
@@ -203,5 +213,21 @@ let m310Key = Data(repeating: 7, count: 32)
     s.completed = true
     s.screen = .done
     return s
+  }
+}
+
+/// Paths an `exists` check was asked about, from any thread.
+final class M310Asked: @unchecked Sendable {
+  private let lock = NSLock()
+  private var paths: [String] = []
+  func add(_ p: String) {
+    lock.lock()
+    paths.append(p)
+    lock.unlock()
+  }
+  var all: [String] {
+    lock.lock()
+    defer { lock.unlock() }
+    return paths
   }
 }

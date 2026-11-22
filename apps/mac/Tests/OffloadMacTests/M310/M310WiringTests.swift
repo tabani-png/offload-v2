@@ -136,7 +136,8 @@ extension M310 {
     let home = root.appendingPathComponent("home", isDirectory: true)
     try FileManager.default.createDirectory(at: home.appendingPathComponent("Movies"), withIntermediateDirectories: true)
     let made = try Self.onDevice(root: root, ui: ui)
-    let movies = try #require(made.candidates.first { $0.kind == .movies })
+    made.folderCandidates.refresh()
+    let movies = try #require(made.folderCandidates.candidates.first { $0.kind == .movies })
     made.model.offerCheck = { true }
     await made.use(movies)
     #expect(made.model.folder == movies.url)
@@ -278,7 +279,7 @@ extension M310 {
     model.apply(.reading(file: 3, of: 12))
     #expect(AnalysisProgress.items(model, insights: insights) == ["reading file 3 of 12"])
     model.apply(.finished(Self.doneReport))
-    let nine = (0..<9).map { m310Pattern(key: "k_00000000000\($0)", score: Double(9 - $0)) }
+    let nine = (0..<9).map { m310Ranked(key: "k_00000000000\($0)", score: Double(9 - $0)) }
     insights.publish(InsightsSnapshot(days: [], repeats: nine, observedDays: [], lastUpdated: M310Clock.now))
     #expect(AnalysisProgress.items(model, insights: insights) == ["done", "1,284 moments read", "9 things you repeat"])
   }

@@ -696,7 +696,7 @@ extension M310 {
   func hostRefusesUnsafeIDs() async {
     let transport = RecordingTransport()
     let builds = M310B.builds(transport, signer: M310BSigner())
-    let unsafe = ["a/b", "..", "../profile", "//other.host", "//other.host/v1/x", "x?state=all", "x#frag", "%2F", "a b",
+    let unsafe = ["a/b", "..", ".", "../profile", "//other.host", "//other.host/v1/x", "x?state=all", "x#frag", "%2F", "a b",
                   "a\tb", "a:b", "https:", "", "café", String(repeating: "a", count: 129)]
     for id in unsafe {
       let fix = await M310B.error { try await builds.fix(id: id) }
