@@ -1,34 +1,60 @@
-// Fix rules (slice m5-04, SPEC Design notes 2, 4 and 5): rule kinds that map task evidence to proposed fix options.
+// Fix rules (slice m5-04, SPEC Design notes 2 and 5; ARCHITECTURE sections 6 and 7): a table of rule kinds that maps
+// a task's evidence to one to three proposed fix options. Kinds, steps, numbers and order come from code; no model.
+import type { WorkKind } from "../records/kinds.ts";
+import { resolveConnector } from "./connectors.ts";
+import { CLOUD_KINDS, estimateOption } from "./estimate.ts";
 import type { FixEstimate } from "./score.ts";
-import type { FixOption, ProposedFixKind, RuleKind, TaskEvidence, TenantCatalog } from "./types.ts";
+import type { FixOption, FixStep, ProposedFixKind, RuleKind, System, TaskEvidence, TenantCatalog } from "./types.ts";
 
-export interface KindRow {
-  share: number;
-  reviewMinutes: number;
-  setupBase: number;
-  setupPerStep: number;
-  confidence: number;
-}
+export { FIX_KIND_TABLE, type KindRow } from "./estimate.ts";
 
-export const FIX_KIND_TABLE: Readonly<Record<ProposedFixKind, KindRow>> = {
-  api_integration: { share: 0.8, reviewMinutes: 0.5, setupBase: 2, setupPerStep: 1, confidence: 0.7 },
-  agent_workflow: { share: 0.7, reviewMinutes: 1, setupBase: 3, setupPerStep: 1, confidence: 0.6 },
-  scheduled_routine: { share: 0.85, reviewMinutes: 1, setupBase: 2, setupPerStep: 0.5, confidence: 0.75 },
-  script: { share: 0.5, reviewMinutes: 0.5, setupBase: 1.5, setupPerStep: 0.5, confidence: 0.55 },
-  browser_automation: { share: 0.6, reviewMinutes: 1, setupBase: 3, setupPerStep: 1, confidence: 0.5 },
-  setup_change: { share: 0.3, reviewMinutes: 0, setupBase: 0.5, setupPerStep: 0, confidence: 0.6 },
-};
-
+/** A task seen fewer times than this in the week, without a cadence, gets no fix. */
 export const MIN_INSTANCES = 3;
+/** Below this best saving per week, "leave it alone" comes first (ARCHITECTURE section 7). */
 export const LEAVE_ALONE_BELOW_HOURS = 0.5;
+export const MAX_OPTIONS = 3;
+/** Work the rules never propose a fix for. */
+const NO_FIX: ReadonlySet<WorkKind> = new Set(["code", "meeting", "chat"]);
 
 export interface FixRule {
   kind: RuleKind;
   matches(e: TaskEvidence): boolean;
+  /** Fix kinds to try, in the rule's order. */
   options(e: TaskEvidence): ProposedFixKind[];
 }
 
-export const FIX_RULES: readonly FixRule[] = [];
+const isEmail = (s: System) => s.work_kind === "email";
+const hasWeb = (e: TaskEvidence) => e.systems.some((s) => s.surface === "web");
+const hasDesktop = (e: TaskEvidence) => e.systems.some((s) => s.surface === "desktop");
+const when = <T>(c: boolean, x: T): T[] => (c ? [x] : []);
+
+export const FIX_RULES: readonly FixRule[] = [
+  {
+    kind: "report_assembly",
+    matches: (e) => e.cadence !== null && e.systems.length >= 2 && e.systems.some((s) => s.work_kind === "sheet" || s.work_kind === "docs"),
+    options: () => ["scheduled_routine", "script"],
+  },
+  {
+    kind: "email_triage",
+    matches: (e) => e.systems.every(isEmail) && e.instances >= 5 && e.median_minutes <= 10,
+    options: () => ["setup_change", "agent_workflow"],
+  },
+  {
+    kind: "email_to_records",
+    matches: (e) => e.systems.some(isEmail) && e.systems.some((s) => !isEmail(s)),
+    options: (e) => ["agent_workflow", "api_integration", ...when(hasWeb(e), "browser_automation" as const), ...when(hasDesktop(e), "script" as const)],
+  },
+  {
+    kind: "app_to_app_copy",
+    matches: (e) => e.systems.filter((s) => !isEmail(s)).length >= 2,
+    options: (e) => ["api_integration", ...when(hasWeb(e), "browser_automation" as const), ...when(hasDesktop(e), "script" as const)],
+  },
+  {
+    kind: "single_app_entry",
+    matches: (e) => e.systems.length === 1 && (["sheet", "docs", "browse", "other"] as WorkKind[]).includes(e.systems[0]!.work_kind),
+    options: (e) => [e.systems[0]!.surface === "web" ? "browser_automation" : "script"],
+  },
+];
 
 export interface FixProposal {
   task_key: string;
@@ -44,6 +70,84 @@ export interface FixRules {
   propose(e: TaskEvidence): FixProposal | null;
 }
 
-export function fixRules(_opts: { catalog?: TenantCatalog } = {}): FixRules {
-  throw new Error("not implemented");
+/** Each step of a fix kind, in system id order: cloud kinds and scripts resolve connectors; browser automation drives the web apps on
+ * the device; a setup change is applied by the user on the device. */
+export function stepsFor(kind: ProposedFixKind, systems: readonly System[], catalog?: TenantCatalog): FixStep[] {
+  const sorted = [...systems].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return sorted.map((s): FixStep => {
+    const c = resolveConnector(s, catalog);
+    if (kind === "setup_change") return { system: s.id, surface: s.surface, provider: c.provider, label: c.label, adapter: null, runs_on: "device" };
+    if (kind === "browser_automation") return { system: s.id, surface: s.surface, provider: c.provider, label: c.label, adapter: s.surface === "web" ? "browser" : null, runs_on: "device" };
+    return { system: s.id, surface: s.surface, ...c };
+  });
+}
+
+const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const ADAPTER_WORDS = { mcp: "MCP", composio: "Composio", openapi: "direct API", browser: "browser, on your Mac" } as const;
+const hh = (h: number) => `${String(h).padStart(2, "0")}:00`;
+
+function joinLabels(labels: readonly string[]): string {
+  const u = [...new Set(labels)];
+  return u.length <= 1 ? (u[0] ?? "") : `${u.slice(0, -1).join(", ")} and ${u[u.length - 1]}`;
+}
+
+function titleOf(kind: ProposedFixKind, e: TaskEvidence, steps: readonly FixStep[]): string {
+  const labels = joinLabels(steps.map((s) => s.label));
+  switch (kind) {
+    case "api_integration": return `Connect ${labels} with an integration`;
+    case "agent_workflow": return `An agent prepares the work in ${labels} and you approve it`;
+    case "scheduled_routine": {
+      const c = e.cadence;
+      const at = c === null ? "on a schedule" : c.kind === "daily" ? `every day at ${hh(c.hour)}` : `every ${WEEKDAYS[c.weekday ?? 0]} at ${hh(c.hour)}`;
+      return `A scheduled routine does it ${at}`;
+    }
+    case "script": return `A Shortcut or script does the steps in ${labels}`;
+    case "browser_automation": return `Browser automation does the steps in ${labels} while you watch`;
+    case "setup_change": return `Rules in ${labels} handle it for you`;
+  }
+}
+
+function detailOf(e: TaskEvidence, steps: readonly FixStep[]): string {
+  const words = steps.map((s) => `${s.label} (${s.adapter === null ? "on your Mac" : ADAPTER_WORDS[s.adapter]})`).join(", ");
+  return `Seen ${e.instances} time${e.instances === 1 ? "" : "s"} this week (${e.minutes} min). Steps: ${words}.`;
+}
+
+/** The work kind the drain boost matches: the first of these the task touches. */
+const KIND_PRIORITY: readonly WorkKind[] = ["email", "sheet", "docs", "chat", "browse", "code", "meeting", "other"];
+
+/** The value options are ordered by: the score's own factors (saving x confidence / max(1, payback)). */
+export const optionValue = (o: FixOption): number => (o.figures.weekly_hours_saved.value * o.figures.confidence.value) / Math.max(1, o.figures.payback_weeks.value);
+
+export function fixRules(opts: { catalog?: TenantCatalog } = {}): FixRules {
+  return {
+    propose(e: TaskEvidence): FixProposal | null {
+      if (e.systems.length === 0 || e.systems.every((s) => NO_FIX.has(s.work_kind))) return null;
+      if (e.instances < MIN_INSTANCES && e.cadence === null) return null;
+      const rule = FIX_RULES.find((r) => r.matches(e));
+      if (rule === undefined) return null;
+      const candidates: Array<{ option: FixOption; order: number }> = [];
+      for (const [order, kind] of rule.options(e).entries()) {
+        const steps = stepsFor(kind, e.systems, opts.catalog);
+        // A cloud kind with no connector on any step would be browser automation under another name.
+        if (CLOUD_KINDS.has(kind) && !steps.some((s) => s.adapter !== null && s.adapter !== "browser")) continue;
+        const figures = estimateOption(kind, e, steps);
+        if (figures === null) continue;
+        candidates.push({ order, option: { option_no: 0, kind, rule: rule.kind, recommended: false, title: titleOf(kind, e, steps), detail: detailOf(e, steps), steps, figures } });
+      }
+      if (candidates.length === 0) return null;
+      candidates.sort((a, b) => optionValue(b.option) - optionValue(a.option) || a.order - b.order);
+      const kept = candidates.slice(0, MAX_OPTIONS).map((c) => c.option);
+      const leaveAloneFirst = Math.max(...kept.map((o) => o.figures.weekly_hours_saved.value)) < LEAVE_ALONE_BELOW_HOURS;
+      const options = kept.map((o, i): FixOption => ({ ...o, option_no: i + 1, recommended: i === 0 && !leaveAloneFirst }));
+      const top = options[0]!;
+      const workKind = KIND_PRIORITY.find((k) => e.systems.some((s) => s.work_kind === k)) ?? "other";
+      return {
+        task_key: e.task_key, rule: rule.kind, leave_alone_first: leaveAloneFirst, options,
+        estimate: {
+          taskKey: e.task_key, fixKind: top.kind, weeklyHoursSaved: top.figures.weekly_hours_saved.value, setupHours: top.figures.setup_hours.value,
+          ruleConfidence: top.figures.confidence.value, workKind, option: top,
+        },
+      };
+    },
+  };
 }

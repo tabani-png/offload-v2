@@ -12,7 +12,7 @@ parallel_group: M5-B
 owns: [services/brain/src/opportunities/**, services/brain/sql/0002_fixes.sql, services/brain/tests/m5-04-opportunity-finder/**]
 verify: bash slices/m5-04-opportunity-finder/verify.sh
 min_tests: 20
-paths_in_scope: [services/brain/src/opportunities/**, services/brain/src/store/job.ts, services/brain/src/store/repository.ts, services/brain/src/store/migrate.ts, services/brain/sql/0002_fixes.sql, services/brain/src/records/day-record.ts, services/brain/src/records/figure.ts, services/brain/src/understanding/job.ts, services/brain/src/index.ts, services/brain/tests/m5-04-opportunity-finder/**, docs/API.md, docs/ARCHITECTURE.md, docs/DATA_MODEL.md, docs/GLOSSARY.md, docs/ROADMAP.md, slices/m5-04-opportunity-finder/**]
+paths_in_scope: [services/brain/src/opportunities/**, services/brain/src/store/job.ts, services/brain/src/store/repository.ts, services/brain/src/store/migrate.ts, services/brain/sql/0002_fixes.sql, services/brain/src/records/day-record.ts, services/brain/src/records/kinds.ts, services/brain/src/understanding/job.ts, services/brain/src/index.ts, services/brain/tests/m5-04-opportunity-finder/**, docs/API.md, docs/ARCHITECTURE.md, docs/DATA_MODEL.md, docs/GLOSSARY.md, docs/ROADMAP.md, slices/m5-04-opportunity-finder/**]
 paths_out_of_scope: [ee/**, apps/**, packages/**, services/api/**, services/runtime/**, services/broker/**, services/builder/**, services/brain/src/models/**, services/brain/sql/0001_user_model.sql, services/brain/tests/p43a-user-model-core/**, services/brain/tests/p43b-user-model-store-api/**, services/brain/tests/m5-01-understanding/**, docs/adr/**, .github/**, slices/m5-04-opportunity-finder/STATUS.md]
 red_tests: [EVIDENCE, CONNECTOR, RULE, ESTIMATE, OPTIONS, RANK, PERSIST, FINDER]
 ---
