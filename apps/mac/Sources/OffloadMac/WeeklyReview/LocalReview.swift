@@ -127,7 +127,7 @@ enum LocalReview {
   }
 
   static func switchesArithmetic(_ w: WeekStats) -> String {
-    "\(w.switches) switches ÷ \(AnalysisCopy.hours(w.activeSeconds)) active = \(AnalysisCopy.decimal(w.switchesPerHour)) an hour"
+    "\(w.switches) switches ÷ \(w.activeMinutes) min active × 60 = \(AnalysisCopy.decimal(w.switchesPerHour)) an hour"
   }
 
   /// ISO weeks from `a` to `b` inclusive.

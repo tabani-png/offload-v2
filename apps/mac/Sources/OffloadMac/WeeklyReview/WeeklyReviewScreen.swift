@@ -10,12 +10,15 @@ public struct WeeklyReviewScreen: View {
   public init(app: AppModel) { self.app = app }
 
   public var body: some View {
-    WeeklyReviewView(model: app.weeklyReview.review)
+    WeeklyReviewView(model: app.weeklyReview.review, settings: app.weeklyReview.settings,
+                     scheduler: app.weeklyReview.settings.scheduler)
   }
 }
 
 struct WeeklyReviewView: View {
   @ObservedObject var model: WeeklyReviewModel
+  @ObservedObject var settings: ReviewSettingsModel
+  @ObservedObject var scheduler: ReviewScheduler
 
   var body: some View {
     ScrollView {
@@ -23,6 +26,7 @@ struct WeeklyReviewView: View {
         ProvenanceLabel(model.provenance)
         header
         stateBody
+        offer
       }
       .padding(Tokens.Space.s32)
       .frame(maxWidth: 900, alignment: .leading)
@@ -58,6 +62,31 @@ struct WeeklyReviewView: View {
     }
   }
 
+  /// The notification, offered on this screen first (ONBOARDING section 12), until it is answered.
+  @ViewBuilder
+  var offer: some View {
+    switch model.state {
+    case .ready, .notYet:
+      if settings.showsNotificationOffer {
+        HStack(spacing: Tokens.Space.s12) {
+          Image(systemName: "bell").foregroundStyle(Theme.ink2).accessibilityHidden(true)
+          Text(ReviewCopy.offerLine).textStyle(Tokens.TypeScale.body).foregroundStyle(Theme.ink2)
+            .fixedSize(horizontal: false, vertical: true)
+          Spacer(minLength: Tokens.Space.s8)
+          Button(ReviewCopy.notifyToggle) { Task { await settings.acceptNotificationOffer() } }
+            .buttonStyle(PrimaryButtonStyle())
+          Button(ReviewCopy.offerDismiss) { settings.dismissNotificationOffer() }
+            .buttonStyle(SecondaryButtonStyle())
+        }
+        .paperCard(padding: Tokens.Space.s16)
+      } else if let line = scheduler.line {
+        Text(line).textStyle(Tokens.TypeScale.callout).foregroundStyle(Theme.ink2)
+      }
+    default:
+      EmptyView()
+    }
+  }
+
   @ViewBuilder
   var stateBody: some View {
     switch model.state {
@@ -78,11 +107,11 @@ struct WeeklyReviewView: View {
           }
         }
       }
-    case .notYet:
-      Text(model.notYetLine ?? "").textStyle(Tokens.TypeScale.display).foregroundStyle(Theme.ink)
+    case .notYet, .noReview:
+      Text(model.stateLine ?? "").textStyle(Tokens.TypeScale.display).foregroundStyle(Theme.ink)
     case .failed:
       VStack(alignment: .leading, spacing: Tokens.Space.s16) {
-        Text(model.failureLine ?? "").textStyle(Tokens.TypeScale.body).foregroundStyle(Theme.ink)
+        Text(model.stateLine ?? "").textStyle(Tokens.TypeScale.body).foregroundStyle(Theme.ink)
         Button(ReviewCopy.tryAgain) { Task { await model.refresh() } }
           .buttonStyle(SecondaryButtonStyle())
       }
@@ -157,7 +186,19 @@ struct ReviewTileView: View {
   @State private var showing = false
 
   var body: some View {
-    Button { showing.toggle() } label: {
+    if tile.figures.isEmpty {
+      // Nothing to open (Saved by fixes): a plain view, so VoiceOver does not read a dimmed button (review 1).
+      card.accessibilityElement(children: .combine)
+    } else {
+      Button { showing.toggle() } label: { card }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(ReviewCopy.howCounted)
+        .popover(isPresented: $showing, arrowEdge: .bottom) { FigureDetailView(figures: tile.figures) }
+    }
+  }
+
+  var card: some View {
       VStack(alignment: .leading, spacing: 2) {
         Text(tile.label).textStyle(Tokens.TypeScale.callout).foregroundStyle(Theme.chromeMute)
         Text(tile.valueText)
@@ -176,12 +217,6 @@ struct ReviewTileView: View {
       .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.chrome2))
       .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.chromeLine))
       .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .disabled(tile.figures.isEmpty)
-    .accessibilityElement(children: .combine)
-    .accessibilityHint(tile.figures.isEmpty ? "" : ReviewCopy.howCounted)
-    .popover(isPresented: $showing, arrowEdge: .bottom) { FigureDetailView(figures: tile.figures) }
   }
 }
 
@@ -219,7 +254,7 @@ struct ReviewGoalRowView: View {
       }
       .padding(.vertical, 9)
     }
-    .accessibilityElement(children: .combine)
+    .accessibilityElement(children: .contain)  // keeps the hours button and its "how it was counted" reachable
   }
 }
 
@@ -244,12 +279,14 @@ struct ReviewQuestionCard: View {
         if let why = question.whyLine {
           Text(why).textStyle(Tokens.TypeScale.callout).foregroundStyle(Theme.chromeMute)
         }
-        ChipRow(question: question, busy: busy, answer: answer)
-          .padding(.top, Tokens.Space.s8)
-        if !question.noteItems.isEmpty {
-          CaptionLine(question.noteItems.joined(separator: " \u{00B7} "), onChrome: true)
-            .padding(.top, Tokens.Space.s4)
+        // The note sits after the chips on the same line, as the mockup's `k0`.
+        HStack(alignment: .center, spacing: Tokens.Space.s8) {
+          ChipRow(question: question, busy: busy, answer: answer)
+          if !question.noteItems.isEmpty {
+            CaptionLine(question.noteItems.joined(separator: " \u{00B7} "), onChrome: true)
+          }
         }
+        .padding(.top, Tokens.Space.s8)
       }
     }
     .padding(.horizontal, 14)

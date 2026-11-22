@@ -22,9 +22,12 @@ public struct WeekStats: Equatable, Sendable {
   /// Hours with one decimal.
   public var activeHours: Double { Self.hours(activeSeconds) }
   public var focusHours: Double { Self.hours(focusSeconds) }
-  /// Switches per active hour, one decimal (m3-10's day rule over the week).
+  /// Active minutes, whole: the divisor the switches arithmetic shows.
+  public var activeMinutes: Int { Int((activeSeconds / 60).rounded()) }
+  /// Switches per active hour, one decimal: switches ÷ active minutes × 60, so the arithmetic line reproduces it
+  /// (review 1, finding 8).
   public var switchesPerHour: Double {
-    activeSeconds > 0 ? (Double(switches) / (activeSeconds / 3600) * 10).rounded() / 10 : 0
+    activeMinutes > 0 ? (Double(switches) / Double(activeMinutes) * 60 * 10).rounded() / 10 : 0
   }
 
   public var activeEvidence: [EvidenceRef] { Self.dedupe(days.flatMap(\.activeSeconds.evidence)) }

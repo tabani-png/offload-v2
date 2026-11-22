@@ -109,6 +109,13 @@ public struct LiveReviewNotifier: ReviewNotifier {
     }
   }
 
+  /// Makes Offload the center's delegate now (before any click can arrive), so the banner shows while Offload is in
+  /// front and a click opens Weekly review, also when the click launched Offload.
+  public func installPresenter() {
+    guard Self.available else { return }
+    ReviewNotificationPresenter.shared.install(onOpen)
+  }
+
   public func schedule(at components: DateComponents, id: String) async {
     guard Self.available else { return }
     ReviewNotificationPresenter.shared.install(onOpen)
@@ -160,12 +167,12 @@ final class ReviewNotificationPresenter: NSObject, UNUserNotificationCenterDeleg
   }
 
   func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
-                              withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+                              withCompletionHandler completionHandler: @escaping @Sendable (UNNotificationPresentationOptions) -> Void) {
     completionHandler([.banner, .list, .sound])
   }
 
   func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
-                              withCompletionHandler completionHandler: @escaping () -> Void) {
+                              withCompletionHandler completionHandler: @escaping @Sendable () -> Void) {
     if response.notification.request.identifier == ReviewScheduler.notificationID, let open = opener() {
       Task { @MainActor in open() }
     }

@@ -50,7 +50,7 @@ struct ReviewSettingsSection: View {
       }
       Toggle(ReviewCopy.notifyToggle, isOn: Binding<Bool>(
         get: { scheduler.isOn },
-        set: { on in Task { await scheduler.setOn(on) } }
+        set: { on in Task { await settings.setNotify(on) } }
       ))
       .toggleStyle(.switch)
       Text(ReviewCopy.notifyHelp).textStyle(Tokens.TypeScale.callout).foregroundStyle(Theme.ink2)
