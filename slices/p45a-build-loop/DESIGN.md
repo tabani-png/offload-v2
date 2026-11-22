@@ -153,6 +153,12 @@ deploy that can be retried, and p45b's unrounded threshold and stored raw minute
 - **ADR 0031 retry path** (owner: m2-08): the retry endpoint, automatic retries and `infra_retries` are not built.
   `release()` only marks the approval for that endpoint. Retrying the same build keeps its held-out check; a new
   build after `infra_failed` needs a new one (ADR 0029), even when no worker turn ran.
+- **Sandbox time is not billed** (owner: m2-08, with the sandbox price config). ADR 0030 reserves wall × vCPU at
+  creation; here `Reservation.kind = "sandbox"` and `sandbox_seconds` exist but nothing writes them, and the $0.30 checks
+  reserve is only held back. `worker_attempts.wall_seconds` is recorded for that work.
+- **Start before claim** (owner: W1-C durable adapter). `runBuild` sets `building` (compare-and-set) before it claims, so
+  a start with a wrong token ends the build `failed`. Only the in-process runner starts builds today; the durable
+  adapter should claim before, or in the same transaction as, the compare-and-set.
 - **Image pin** (owner: spike S4, then m2-08): `docker run --pull never` stops fetching at check time, but the
   default image is the tag `oven/bun:1.4.4`. Pin it by `@sha256:` digest, then refuse non-digest images in config.
 - Not ported here: verifier and repair turn, replay fixtures, receipt signing, egress proxy, reaper, E2B, artifact

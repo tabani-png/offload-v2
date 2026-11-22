@@ -79,7 +79,9 @@ storage and the artifact capability scan (m2-07, m2-08). The approvals table and
 Check writing and the design budget (m2-05). Routine versions (m2-09). The `LOCAL` tier (m5-03).
 ADR 0031's retry path (m2-08): `POST /v1/builds/{id}/retry`, the automatic retries (3 within an hour) and
 `builds.infra_retries` (stored, never written here). This slice only releases the approval once on a no-spend
-`infra_failed` build, for that endpoint to claim. Pinning the sandbox image by digest (spike S4, m2-08).
+`infra_failed` build, for that endpoint to claim. Pinning the sandbox image by digest (spike S4, m2-08). Billing
+sandbox time (ADR 0030: wall × vCPU reserved at creation, priced from config) (m2-08): the $0.30 checks reserve is held
+back from workers but nothing is charged against it yet.
 
 ## Verify
 `bash slices/p45a-build-loop/verify.sh`: typecheck; the slice suite has at least `min_tests` tests and every tag is
