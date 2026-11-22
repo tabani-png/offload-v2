@@ -41,6 +41,19 @@ holds the sidebar shell (Today, Weekly review, Builds, Recordings, Settings), th
 wiring. `TodayLive/`, `WeeklyReview/` and `BuildProgress/` start as placeholders owned by m3-11, m3-12 and m3-13.
 Tests: `Tests/OffloadMacTests/M310/`.
 
+Today on the Mac (slice m3-11): `Sources/OffloadMac/TodayLive/` replaces m3-10's placeholder with the mockup's Daily
+screen wired to real data. In `.local` it reads m3-10's local insights (the header, the day grid of the top apps, What
+you did, "Keeps coming back this week" with each count opening to how it was counted, one suggested fix whose Not now
+and Leave it alone are kept on this Mac through `LocalAnswerStore`); in `.cloud` it reads the brain's day record for
+the header and the planned `GET /v1/today` for the grid of kinds of work, What you did, the repeats and the suggested fix,
+whose answers go to `POST /v1/opportunities/{id}/answer` (the next open opportunity then takes the card). One flag,
+`TodayAPI.available` in `TodayLive/TodayAPI.swift`, is off until the server's Today API lands: off, `.cloud` shows a
+sample under the amber label "Sample data: Today API not live yet", sends no request, has inert buttons and no menu
+line; turn it on when m5-05's route is deployed. **OK, build** hands the fix to Build progress (`NavigationModel.startBuild`). The
+menu bar item shows today's line above m3-04's menu. `TodayContent` builds every number from a Figure; `TodayLiveModel`
+holds the day, the states (empty, importing, ready, not recorded, failed), the answers and the keys.
+Tests: `Tests/OffloadMacTests/M311/`.
+
 Build progress (slice m3-13): `Sources/OffloadMac/BuildProgress/` is the Builds screen. `BuildDetail.swift` decides what
 one build shows in pure code (`StepMapping` from the build loop's stages onto five rows, `HeadlineMap`, `AttemptRow`,
 `HeldOutResult`, `BudgetMeter` and `Money` with half-up cents, `SavingLine`); `SampleBuild.swift` is the labelled

@@ -2,7 +2,7 @@
 id: m3-11-mac-today-live
 title: Today on the Mac wired to real data (local insights on this Mac, the brain's records and opportunities in the cloud), with things you repeat, one suggested fix, the hand-off to Build progress and the menu bar summary
 milestone: M3
-status: ready
+status: in_progress
 depends_on: [m3-10-mac-recordings-analysis]
 parallel_safe: true
 human_gated: true
@@ -11,10 +11,10 @@ size: M
 parallel_group: M3-E
 owns: [apps/mac/Sources/OffloadMac/TodayLive/**, apps/mac/Tests/OffloadMacTests/M311/**]
 verify: bash slices/m3-11-mac-today-live/verify.sh
-min_tests: 55
-paths_in_scope: [apps/mac/Sources/OffloadMac/TodayLive/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M311/**, apps/mac/README.md, docs/GLOSSARY.md, slices/m3-11-mac-today-live/**]
+min_tests: 100
+paths_in_scope: [apps/mac/Sources/OffloadMac/TodayLive/**, apps/mac/Sources/OffloadMac/App/OffloadApp.swift, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M311/**, apps/mac/README.md, docs/GLOSSARY.md, slices/m3-11-mac-today-live/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Sources/OffloadMac/WeeklyReview/**, apps/mac/Sources/OffloadMac/BuildProgress/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**, apps/mac/Tests/OffloadMacTests/M310/**, apps/mac/Tests/OffloadMacTests/M312/**, apps/mac/Tests/OffloadMacTests/M313/**]
-red_tests: [HEADER, DAY, GRID, DID, REPEATS, HOW, FIX, ANSWER, HANDOFF, CLOUD, STATES, BANNERS, MENU, KEYS, FIGURES, COPY]
+red_tests: [HEADER, DAY, GRID, DID, REPEATS, HOW, FIX, ANSWER, HANDOFF, CLOUD, STATES, BANNERS, MENU, KEYS, FIGURES, COPY, TODAYAPI]
 ---
 
 # m3-11-mac-today-live
@@ -33,7 +33,7 @@ Scope changes). `human_gated: true`: the owner checks it against his own importe
 
 ## Contract
 - **No new dependency, no Package.swift change.** Only files under `TodayLive/` plus one additive edit to
-  `OffloadMacApp/OffloadApp.swift` (the menu bar line).
+  `OffloadMac/App/OffloadApp.swift` (the menu bar line; the app lived in `OffloadMacApp/` before m3-10's rebase).
 - **`TodayLive/`**:
   - `TodayLiveScreen(app:)` (the m3-10 entry point, same initialiser) draws `TodayLiveView` over
     `TodayLiveModel`.
@@ -44,8 +44,13 @@ Scope changes). `human_gated: true`: the owner checks it against his own importe
   - `TodayContent` (pure, Equatable): `title` ("Today · Thu, Nov 12", or "Thu, Nov 5" for an earlier day),
     `headline`, `subtitleItems`, `grid: DayGrid?`, `kinds: [KindRow]` (cloud), `did: [DidRow]`, `repeats:
     [RepeatRow]`, `fix: FixCard?`, `provenance` (m3-10's `DataProvenance`).
-  - `TodayContent.local(snapshot:day:rhythm:timeZone:answers:)` and `TodayContent.cloud(day:week:opportunities:)`:
-    pure builders, every number from a `Figure` (m3-10).
+  - `TodayContent.local(snapshot:day:rhythm:timeZone:answers:)` and `TodayContent.cloud(day:payload:rhythm:today:timeZone:)`
+    (the day record and the planned `GET /v1/today` payload): pure builders, every number from a `Figure` (m3-10).
+  - `TodayAPI.swift`: the flag `TodayAPI.available` (false until the server's `GET /v1/today` lands), the Codable
+    payload (`TodayPayload`, `TodayDayGridPayload`, `TodayGridCategory`, `TodayGridCell`, `TodaySwitchBurst`,
+    `TodayDidItem`, `TodayRepeatItem`) and `TodayClient` / `HTTPTodayClient` (`GET /v1/today?date=` over m3-10's
+    `APIClientCore`, made from the brain client's connection in `.cloud`). The opportunity routes stay m3-10's
+    `BuildsClient`.
   - `DayGrid`: 15-minute cells from the person's rhythm start to end (m3-04 `Rhythm`, default 9:00 to 18:00 = 36
     cells), widened to whole hours to cover any activity outside; rows are the day's top 5 apps (local; a sixth row
     "Other"); a cell belongs to the row with the most active seconds in it, when that is at least 60 s; the "Switch
@@ -54,7 +59,7 @@ Scope changes). `human_gated: true`: the owner checks it against his own importe
   - `TodayMenuSummary.line(snapshot:day:)` → "today · 3 h 10 m · mostly Xcode" (local) or from the cloud day record;
     nil when nothing was counted today, and the menu shows no line.
   - `TodayCopy`: every string of the screen.
-- **Hook** (`OffloadMacApp/OffloadApp.swift`, additive): `MenuBarOpener` shows the summary line above m3-04's
+- **Hook** (`OffloadMac/App/OffloadApp.swift`, additive): `MenuBarOpener` shows the summary line above m3-04's
   menu content when it is not nil.
 - **Data, `.local`** (m3-10 `InsightsSnapshot`, `LocalAnswerStore`):
   - Shown day: today when anything was counted today, else the latest day with data (imports are of past days);
@@ -71,19 +76,29 @@ Scope changes). `human_gated: true`: the owner checks it against his own importe
     designer, so there are no options: buttons **OK, build** (hands `.localRepeat` to Build progress), **Not now** and
     **Leave it alone** (answers `not_now` and `leave_alone` through `LocalAnswerStore`, keyed by the repeat's
     `k_` key and ISO week; the card moves to the next repeat).
-- **Data, `.cloud`** (m3-10 `BrainClient`, `BuildsClient`):
+- **Data, `.cloud`** (m3-10 `BrainClient`, `BuildsClient`; this slice's `TodayClient`), only while
+  `TodayAPI.available` is on:
   - `GET /v1/records/days/{date}` → header "7 h 40 m of work." from `totals.active_minutes`, subtitle from
-    `totals.focus_blocks` and `totals.switches_per_active_hour`; "What you did" from `by_task` (name and minutes);
-    "Time by kind" rows from `by_kind` instead of the grid (the cell grid comes from `GET /v1/today`, not built yet).
-  - `GET /v1/records/weeks/{iso_week}` → "Keeps coming back this week" from `tasks` with `instances` of 2 or more,
-    by minutes: "6× · 3.1 h" from `instances` and `minutes`; how lines from their Figures' `arithmetic`.
-  - `GET /v1/opportunities?state=open` → the first by rank is the card: status line "Suggested fix · ranked first for
-    <goal>" when it names a goal, title from the opportunity, up to 3 numbered `options` (title, detail, "saves 1.4
-    h/wk" from the option's saving Figure, "recommended" on the recommended one). **OK, build** hands
-    `.opportunity(id:optionID:)` to Build progress; **Not now** and **Leave it alone** post
-    `POST /v1/opportunities/{id}/answer` with `not_now` or `leave_alone`; picking "Leave it alone" as an option turns
-    the primary button into "Leave it alone", as the mockup.
-  - A 404 for the day is `.notRecorded` ("Nothing recorded for this day yet."), not an error.
+    `totals.focus_blocks` and `totals.switches_per_active_hour`, and the menu bar line.
+  - `GET /v1/today?date=` → the day grid from `day_grid` (rows are kinds of work by minutes, the top 5 in their
+    kind's colour, then Other; cells from `cells[]`; the Switch bursts row from `switch_bursts[]`; "Time by kind"
+    from the day record's `by_kind` only when no cell came); "What you did" from `what_you_did[]` (name, start time
+    "9:00a", minutes); "Keeps coming back this week" from `repeats[]` with `instances` of 2 or more, by minutes:
+    "6× · 3.1 h" from `instances` and `minutes`, how lines from their Figures' `arithmetic`.
+  - `suggested_fix` (when `open`) is the card: status line "Suggested fix · ranked first for <goal>" when it names a
+    goal, title from the opportunity, up to 3 numbered `options` (title, detail, "saves 1.4 h/wk" from the option's
+    saving Figure, "recommended" on the recommended one). Sent without options, it is read whole from
+    `GET /v1/opportunities/{id}`. **OK, build** hands `.opportunity(id:optionID:)` to Build progress; **Not now** and
+    **Leave it alone** post `POST /v1/opportunities/{id}/answer` with `not_now` or `leave_alone`, then the next open
+    opportunity by rank from `GET /v1/opportunities?state=open` takes the card (none when that read fails); an
+    answered opportunity is not drawn again. Picking "Leave it alone" as an option turns the primary button into
+    "Leave it alone", as the mockup.
+  - A 404 for the day (either read) is `.notRecorded` ("Nothing recorded for this day yet."), not an error.
+- **`.cloud` with `TodayAPI.available` off** (the default until the server lands): the screen shows a sample built by
+  the same `.cloud` builder from `TodaySample`, under the amber label **"Sample data: Today API not live yet"**. Every
+  sample Figure's arithmetic starts with "sample: " and its evidence is of kind `sample`; the card's status is "sample
+  fix · not your data" and its buttons and keys do nothing (no answer is posted, nothing goes to Build progress); the
+  days do not step; the menu bar shows no line; no request of any kind is sent. `.local` ignores the flag.
 
 ## Design note
 - **Layout** follows the mockup and its rules: one fix at a time, every number opens to how it was counted (quiet by
@@ -105,6 +120,74 @@ Scope changes). `human_gated: true`: the owner checks it against his own importe
   without data it shows the empty state).
 - **Refresh**: the model refreshes when the screen appears, when the insights snapshot changes and every 60 s while
   visible (live capture); `.cloud` reads are not repeated more than once a minute.
+
+### Implementation notes (build, 2026-11-22)
+- **Files** (`TodayLive/`): `TodayCopy.swift` (every string), `TodayContent.swift` (the pure content types and the
+  `.local` and `.cloud` builders), `DayGrid.swift` (the cell grid), `TodayMenuSummary.swift`, `TodayLiveModel.swift`
+  (@MainActor: state, day stepping, answers, hand-off, keys, the 60 s refresh rule), `TodayLiveView.swift` (views
+  only) and `TodayLiveScreen.swift` (the m3-10 entry point, same initialiser).
+- **One model per app**: `TodayLiveModel.shared(for: app)` keeps one model per `AppModel`, so the day picked and the
+  open "how" lines survive a trip to another screen, and the menu bar line reads the same model. The model listens to
+  `insights.$snapshot`, `insights.$isAnalysing` and `recordings.$phase` and uses the values they publish (a
+  `@Published` sink runs before the property changes).
+- **Builders take what they need, explicitly**: `TodayContent.local(snapshot:day:rhythm:timeZone:answers:now:)` and
+  `TodayContent.cloud(day:week:opportunities:today:timeZone:)` (`now` and `today` name the day shown as "Today"; a pure
+  builder never reads the clock). Both return nil when nothing was counted for the day, which the model shows as the
+  empty state (`.local`) or `.notRecorded` (`.cloud`); a zero is never drawn.
+- **A repeat this week** (local): the pattern's occurrences in the ISO week of the shown day. `times` is a count Figure
+  ("Mon 1 + Tue 1 + Wed 2 + Thu 2 = 6 times"), `minutes` the sum of those occurrences ("6 times · 31 min median · 186
+  min = 3.1 h"), so "6× · 3.1 h" and the how line read the same arithmetic. The mockup's "6 times × 31 min median"
+  multiplies a median, which would disagree with the counted sum whenever the occurrences differ in length; the sum is
+  shown and the median stays as an item (see Scope changes). The weekdays item is "Mon–Thu" for a run of days, else
+  the days listed.
+- **Declined**: a repeat is left out of the list and the card when the snapshot ranks it declined or when the answers
+  on this Mac decline it now (`RankingAdjustments(answers:).declinePenalty == 0`), so Not now moves the card at once,
+  before the store re-ranks (`insights.reload()` runs after each answer).
+- **Session names and times** (local): "Xcode and github.com" from the session's top app and top host; start times
+  in the hour axis's style ("9:00a", "1:00p": the mockup's "1:00" would read the same as 1:00 at night); durations
+  from the session's active seconds ("1 h 05 m", padded as the mockup's mono column).
+- **Cloud card**: open opportunities by rank (no rank last, then id). Options are the opportunity's options that are
+  not `leave_alone`, by `option_no`, at most 3, then "Leave it alone" (the server's `leave_alone` option when it sends
+  one, else a choice of its own). The recommended option is picked at first. Keys 1 to the number of choices pick;
+  Return presses the primary button. Picking "Leave it alone" makes the primary button "Leave it alone", which posts
+  `leave_alone`. The keys hint lists the numbers there are ("1 / 2 / 3 / 4 to pick · ↵ to build").
+- **Cloud days**: `previousDay`/`nextDay` step one calendar day, never past today; a 404 shows "Nothing recorded for
+  this day yet." Left on today, Today follows the calendar past midnight; a day the person stepped to stays. Without a
+  brain client (a hand-built `Backends` only), `.cloud` fails with "Sign in again to see Today." (review 2). The week record's 404 leaves the repeats empty; any other error fails the screen with one sentence.
+- **Importing**: `.importing(file:of:)` while m3-05's phase is reading; `of == 0` while local insights recount the
+  days of an import that just finished, or while they count with nothing shown yet ("counting on this Mac · Today
+  updates when it's done"). Live capture's minute-by-minute recount of today shows no line (review 1). Whatever was
+  already counted stays below the line.
+- **Menu bar line**: `TodayMenuLine(app:)` (a view in `TodayLive/`) draws the model's `menuLine`; `OffloadApp.swift`
+  gains that one line above m3-04's menu content. The shared model keeps it true on its own clock, `menuTick()`, at
+  launch, every minute for the app's life and on `NSCalendarDayChanged` (the menu bar's `.menu` style does not re-run
+  a view's `.task`): a new day is published at once, so a line for yesterday goes away; in `.cloud` it reads today's
+  day record (at most once a minute, at once on a new day; a failed read clears the line, as the screen shows nothing
+  rather than old numbers) and a cached record of another day is never shown as today's; in `.local` it recounts
+  today only while live capture runs (review 2).
+- **How it was counted** (review 1): the headline, the subtitle items, each "What you did" duration, each repeat's
+  count, each kind's minutes and the card's count open to "how: …" on a click (a cloud card's count is the week
+  task's `instances` when the opportunity names that task; without it the title is plain text, review 2) (and carry it as a tooltip and an
+  accessibility hint); an option's saving shows its arithmetic under the option once it is picked. A cloud repeat's
+  how line has the instances' and the minutes' arithmetic.
+- **Keys** (review 1): the fix card takes focus by default when Today appears, when it is clicked and when an option is
+  picked; a key that reaches the card's handler means focus is on the card or inside it.
+- **Colours**: text on the chrome uses `chromeMute` or brighter, never `chromeFaint` (decoration only). Cloud "Time by
+  kind" gives each of the brain's `WORK_KINDS` one colour (code blue, docs cyan, email amber, meeting purple, browse
+  green, chat and sheet two more; unknown kinds and `other` take Other's), so a kind keeps its colour from day to day.
+
+### Review 1 (2026-11-22, logs/m3-11-mac-today-live.review1.md)
+Red tests first (`M311Review1Tests.swift`), then: (1, major) no text in `chromeFaint`; (2) the card takes focus so the
+keys work, Test plan step 7; (3) the card's count, option savings and cloud repeat counts open to how they were
+counted; (4) no counting line for live capture's recount; (5) the menu line reads today itself in `.cloud` and is
+cleared on a failed read; (6) tests for both answer failures, OK, build with Leave it alone picked, a stale cloud read
+and the capture tick; (7) one colour per kind of work; (8) this SPEC's paths and `BASE` bullets.
+
+### Review 2 (2026-11-22, logs/m3-11-mac-today-live.review2.md)
+Red tests first (`M311Review2Tests.swift`), then: (1, major) the menu line never shows another day's record as
+today and is kept true by the model's `menuTick` (minute clock and day change), and Today in `.cloud` follows the
+calendar past midnight unless a day was picked; (2) the cloud card's count opens to the week task's instances, else
+the title is plain text; (3) `.cloud` without a brain client fails with Sign in again.
 
 ## Red tests (write these first, run them, see them fail)
 Folder `apps/mac/Tests/OffloadMacTests/M311/`, Swift Testing, every test `@Test("TAG: ...")` inside
@@ -129,9 +212,10 @@ brain-port JSON.
 | KEYS | 1, 2, 3 pick options and Return presses the primary button |
 | FIGURES | every number in `TodayContent` traces to a Figure with arithmetic and evidence (walks the content) |
 | COPY | strings have no em dash, banned word or ADR 0016 term; captions lowercase with `·` items as separate items |
+| TODAYAPI | the planned `GET /v1/today` payload decodes from real-shaped JSON (lossy lists, null grid and fix); `GET /v1/today?date=` request with the member token, a malformed date refused before sending; the opportunity routes' requests and answer body; the client exists only over the HTTP brain in `.cloud`; the flag is off by default |
 
 ## Out of scope
-The day grid in `.cloud` mode (needs `GET /v1/today`, m5-05's API half); "how it was counted" evidence rows
+The server's `GET /v1/today` (m5-05's API half, another builder's); "how it was counted" evidence rows
 (`GET /v1/figures/{id}/evidence`); the fix designer and options on the Mac in `.local` mode; the Build progress screen
 (m3-13); any change to m3-04's `Today/` or m3-10's folders.
 
@@ -150,14 +234,49 @@ The day grid in `.cloud` mode (needs `GET /v1/today`, m5-05's API half); "how it
    opens the Recordings screen. Start an import: the importing line shows, and Today fills in when it is done.
 5. The menu bar item shows "today · … · mostly …" on a day with data and no line on a day without.
 6. Turn on Reduce Motion: the grid appears at once.
+7. In `.cloud` (or with the card on screen in `.local`): press 1, 2, 3 to pick an option and Return to press the
+   primary button; click the card first if focus is elsewhere. Click the card's title: the line says how its count
+   was counted.
 
 ## Scope changes
+- m3-10's 2026-11-22 rebase moved the app from `OffloadMacApp/OffloadApp.swift` to
+  `OffloadMac/App/OffloadApp.swift`; `paths_in_scope` adds that one file for the menu bar line (the Contract's hook).
+- The how line shows the counted sum of the week's occurrences ("6 times · 31 min median · 186 min = 3.1 h"), not the
+  mockup's "6 times × 31 min median = 3.1 h": times × median is an estimate that differs from the counted minutes when
+  occurrences differ in length (ADR 0003). The card's title on the Mac says "You've done X 6 times this week." from the
+  same count.
+- `TodayContent.local` takes `now:` and `TodayContent.cloud` takes `today:` and `timeZone:` (the title says "Today"
+  only for today's date); the Contract's shorter signatures had no way to know which day is today.
+- Reference repos: no code was ported. The layout, timings (cells pop in at 14 ms a cell and 40 ms a row, 150 ms
+  after the screen appears) and copy follow the owner-approved mockup's `Daily` component (`source.canvas.tsx` lines
+  479 to 626); the data path is m3-10's. Nothing needs a NOTICE line.
+- `BASE` is m3-10's last commit on this stack (`da18c84`, as rebased onto `main` once PR #7 merged; it was `e80962a`
+  and before that `d3d6651`, each left outside this branch's history by a rebase), taken while m3-10 is still
+  `in_progress`; this slice's commits are the only ones counted by the scope check (subject prefix), so m3-10's
+  placeholder commit in `TodayLive/` is not counted against this slice's `owns`.
 - ROADMAP puts Today's Mac screen in m5-05 (M5) with its API; the owner asked for it in the test build now. This
   slice is the Mac screen only, `milestone: M3` with the wave; m5-05 keeps `GET /v1/today` and the evidence route.
 - Divergences from the mockup, honest by design: in `.local` the grid rows are apps, not kinds of work, and session
   names are app and host names (no model names work on the Mac, ADR 0003 and ADR 0005); the card has no options
   because options come from the fix designer in the cloud; in `.cloud` the grid is replaced by "Time by kind" until
   `GET /v1/today` exists.
-- `apps/mac/Sources/OffloadMacApp/**` is shared (m3-04, m3-05, m3-09, m3-10 edit it); this slice adds one view line.
-- `BASE` is set to the commit this slice starts from, after m3-10 is `done`, so m3-10's placeholder commit in
-  `TodayLive/` is not counted against this slice's `owns`.
+- `apps/mac/Sources/OffloadMac/App/OffloadApp.swift` is shared (m3-04, m3-05, m3-09, m3-10 edit it); this slice adds
+  one view line.
+- **Planned Today API (follow-up, 2026-11-22).** The owner asked for `.cloud` to read the PLANNED `GET /v1/today`
+  shape now, behind one flag, while another builder writes the server (m1-06/m5-05). Changes from the build above:
+  `.cloud` no longer reads `GET /v1/records/weeks/{iso_week}` or the open opportunities list for the first card (the
+  repeats and the card come from `GET /v1/today`); the day record still gives the header and the menu line (the
+  planned payload carries no totals); the cloud grid is built (it was out of scope); after an answer the next card
+  comes from `GET /v1/opportunities?state=open`. With the flag off, `.cloud` shows a labelled sample instead of the
+  records: the shell's "Sample data: cloud not connected" label was for `.local` only, so Today uses its own words.
+  API.md gives only `{ day_grid: { categories[], cells[], switch_bursts[] }, what_you_did[], repeats[] (Figure each),
+  suggested_fix: Opportunity | null }`; the item shapes are this slice's reading, in the brain records' style, for
+  the server slice to confirm or change (then `TodayAPI.swift` follows): `categories[]` `{ key, name?, minutes:
+  Figure }` (key a work kind), `cells[]` `{ start: "HH:MM" (the member's local time, 15-minute cells), category: key
+  | null }`, `switch_bursts[]` `{ start: "HH:MM", switches: Figure }`, `what_you_did[]` `{ task_key?, name, start?:
+  "HH:MM", minutes: Figure }`, `repeats[]` the week record's task shape `{ task_key, name, instances: Figure,
+  minutes: Figure, median_minutes?: Figure }`, `date?` echoed; unknown fields are ignored and an item missing its
+  Figure is left out. Existing cloud tests keep their record fixtures through `M311Cloud.content` (the payload the
+  server would send for them); test `CLOUD: the day record and GET /v1/today fill the screen` replaces the records
+  one. No path outside `paths_in_scope` changed (`Backend/` is read, not edited: `HTTPTodayClient` reuses the HTTP
+  brain client's `APIClientCore`).
