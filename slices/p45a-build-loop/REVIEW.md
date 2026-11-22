@@ -1188,3 +1188,238 @@ Every mutation below was run on a copy in `/tmp`, never in the repo.
    - the tool can read the temp folder, so the expected values are never written there.
 
    New assertion in the held-out writer test. (`ab11acf`, red `e0813d7`)
+
+## Round 5
+
+Independent review (Opus 5.5; wrote none of the code and none of rounds 1 to 4), 2026-11-22, branch `port/build-loop` at
+`6b3b10e`, diff `8f6ff2d..6b3b10e` (focus: `f7dcf98..6b3b10e`, the round 4 fixes).
+
+**Read:**
+- AGENTS.md (review gate) and CLAUDE.md;
+- both SPECs, DESIGN.md, and rounds 1 to 4 with their author responses;
+- the DATA_MODEL builds rows (section 6) and `budget_entries` (section 8);
+- the API.md builds rows;
+- SECURITY_PRIVACY section 13;
+- MIGRATION 5.6 (carry list);
+- every source file of `services/builder/src` (all of `harness.ts`, `sandbox/docker.ts`, `sandbox/provider.ts`,
+  `shards.ts`, `attempt.ts`, `loop.ts`, `approvals.ts`, `checks.ts`, `heldout.ts`, `store-pg.ts`, `http.ts`), the SQL
+  and p45b's `outcome.ts`;
+- `git diff 345e84d..HEAD` on both test folders, and every removed `expect` line since `8f6ff2d`.
+
+### Runs (this reviewer, DATABASE_URL set, passwordless `sudo` available, no Docker)
+
+| Command | Result |
+|---|---|
+| `bash scripts/verify-all.sh` | `verify-all: green` (exit 0). Full suite **207 tests across 34 files: 206 pass, 1 skip (`LIVE:` Docker), 0 fail**, 839 `expect()` calls. p45a PASS (scope 47 files), p45b PASS (scope 38 files). Slices (10 specs), doc links (70 files), copy, secrets and workflows are ok, and the license boundary holds. Swift is skipped (needs macOS) |
+| `bash slices/p45a-build-loop/verify.sh` | `p45a-build-loop: PASS` (exit 0). Slice suite **140 tests across 10 files: 139 pass, 1 skip, 0 fail** (min 75). All 24 tags pass: GATE 12, CHECKS 5, HELDOUT 11, TEETH 5, DEFAULT1 1, SHARDS 26, FANOUT 9, STALL 2, LOCK 14, SHIP 4, BUDGET 6, CAP 3, TAMPER 2, PROOF 3, VERDICT 1, SANDBOX 17, INFRA 3, DEPLOY 1, READY 4, TDD 3, STEPS 1, ERROR 1, API 3, RLS 2. Full suite 207. Scope checked (47 files) |
+| `bash slices/p45b-measured-saving/verify.sh` | `p45b-measured-saving: PASS` (exit 0). Slice suite **17 tests across 1 file: 17 pass** (min 12). SHIP 3, MEASURE 6, FLAG 2, MONTH 1, OUTCOME 2, FIGURE 3. Full suite 207. Scope checked (38 files) |
+| Privileged tests | `sudo -n true` works, so all six `(privileged)` tests ran and passed. The only skip is `LIVE:` |
+| Scope | Every changed file matches `paths_in_scope`. Nothing changed under `packages/{db,contracts,policy,testkit,routine-sdk,connectors-sdk}`, `services/{api,runtime,broker,brain}`, `apps`, `ee`, `.github` or `docs/adr`. `bun.lock` and `package.json` are unchanged. NOTICE lists superpowers (with the MIT text), craft-anything, apple/container, container-use, exo and CompanyOS (ideas only) |
+| Hygiene | No `console.*` or logging in `src` (the only stdout write is the harness's proof line). After all runs: no `p45a%` schema or role in Postgres, no `offload-sbx-*` or `offload-p45a-*` folder in `/tmp`, and `git status` was clean before this file was written |
+
+### Mutation checks (tests really fail without the code)
+
+How I ran them:
+- `/tmp/r5-mut/mut.sh` (outside the repo) applied each change in the tree with `perl -0pi`, checked that the file
+  changed, and ran both slice folders.
+- It then restored the file with `git checkout --`. No stash was used, and `git status` was clean after each batch.
+
+**The round 4 fixes**
+
+| Mutation | Failing tests |
+|---|---|
+| root for every exec on a split provider (`docker.ts:173`) | 1 (`SANDBOX:` only the harness runs as root) |
+| shards not flagged `harness: true` (`shards.ts:241`) | 6 (privileged) |
+| advisory run not flagged `harness: true` (`attempt.ts:145`) | 1 (`SANDBOX:` worker sandboxes) |
+| probe result ignored, `proven = true` (`harness.ts:183`) | 1 (privileged, mount that ignores modes) |
+| probe accepts any failure, `status !== 0` (`harness.ts:183`) | **0** (NIT 6) |
+| `destroy` rethrows `rmSync` (`docker.ts:245`) | 1 |
+
+**473cafb and the earlier security fixes (all still fail)**
+
+| Mutation | Failing tests |
+|---|---|
+| `bun test` cwd = `/work` (`harness.ts:191`) | 12 (`SHARDS:` planted bunfig, node_modules, tsconfig, imports, `.env`, …) |
+| guard `onLoad` off / Bun.spawn routing off | 2 / 4 |
+| `--network none` → `bridge` / `/check` read-write / no `--cap-drop ALL` / no `--read-only` | 1 / 2 / 2 / 1 |
+| an exec error or missing proof counts (`proof.ok` dropped, `shards.ts:248`) | 2 (`PROOF:`) |
+| split proof not required (`shards.ts:247`) | 3 |
+| approval TTL off / single use off / bound hashes not compared | 2 / 3 / 3 (`GATE:`) |
+| OK's hash gate off (`loop.ts:79`) | 1 (`GATE:` wrong brief hash, 403) |
+| reservation ceiling off (memory) / `FOR UPDATE` off (Postgres) / Postgres ceiling ×100 | 1 / 2 / 2 (`CAP:`) |
+| held-out check left out of the teeth gate (`loop.ts:183`) / teeth write check off | 4 / 1 |
+| held-out output appended to the fan-out feedback (`loop.ts:253`) | 1 (`FANOUT:`) |
+| `HeldOutUsed` off, memory / Postgres | 2 / 1 |
+| `..` allowed in a sandbox path (`provider.ts`) | 1 |
+| heartbeat before a try off (`attempt.ts:130`) | 2 (`LOCK:`) |
+| deploy once off (`http.ts:128`) | 1 (`SHIP:`) |
+| fan-out not awaited (`loop.ts:301`) | 10 |
+| orphans: `runAttempt` and `attemptOnce` both rethrow | 4 (`FANOUT:`, `ERROR:`, `READY:`). Either layer alone: 0, because the other one catches. That is by design |
+| `--no-env-file` removed from the harness's `bun test` (`harness.ts:190`) | **0** (NIT 6; cwd `/check` already keeps `/work/.env` out) |
+
+### Test history
+
+- Since round 4 (`345e84d..HEAD`) the only change to an existing test adds `harness: true` to the argv pin
+  (`docker.test.ts:38`). That test pins the root argv, which now needs the flag. `5d682f1`'s one removed `expect` line
+  is the same assertion with `x` renamed `_x`.
+- Every other removed `expect` line since `8f6ff2d` was reviewed in rounds 1 to 4: `724dbd3`'s loosening was restored
+  in `4733412`, and the rest are refactors or became stricter.
+- **No assertion is weakened.**
+- No `.skip`, `.todo`, `.only` or `it(`. The skips are `describe.skipIf(!dockerUp)` (`LIVE:`) and six
+  `test.skipIf(!sudoOk)` (they ran here).
+- The red commits `e661e49`, `433e4de` and `e0813d7` precede their code commits.
+- MIGRATION 5.6's carry list is all present in v2 words. `LOCAL:` is handed to m5-03, and `RUNTIME:` was dropped as
+  MIGRATION plans.
+- Every builder row of SECURITY section 13 has a test, but "no registry reachable" is only the never-run `LIVE:` test.
+
+### My own checks (scratch files in `/tmp/r5-scratch`; nothing in the repo changed)
+
+1. **The privileged tests under the container's real capability set.**
+   - `guard.test.ts:79` runs the harness through `sudo env -i …`: root with **every** capability.
+   - Its comment (`guard.test.ts:34`) says it emulates the container, "where it is PID 1 with SETUID, SETGID and CHOWN
+     only".
+   - I ran a copy of `guard.test.ts` whose only change wraps that command in `setpriv
+     --bounding-set=-all,+chown,+setuid,+setgid --inh-caps=-all --no-new-privs`. The harness's `CapEff` is then
+     `0xc1`, exactly `--cap-drop ALL --cap-add CHOWN --cap-add SETGID --cap-add SETUID`.
+   - Result: **all six privileged tests fail.** The harness dies before it prints a proof: `EPERM: operation not
+     permitted, chmod '…/offload-run-…'` at `harness.ts:119`.
+   - With the two `chown`/`chmod` pairs swapped in a copy of `src` (finding 1), all six pass.
+2. **Worker-made folders.** I emulated a worker command with `setpriv --reuid=65534 --regid=65534 --clear-groups sh -c
+   "umask 022; mkdir tests && echo x > tests/a.test.ts"` inside `work`. `destroy()` then left the host sandbox folder
+   behind (`existsSync(root)` true), forgot it, and `list(tag)` no longer returned it (finding 2).
+3. **The check linter.** `parseCheckReply` accepts checks that start the tool outside the broker:
+   - `const { $ } = Bun`;
+   - `` Bun["$"]`…` ``;
+   - `process.getBuiltinModule("node:child_process")`, which returns `child_process` on Bun 1.4.4.
+
+   `Bun.$` itself is refused (finding 3).
+
+### Round 4 findings, status
+
+| Finding | Status |
+|---|---|
+| 1 MAJOR (root for every exec) | **Fixed.** `harness: true` alone gets root (`docker.ts:173`), with a test and docs. Mutations fail tests. See NIT 5 for hardening |
+| 2 (split asserted, not probed) | **Fixed** (`harness.ts:180-184`), with a test. The 3-vs-4 exit code is unpinned (NIT 6) |
+| 3 (broker rules unpinned) | **Fixed**: cwd, clean env and socket each fail a test |
+| 4 (owner actions) | Carried. Finding 1 below shows why the `LIVE:` run matters: the emulation differs from the container |
+| 5 (writer not told about the split) | Fixed (`heldout.ts:274`) |
+
+### Findings
+
+1. **MAJOR: under the container's real capabilities the user-split harness crashes before it prints a proof. The
+   default Docker provider can therefore never pass a check, and every build ends at the teeth gate. The privileged
+   tests miss it because `sudo` grants every capability.**
+   - Evidence:
+     - `harness.ts:119`: `chownSync(run, CHECK_UID, CHECK_GID); chmodSync(run, 0o711);`.
+     - `harness.ts:167-168`: `chownSync(socketPath, …); chmodSync(socketPath, 0o600);`.
+     - After the `chown`, root no longer owns the folder, and `chmod` on a file you do not own needs `CAP_FOWNER`.
+       `docker.ts:193` grants only `CHOWN`, `SETGID` and `SETUID` after `--cap-drop ALL`, so the call is `EPERM` on any
+       Linux kernel.
+     - `privilege_split` defaults to true (`docker.ts:66`), so this is the production path.
+     - My check 1: under exactly `CapEff 0xc1` every privileged test fails, with that `EPERM` in the harness output.
+       Swapping the two pairs makes all six pass.
+   - Effect:
+     - No proof line, so the shard is `ran: false` and `passed: false` (`shards.ts:243-248`).
+     - The teeth gate ends every build "The teeth gate could not run the checks." before any worker (`loop.ts:191`).
+     - This fails closed: nothing false passes. But the slice's default verification path cannot produce a single
+       verdict.
+   - The tests' cover:
+     - `guard.test.ts:79` runs the harness as full root (`sudo env -i`), while its comment (`guard.test.ts:34`) says
+       it emulates the container's three capabilities.
+     - Rounds 3 and 4 and the author's mutation runs all relied on that emulation. Nothing pins the capability set the
+       harness really gets.
+   - Required fix:
+     - In the harness, `chmod` before `chown`, in both places.
+     - Make the privileged emulator run the harness with the container's capability set: wrap the command in `setpriv
+       --bounding-set=-all,+chown,+setuid,+setgid --inh-caps=-all --no-new-privs` (util-linux; present on GitHub's
+       Ubuntu runners). Skip the test when `setpriv` is missing, and never fall back to full root.
+     - Red first: the emulator change alone turns the six privileged tests red on the current harness.
+     - Fix the comment at `guard.test.ts:34`.
+
+2. **MAJOR: `destroy()` cannot remove any folder a sandbox user made, and since round 4 it then forgets the sandbox
+   silently. In normal use every worker sandbox's host folder (the artifact, and any fixture copies the worker made)
+   stays on the builder host forever, where no reaper can find it.**
+   - Evidence:
+     - A worker's commands run as `65534:65534` (`docker.ts:193`) with Docker's default umask `022`, so every folder
+       they make in `/work` is `0755`, owned by `65534`, on the host bind mount.
+     - The builder (another host uid) cannot unlink entries inside such a folder, so `rmSync(b.root, …)` fails. The
+       error is swallowed (`docker.ts:245-249`), and `boxes.delete` runs first (`docker.ts:244`).
+     - `list(tag)` (`docker.ts:254-263`) only knows in-memory boxes and live containers, so the "left for the reaper"
+       comments (`docker.ts:242`, `docker.ts:248`) and the test name "the reaper takes it from there"
+       (`docker.test.ts:102`) promise something nothing can do: nothing records the folder.
+     - This is the normal path, not an attack:
+       - `TDD_INSTRUCTIONS` (`attempt.ts:20`) tells every worker to write its tests in `tests/`;
+       - m2-07's Agent SDK worker runs inside the sandbox;
+       - in verification shards, the built tool also runs as `65534` with cwd `/work`.
+     - My check 2 reproduced it with a uid-65534 `mkdir tests`.
+   - Why MAJOR:
+     - The SPEC's `SANDBOX:` row promises "temps removed", and DESIGN section 3 says sandboxes are destroyed.
+     - The leftover folders hold worker code and whatever the worker copied from `/check/fixtures` (tokenised fixture
+       content, `R-content`) outside any retention, purge or forget.
+     - The disk use grows with every attempt on a self-hosted builder.
+   - Required fix:
+     - Before `rmSync`, empty `/work` from inside a sandbox as the user that made the files. For example, one cleanup
+       `docker run --rm --user 65534:65534 --network none --cap-drop ALL … --entrypoint find <image> /work -mindepth 1
+       -delete` over the same mount: `65534` can unlink anything in folders it owns, and the builder removes the rest.
+       Alternatively, run sandbox execs with umask `000`.
+     - If removal still fails, keep a record the reaper can use: a persisted list of leftover folders, returned by
+       `list(tag)`. Do not just forget it.
+     - Red test: under `sudo`, a uid-65534 folder with a file in `work`; after `destroy()` the sandbox root is gone.
+     - Rename the round 4 test so it no longer promises a reaper.
+
+3. **MINOR: the check linter is the only guard against a check that starts the tool outside the broker, and it can
+   be bypassed. Under the split, such a tool runs as the check's user, can read the held-out check, and its pass still
+   counts.**
+   - `checks.ts:218-232` refuses `Bun.$`, `import { $ } from "bun"`, `child_process`, workers and `dlopen`. My check 3
+     shows that `const { $ } = Bun`, `` Bun["$"] `` and `process.getBuiltinModule("node:child_process")` all pass
+     `parseCheckReply`.
+   - The guard (`harness.ts:45-69`) routes only `Bun.spawn` and `Bun.spawnSync`. The harness still reports `split:
+     true` (the probe passed), so `shards.ts:247` accepts the result.
+   - The check writer is Offload's own model, not the attacker, so this needs a careless check. That is why it is
+     MINOR. But it fails open.
+   - Required fix:
+     - Under the split, the guard makes every other process API fail at run time: `Bun.$`, `process.getBuiltinModule`,
+       and the functions of `require("node:child_process")` (`spawn`, `spawnSync`, `exec*`, `execFile*`, `fork`).
+     - Add `getBuiltinModule`, `Bun[` and destructuring from `Bun` to the linter.
+     - Add a privileged test where a check that uses `const { $ } = Bun` cannot pass with a tool that reads the check.
+
+4. **MINOR (owner actions, carried):**
+   - The `LIVE:` Docker run has still never run. Finding 1 shows what it would have caught: the emulation is not the
+     container. Run it on a Linux engine after finding 1 is fixed, before m2-07/m2-08 rely on the split.
+   - Still open, unchanged:
+     - `LOCAL:` tests and `redirect: "error"` for m5-03;
+     - the winner order (bytes against ADR 0029's smallest diff);
+     - sandbox-time billing (m2-08);
+     - start before claim (W1-C);
+     - the image pin (S4).
+
+5. **NIT: root is granted on a caller's word.** `runArgv` gives root and three capabilities to any `exec` with
+   `harness: true` (`docker.ts:173`), whatever its argv. `WorkerTurn` hands the whole provider to m2-07's worker
+   (`attempt.ts:25-27`). Make the provider refuse `harness: true` unless `argv` is exactly `HARNESS_ARGV` and `cwd` is
+   `/check`, or give the worker a narrowed handle without the flag. Then a model-written command can never get root by
+   a slip in m2-07.
+
+6. **NIT: two defensive rules are unpinned.**
+   - The probe's "only `EACCES` (exit 3) proves the split" (`harness.ts:183`): `status !== 0` fails nothing, and a
+     probe that cannot start would then count as proof.
+   - `--no-env-file` on the harness's `bun test` (`harness.ts:190`): removing it fails nothing, because cwd `/check`
+     already keeps `/work/.env` out.
+
+   One test each, or say in DESIGN that they are belt-and-braces.
+
+7. **NIT: the second of two concurrent OKs after a stale build gets the wrong 409 code.** Both requests carry a fresh
+   held-out hash and both find the stale build. The second waits on `FOR UPDATE` (`store-pg.ts:228`) and does not see
+   the first's new row in that statement. It then sees that row in the `used` query (`store-pg.ts:230`) and answers
+   `state_conflict` ("held-out already used") while a build is running. API.md says the second of two concurrent
+   requests gets `already_running`. Re-run the live query after taking the lock, or check `used` against terminal
+   builds only.
+
+p45b: sound. I re-read `outcome.ts`: the median is in integer tenths, `m20 * 10 >= e10 * 2 * 8` is exactly ≥ 80%, and
+purged weeks are never guessed. Its 17 tests pass.
+
+**Required before PASS:**
+- Fix finding 1: `chmod` before `chown`, and an emulator with the container's capability set, red first.
+- Fix finding 2: remove the folders a sandbox user made, or record them for a reaper, with a red test.
+- Findings 3 and 5 to 7 are recommended. Finding 4 stays with its owners.
+
+VERDICT: CHANGES
