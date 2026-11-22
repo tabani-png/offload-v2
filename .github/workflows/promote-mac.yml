@@ -1,0 +1,88 @@
+# Mac update channel control (docs/DEPLOYMENT.md section 4). Manual only, in the protected `release` environment.
+#   promote:   the beta item for <version> moves to stable with sparkle:phasedRolloutInterval (seven groups)
+#   halt:      the item for <version> is removed from the appcast (Sparkle only moves forward)
+#   rerelease: roll forward: release-mac.yml runs on the older good tag <from_ref> under the higher <version>
+# The edited, re-signed appcast is uploaded as an artifact; copying it to the downloads host (operator items O7, O13)
+# is not automated yet. Needs SPARKLE_ED_PRIVATE_KEY (O11) and the OFFLOAD_DOWNLOADS_HOST variable (O13); without them
+# each step prints what is missing and succeeds.
+name: promote-mac
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "promote (beta to stable, phased), halt (remove the item) or rerelease (roll forward)"
+        required: true
+        type: choice
+        options: [promote, halt, rerelease]
+      version:
+        description: "Version the action applies to, MAJOR.MINOR.PATCH (rerelease: the new, higher version)"
+        required: true
+        type: string
+      from_ref:
+        description: "rerelease only: the tag of the good build to publish again, for example v1.2.3"
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-mac
+  cancel-in-progress: false
+jobs:
+  appcast:
+    name: ${{ inputs.action }} ${{ inputs.version }}
+    if: inputs.action == 'promote' || inputs.action == 'halt'
+    runs-on: macos-26
+    environment: release
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: secrets
+        id: secrets
+        env:
+          HAS_SPARKLE: ${{ secrets.SPARKLE_ED_PRIVATE_KEY != '' }}
+        run: |
+          echo "has_sparkle=$HAS_SPARKLE" >> "$GITHUB_OUTPUT"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: edit and sign the appcast
+        if: steps.secrets.outputs.has_sparkle == 'true' && vars.OFFLOAD_DOWNLOADS_HOST != ''
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          HOST: ${{ vars.OFFLOAD_DOWNLOADS_HOST }}
+          ACTION: ${{ inputs.action }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p out
+          curl --fail --silent --show-error --proto '=https' --output out/appcast.xml "https://$HOST/appcast.xml"
+          bash apps/mac/Packaging/promote.sh out/appcast.xml "$ACTION" "$VERSION"
+      - name: edit and sign the appcast (skipped)
+        if: steps.secrets.outputs.has_sparkle != 'true' || vars.OFFLOAD_DOWNLOADS_HOST == ''
+        run: |
+          echo "promote: skipped (absent: SPARKLE_ED_PRIVATE_KEY or OFFLOAD_DOWNLOADS_HOST)"
+      - name: upload the edited appcast
+        if: steps.secrets.outputs.has_sparkle == 'true' && vars.OFFLOAD_DOWNLOADS_HOST != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: appcast-${{ inputs.action }}-${{ inputs.version }}
+          path: out/appcast.xml
+          if-no-files-found: error
+  rerelease:
+    name: rerelease ${{ inputs.from_ref }} as ${{ inputs.version }}
+    if: inputs.action == 'rerelease'
+    runs-on: macos-26
+    environment: release
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      - name: dispatch release-mac on the older tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FROM_REF: ${{ inputs.from_ref }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "version must be MAJOR.MINOR.PATCH"; exit 1; }
+          echo "$FROM_REF" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "from_ref must be a version tag"; exit 1; }
+          gh workflow run release-mac.yml --repo "$GITHUB_REPOSITORY" --ref "$FROM_REF" -f version="$VERSION"
+          echo "release-mac dispatched on $FROM_REF as $VERSION"

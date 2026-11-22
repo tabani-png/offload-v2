@@ -1,6 +1,9 @@
 // swift-tools-version: 6.0
 // Offload Mac client (thin client: capture, on-device masking and pseudonyms, egress-guarded upload, actuator, UI).
-// Architecture only: empty targets. See docs/ARCHITECTURE.md#1-mac-client.
+// Library targets are still architecture only (empty). See docs/ARCHITECTURE.md#1-mac-client.
+// The app target OffloadMac is an executable: product "Offload", which bundle.sh copies to
+// Offload.app/Contents/MacOS/Offload (docs/DEPLOYMENT.md section 3.1).
+// Sparkle 2 is the one third-party dependency, linked only into the app target (ADR 0024, DEPLOYMENT section 4).
 // Builds only on macOS 14+ with Swift 6 (CI job "mac"). Not buildable on Linux.
 // `swift build` output is not an app bundle: TCC grants bind to bundle id + Team ID, so daily use needs the
 // bundled, signed app (operator items O1 to O3 in docs/ROADMAP.md).
@@ -12,7 +15,11 @@ let package = Package(
     name: "OffloadMac",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "OffloadMac", targets: ["OffloadMac"])
+        .executable(name: "Offload", targets: ["OffloadMac"])
+    ],
+    dependencies: [
+        // Updates (docs/DEPLOYMENT.md section 4). Exact pin; Package.resolved is committed.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1")
     ],
     targets: [
         // Generated wire types (from packages/contracts/schemas) and the RFC 8785 JCS canonicaliser.
@@ -44,15 +51,20 @@ let package = Package(
         ),
         // Typed device commands only (shortcut.run, appleevent.template, ax.action, browser.step). M6.
         .target(name: "OffloadActuator", dependencies: ["OffloadContracts"], path: "Sources/OffloadActuator", swiftSettings: v6),
-        // The app: UI, enrollment, device key, supervision of the observer.
-        .target(
+        // The app: UI, enrollment, device key, supervision of the observer, updates, `Offload --self-check`.
+        .executableTarget(
             name: "OffloadMac",
             dependencies: [
                 "OffloadContracts", "OffloadStore", "OffloadMasker", "OffloadObserver",
                 "OffloadUploader", "OffloadImport", "OffloadActuator",
+                .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/OffloadMac",
-            swiftSettings: v6
+            swiftSettings: v6,
+            // Inside Offload.app the executable sits in Contents/MacOS and Sparkle.framework in Contents/Frameworks.
+            // SwiftPM's own rpaths only cover .build/<config>, so the bundled app needs this one to load Sparkle.
+            // unsafeFlags are allowed because this is the root package.
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .testTarget(
             name: "OffloadMacTests",

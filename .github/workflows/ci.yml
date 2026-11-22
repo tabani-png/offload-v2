@@ -1,6 +1,8 @@
 # CI stub. Runs the same harness as scripts/verify-all.sh.
 # Action versions are pinned by tag for now. Pinning every action by commit SHA is an M8 acceptance test
 # (`CI: every action reference is pinned by a 40-char SHA`, docs/ROADMAP.md M8).
+# No secret is referenced anywhere in this file: it runs on pull requests. Developer ID signing, notarization and
+# Sparkle signing live in release-mac.yml, in the protected `release` environment (docs/DEPLOYMENT.md section 13).
 # Note: workflow files could not be pushed to the old repo because the gh token there lacks the `workflow` scope,
 # so the old macOS CI build (PR #41 mac-release.yml, PR #45 builder-mac.yml.proposed) is blocked. Re-auth is operator
 # item O4 in docs/ROADMAP.md.
@@ -58,12 +60,40 @@ jobs:
       - run: bash scripts/check-copy.sh
       - run: bash scripts/check-secrets-hygiene.sh
       - run: bun scripts/check-workflows.ts
+  changes:
+    # Path filter for the mac job (hosted macOS minutes cost about ten times Linux minutes, DEPLOYMENT 6.1):
+    # apps/mac, packages/contracts (generated Swift types) and the workflow files. No third-party action needed.
+    name: changes (does the mac job need to run)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      mac: ${{ steps.filter.outputs.mac }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then base="$PR_BASE"; else base="$PUSH_BEFORE"; fi
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "mac=true" >> "$GITHUB_OUTPUT"; echo "no base commit: mac job runs"; exit 0
+          fi
+          if git diff --name-only "$base" HEAD | grep -qE '^(apps/mac/|packages/contracts/|\.github/workflows/)'; then
+            echo "mac=true" >> "$GITHUB_OUTPUT"; echo "mac paths changed: mac job runs"
+          else
+            echo "mac=false" >> "$GITHUB_OUTPUT"; echo "no mac paths changed: mac job skipped"
+          fi
   mac:
-    # Job shape ported from the old repo's ci/mac-release-workflow branch (docs/DEPLOYMENT.md section 6.2).
-    # The Swift package has empty targets today; it cannot run on the Linux dev box.
-    # macos-26 matches the runner PR #41 built the old app on. Path filters for this job (apps/mac, packages/contracts,
-    # .github/workflows) arrive with the first Swift slice; CI capacity for macOS is OQ-25 / operator item O12.
-    name: mac (swift build and test, bundle stub, Swift slices)
+    # Job shape ported from the old repo's ci/mac-release-workflow branch (docs/DEPLOYMENT.md section 6.2,
+    # docs/MIGRATION.md section 5.2), written fresh. macos-26 matches the runner PR #41 built the old app on.
+    # CI capacity for macOS is OQ-25 / operator item O12. PR CI signs ad hoc; Developer ID signing is release-mac.yml.
+    name: mac (build, bundle, ad hoc sign, smoke test, swift test, Swift slices)
+    needs: changes
+    if: needs.changes.outputs.mac == 'true'
     runs-on: macos-26
     timeout-minutes: 150
     env:
@@ -93,27 +123,45 @@ jobs:
       - name: swift build
         working-directory: apps/mac
         timeout-minutes: 30
-        run: swift build
-      - name: bundle app (stub)
-        # `swift build` output is not an app bundle. TCC grants (Screen Recording, Accessibility) bind to the
-        # bundle id + Team ID, so daily use needs a bundled, signed app with a stable identity. Needs operator
-        # items O1 (Apple Developer enrolment), O2 (bundle id ai.offload.mac / ai.offload.mac.dev) and O3
-        # (Developer ID + notarization credentials as CI secrets); O1 to O3 start in M0 and are needed by M3.
-        # Until then this step only reports. PR CI signs ad hoc; Developer ID signing lives in release-mac.yml.
+        run: swift build -c release
+      - name: bundle app
+        # Release flavour (ai.offload.mac). The feed keys are written only when both public repository variables
+        # exist (operator items O11, O13); otherwise the app reports "updates off in this build".
+        env:
+          OFFLOAD_VERSION: 0.0.0
+          OFFLOAD_BUILD_NUMBER: ${{ github.run_number }}
+          OFFLOAD_DOWNLOADS_HOST: ${{ vars.OFFLOAD_DOWNLOADS_HOST }}
+          SPARKLE_ED_PUBLIC_KEY: ${{ vars.SPARKLE_ED_PUBLIC_KEY }}
+        run: bash apps/mac/Packaging/bundle.sh release
+      - name: sign ad hoc
+        run: bash apps/mac/Packaging/sign.sh apps/mac/.build/bundle/Offload.app adhoc
+      - name: developer id signing
         run: |
-          echo "bundle step: pending operator items O1-O3 (docs/ROADMAP.md M0)"
+          echo "developer id signing: runs in release-mac.yml"
+      - name: check bundle
+        run: bash apps/mac/Packaging/check-bundle.sh apps/mac/.build/bundle/Offload.app
+      - name: zip
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent apps/mac/.build/bundle/Offload.app \
+            "apps/mac/.build/bundle/Offload-mac-${GITHUB_SHA}.zip"
       - name: upload build before tests
         # A red test never hides a build you can install.
         uses: actions/upload-artifact@v4
         with:
-          name: offload-mac-build
-          path: apps/mac/.build/debug
-          if-no-files-found: warn
-      - name: installed-copy smoke test (stub)
-        # Target shape: copy the bundle with ditto to a temp folder and run its self-check mode with an empty
-        # environment (env -i HOME=<temp> PATH=/usr/bin:/bin:/usr/sbin:/sbin). Lands with the first app bundle (m3-02).
+          name: Offload-mac-${{ github.sha }}
+          path: apps/mac/.build/bundle/Offload-mac-${{ github.sha }}.zip
+          if-no-files-found: error
+      - name: installed-copy smoke test
+        id: smoke
+        # From a ditto copy outside the repo, with an empty environment: self-check mode starts capture against a
+        # fake permission source, writes nothing outside the temp HOME and exits 0.
+        timeout-minutes: 5
+        continue-on-error: true
         run: |
-          echo "installed-copy smoke test: lands with the app bundle (m3-02)"
+          tmp="$(mktemp -d)"
+          mkdir "$tmp/home"
+          ditto apps/mac/.build/bundle/Offload.app "$tmp/Offload.app"
+          env -i HOME="$tmp/home" PATH=/usr/bin:/bin:/usr/sbin:/sbin "$tmp/Offload.app/Contents/MacOS/Offload" --self-check
       - name: swift test
         id: swift_test
         working-directory: apps/mac
@@ -135,10 +183,28 @@ jobs:
           else
             echo "m3-02-mac-capture-upload: not done yet, verify not run"
           fi
+      - name: Swift slice m3-03-mac-signing-sparkle
+        id: slice_m303
+        timeout-minutes: 25
+        continue-on-error: true
+        env:
+          REQUIRE_MAC: "1"
+          SKIP_FULL_SUITE: "1"
+          SLICE_UPSTREAM: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
+        run: |
+          if grep -q '^status: done' slices/m3-03-mac-signing-sparkle/SPEC.md; then
+            bash slices/m3-03-mac-signing-sparkle/verify.sh
+          else
+            echo "m3-03-mac-signing-sparkle: not done yet, verify not run"
+          fi
       - name: result
         if: always()
         run: |
+          echo "smoke test: ${{ steps.smoke.outcome }}"
           echo "swift test: ${{ steps.swift_test.outcome }}"
           echo "slice m3-02: ${{ steps.slice_m302.outcome }}"
+          echo "slice m3-03: ${{ steps.slice_m303.outcome }}"
+          test "${{ steps.smoke.outcome }}" = success
           test "${{ steps.swift_test.outcome }}" = success
           test "${{ steps.slice_m302.outcome }}" = success
+          test "${{ steps.slice_m303.outcome }}" = success
