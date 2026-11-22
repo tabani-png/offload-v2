@@ -2,7 +2,9 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as contracts from "@offload/contracts";
+import { withTenant } from "@offload/db";
 import { onBeforeCommit } from "@offload/testkit";
+import { FORGET_EVENTS_SQL } from "../../src/imports/forget.ts";
 import { errorCode, focus, makeHarness, receiptOf, type Harness } from "../m3-01-ingest-batches/harness.ts";
 import {
   DAY_MS, consentingDevice, forgetImport, forgetRes, imported, ingestObjects, openImport, openImportRes, outboxWithImport,
@@ -423,8 +425,18 @@ test("IMPORT: forget waits for a dispatcher that holds the import's outbox event
 });
 
 test("IMPORT: forget finds an import's outbox events through an index, not a scan of the outbox", async () => {
-  const idx = (await h.fx.admin.query(
-    "select indexdef from pg_indexes where schemaname = 'public' and tablename = 'events_outbox' and indexdef like '%import_id%'")).rows;
-  expect(idx).toHaveLength(1);
-  expect(idx[0].indexdef).toContain("WHERE (payload ? 'import_id'::text)");
+  // As forget runs it: offload_app, inside withTenant, so row-level security is on. A clause that is not leakproof
+  // (payload->>'import_id') cannot be an index condition there; the lookup must be on a plain column.
+  const dev = await consentingDevice(h, h.fx.a, h.fx.a.owner);
+  const importId = await openImport(h, dev);
+  expect((await ingestObjects(h, dev, imported(importId, daysAgo(9)))).status).toBe(200);
+  await h.fx.admin.query("analyze events_outbox");
+  const plan = await withTenant(h.fx.app, h.fx.ctx(h.fx.a, h.fx.a.owner), async (tx) => {
+    await tx.query("set local enable_seqscan = off");
+    const sql = FORGET_EVENTS_SQL.replace(/\$1/g, `'${dev.memberId}'`).replace(/\$2/g, `'${importId}'`);
+    return (await tx.query(`explain ${sql}`)).rows.map((r) => r["QUERY PLAN"] as string).join("\n");
+  });
+  expect(plan).toContain("events_outbox_import");
+  const indexCond = plan.split("\n").filter((l) => l.includes("Index Cond")).join("\n");
+  expect(indexCond).toContain("import_id");
 });
