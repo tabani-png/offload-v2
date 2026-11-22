@@ -77,7 +77,7 @@ on a Mac with the m3-09 test build.
     (insights need only that text changed), no pixels, no file names or paths; `forget` deletes the import's file. A
     write to a space it did not open throws `UnknownImportSpace`. Files live in
     `Application Support/Offload/OnDevice/imports/<import_id>.jsonl` (folder 0700, files 0600, written with
-    `.completeFileProtection`, excluded from backups). It sends nothing (it is not the uploader); see Design note.
+    `.completeFileProtectionUntilFirstUserAuthentication` since review 1, excluded from backups). It sends nothing (it is not the uploader); see Design note.
   - `LocalObservationStore` reads every stored import back as `InsightEvent`s (`events(in: DateInterval)`,
     `importIDs()`), skipping lines it cannot decode.
   - `DefaultRecordingFolders.candidates(home:screencaptureLocation:exists:) -> [RecordingFolderCandidate]`, in this
@@ -323,6 +323,8 @@ contents (m3-11, m3-12, m3-13); keyframes; `services/**` and `packages/**`.
    you repeat". The menu bar "Recordings…" entry is visible in Local mode.
 5. In Finder, `~/Library/Application Support/Offload/OnDevice/imports/` holds one `.jsonl` per import: open one and
    check there is no screen text, no email address, no file name (only app names, hosts, masked titles and hashes).
+   Masked window titles (from a screenwatch archive) are kept: the interim masker has no person-name rule, so a
+   person's name in a window title stays in the title.
 6. Add an app you saw in the recordings to Never watch from the menu bar: its name leaves the repeats without a new
    import.
 7. **Remove imported data** in Recordings: the file is gone and the repeats from it disappear.
@@ -371,5 +373,30 @@ contents (m3-11, m3-12, m3-13); keyframes; `services/**` and `packages/**`.
   `days_from_civil` (from "chrono-Compatible Low-Level Date Algorithms", public domain); the floating panel reuses
   m3-05's `KeyablePanel` (after farzaa/clicky, MIT, already credited by m3-05). No other code was ported: the brain
   and build-loop ports were read for shapes and their JSON fixtures generated with their own builders.
+- **Review 1** (2026-11-22, `logs/m3-10-mac-recordings-analysis.review1.md`), changes made:
+  - *Overlapping origins* (finding 1): `LocalInsights.mergedSpans` counts each instant once. Where origins overlap,
+    live capture wins, then imports with titles or hosts (screenwatch), then the rest (recordings); ties by import id;
+    a losing span keeps the time no winner covers. A day can no longer exceed wall-clock time.
+  - *Launch wiring and the Never watch recount* (finding 2): tested end to end through `AppModel.startLocalAnalysis`.
+    The menu bar's **Don't watch** (`AppModel.dontWatch`, an additive line) and the Never watch sheet closing call
+    `InsightsModel.exclusionsChanged()` directly; onboarding's `objectWillChange` stays as a second, later look.
+    `InsightsModel.idle()` waits for every recount asked for.
+  - *Cost* (finding 3): spans are built, merged and filtered by Never watch once per recompute and clipped into each
+    day; `refreshAll` reads the imports once and takes the days from that read.
+  - *Old archives* (finding 4): the 8 ranking weeks count back from the last observed day when that is before now
+    (a divergence from "the last 8 ISO weeks" read literally), so an archive older than 8 weeks still ranks.
+  - *No folder check at launch* (finding 5): `OnDeviceRecordings.make` checks only `~/screenwatch/days`; the default
+    folders are `RecordingFolderCandidates`, checked when the Recordings screen shows them. Without screenwatch the
+    suggestion is the screen recording location, named without looking (m3-05's `RecordingFolder.suggested`).
+  - *File protection* (finding 6): files are written with protection until first unlock instead of complete
+    protection, so an import running while the screen locks can still write and its counting can still read.
+  - *Hardening* (finding 10): a lone `.` is refused as an id; `Backends.make` builds no `URLSession` in `.local`;
+    in `.local` Import is offered only when the on-device import exists, and the Recordings screen says so when it
+    could not be set up.
+  - Not changed: the Vision test keeps its real request (finding 7; if a virtualised runner cannot run it, set the
+    request's compute device to the CPU for tests, never weaken the assertion); masked titles are kept (finding 8,
+    now said in the test plan and SECURITY_PRIVACY); the `.cloud` clients write nothing to the egress ledger yet
+    (finding 9): they are a second path out of the Mac (ADR 0035 makes the uploader the egress guard), dormant in the
+    test build (`NoMemberToken`, so `.local`), and need a ledger hook before `.cloud` is turned on.
 - **Security review needed** before `done` (SECURITY_PRIVACY section 13): the interim masker, the local sink and the
   local pseudonym key.
