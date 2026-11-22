@@ -197,7 +197,9 @@ into `offload serve` (m1-06), `remove_step` and `small_app` rules, track record 
 - [x] self-review: mutation spot-checks (adapter order swapped → CONNECTOR, RULE fail; cloud-kind connector gate
   removed → RULE, ESTIMATE fail; episode hosts dropped → PERSIST, FINDER fail; stand-in filter removed → EVIDENCE fails;
   either saveOptions guard removed → PERSIST fails)
-- [ ] verify.sh, verify-all, then an independent review
+- [x] `bash slices/m5-04-opportunity-finder/verify.sh` PASS (21 slice tests, 671 in the full suite);
+  `SLICE_UPSTREAM=$(git merge-base HEAD origin/chain/m5-01-understanding) bash scripts/verify-all.sh` green
+- [ ] independent review (AGENTS.md review gate), then `status: done`
 
 Known limits (for the next slices):
 - Steps are listed in system id order, not in the workflow's order: episodes keep the set of apps and hosts, not
