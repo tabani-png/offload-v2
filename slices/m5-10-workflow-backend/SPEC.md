@@ -1,6 +1,6 @@
 ---
 id: m5-10-workflow-backend
-title: Execution backend for routines - routine.json v2, the native backend and its conformance suite, tool choice, scaffold, static validation, replay with held-out instances, deploy, rollback and drift
+title: Execution backend for routines - routine.json v2, the native backend and its conformance suite, tool choice, scaffold, static validation and the workflow design rules lint, replay with held-out instances, deploy, rollback and drift
 milestone: M5
 status: ready
 depends_on: [m1-05-routine-contract, m2-02-connections-catalog, m2-03-credential-broker, m5-03-model-router]
@@ -11,10 +11,10 @@ size: L
 parallel_group: M5-C
 owns: [packages/execution-backend/**, packages/routine-sdk/src/**, packages/routine-sdk/schemas/**, packages/routine-sdk/scripts/**, packages/testkit/src/execution-backend/**, packages/testkit/fixtures/execution-backend/**, packages/db/migrations/0510_execution_backend.sql, services/runtime/src/backends/**, services/api/src/routines/**, packages/contracts/src/routines/**]
 verify: bash slices/m5-10-workflow-backend/verify.sh
-min_tests: 50
+min_tests: 60
 paths_in_scope: [packages/execution-backend/**, services/api/src/builds/**, services/api/package.json, services/runtime/package.json, packages/routine-sdk/src/**, packages/routine-sdk/schemas/**, packages/routine-sdk/scripts/**, packages/routine-sdk/tests/m5-10-workflow-backend/**, packages/testkit/src/execution-backend/**, packages/testkit/fixtures/execution-backend/**, packages/db/migrations/0510_execution_backend.sql, packages/policy/src/rules/**, packages/contracts/src/routines/**, packages/contracts/src/briefs/**, packages/contracts/scripts/gen-json-schema.ts, packages/contracts/schemas/**, services/runtime/src/backends/**, services/api/src/routines/**, services/api/tests/m5-10-workflow-backend/**, slices/m5-10-workflow-backend/**, docs/API.md, docs/DATA_MODEL.md, docs/ARCHITECTURE.md, package.json, bun.lock]
 paths_out_of_scope: [ee/**, apps/**, services/broker/**, services/brain/src/models/**, packages/masking/**, packages/db/src/**, packages/contracts/src/index.ts, packages/testkit/src/index.ts, docs/adr/**]
-red_tests: [IR, SCAFFOLD, TOOLS, VALIDATE, REPLAY, HELDOUT, DEPLOY, ROLLBACK, DRIFT, BACKEND]
+red_tests: [IR, SCAFFOLD, TOOLS, VALIDATE, RULES, REPLAY, HELDOUT, DEPLOY, ROLLBACK, DRIFT, BACKEND]
 ---
 
 # m5-10-workflow-backend
@@ -24,7 +24,7 @@ Builds the **execution backend** of [ADR 0039](../../docs/adr/0039-routine-defin
 It takes one fix through every stage of that ADR and deploys it as a routine version:
 1. tool choice (code ranks the candidate connectors);
 2. code writes the scaffold `routine.json` from the brief;
-3. static validation;
+3. static validation, including the lint of the eight workflow design rules (WF1 to WF8, ADR 0039 section 3.4);
 4. replay of the visible instances through the native backend;
 5. the held-out check over held-out instances, plus three back-office acceptance cases ([ACCEPTANCE.md](ACCEPTANCE.md))
    run by `evaluateCases` directly (they are golden cases, not output of `splitHeldOut`);
@@ -50,7 +50,10 @@ brief schema, `routine_versions`, `item_journal`, the routines routes), use the 
 "Scope changes". `paths_in_scope` allows the likely names only.
 
 Open questions it builds on, with their defaults:
-- [OQ-30](../../docs/OPEN_QUESTIONS.md#oq-30-n8n-in-offload): nothing n8n-specific is built here.
+- [OQ-30](../../docs/OPEN_QUESTIONS.md#oq-30-n8n-in-offload), decided by the owner on 2026-11-22 ("Build worflow
+  automation as an expert n8n engineer"): this slice builds the workflow design rules and their lint for the native
+  routine definition. The n8n export, its lint and push are slice
+  [m5-12-n8n-export](../m5-12-n8n-export/SPEC.md), which depends on this one. Nothing n8n-specific is built here.
 - [OQ-31](../../docs/OPEN_QUESTIONS.md#oq-31-masked-text-fields-in-build-sandboxes): span tokenisation is ROADMAP task
   m5-11, not this slice. The acceptance fixtures here are synthetic and written already span-tokenised.
 
@@ -85,7 +88,8 @@ Open questions it builds on, with their defaults:
   It never holds values.
 
 **Brief fields**, added where m2-05 defined the brief schema (expected `packages/contracts/src/briefs/`):
-- `item_identity: { [commit step id]: string[] }`: item fields;
+- `item_identity: { [commit step id]: string[] }`: item fields. Required for every commit step (design rule WF5); a
+  brief without it is refused with `dedupe_missing`;
 - `parse_text: string[]`: JSON pointers into read outputs;
 - `tool_choice: ToolChoice[]`.
 
@@ -123,8 +127,19 @@ registerBackend(b: ExecutionBackend, opts: { conformance_passed: true }): void; 
   - each rate is a `Figure` with arithmetic.
 - `scaffold(brief) → RoutineDefinitionV2` and `lockedFields(def)`.
 - `validateStatic(def, ctx) → Issue[]`:
-  - `Issue = { code, pointer }`;
-  - the codes are the list in [ADR 0039 section 3.3](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#33-static-validation).
+  - `Issue = { code, pointer, rule? }`;
+  - the codes are the list in [ADR 0039 section 3.3](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#33-static-validation);
+  - it calls `lintRoutine` and returns its issues too.
+- `lintRoutine(resolved, artifact, receipt?) → Issue[]` (`src/rules.ts`), the workflow design rules of
+  [ADR 0039 section 3.4](../../docs/adr/0039-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules):
+  - every issue has `rule` (`wf.trigger`, `wf.single_purpose`, `wf.error_path`, `wf.retry_timeout`,
+    `wf.idempotent`, `wf.credential_ref`, `wf.pinned_test`, `wf.heldout_gate`) and one of the codes in that table;
+  - WF1 to WF7 run without a receipt; WF8 runs when a receipt is given, and `deployVersion` always gives one;
+  - the rule ids and codes are exported as one constant, `WORKFLOW_DESIGN_RULES`, which slice m5-12 reuses for the
+    n8n export, so both lints use the same ids;
+  - limits: a transform module at most 150 non-blank lines, at most 20 steps;
+  - WF6 reuses the secret-shaped value detector of the conformance suite (rule 2) and adds the credential-like key
+    names `authorization`, `api_key`, `token`, `password`, `secret`, `cookie`.
 - `deriveReadShape(outputs[]) → JSONSchema` and `checkReadShape(shape, output) → violations[]`.
 - `splitHeldOut(instances, build_id) → { visible, held_out }`:
   - held out: 2 when n ≥ 6, 1 when n is 4 or 5, 0 when n ≤ 3;
@@ -139,7 +154,9 @@ registerBackend(b: ExecutionBackend, opts: { conformance_passed: true }): void; 
   - `checkTeeth(caseSet)` refuses a set in which no run expects an item (`no_teeth`).
 - `deployVersion(db, { build_id, artifact_sha256, receipt_hash, definition_hash })` reads `backend` from the hashed
   resolved definition and writes through m2-09's routine version store, called from the existing deploy route
-  `POST /v1/builds/{id}/deploy` (expected under `services/api/src/builds/`). Errors: `hash_mismatch` (403), `backend_not_allowed` (403), `state_conflict` (409).
+  `POST /v1/builds/{id}/deploy` (expected under `services/api/src/builds/`). It runs `lintRoutine` with the receipt
+  first. Errors: `hash_mismatch` (403), `backend_not_allowed` (403), `heldout_not_passed` (403, WF8),
+  `state_conflict` (409).
 - `rollback(db, broker, { routine_id, to_version, artifact_sha256, receipt_hash, definition_hash })`:
   - it re-lists pins through `comparePins` (m2-02) first;
   - errors: `hash_mismatch`, `needs_review` (409, a pin changed), `state_conflict`.
@@ -185,7 +202,8 @@ Each case ships with:
 Folders:
 - `packages/execution-backend/tests/m5-10-workflow-backend/`;
 - `packages/routine-sdk/tests/m5-10-workflow-backend/` (IR);
-- `services/api/tests/m5-10-workflow-backend/` (the DEPLOY and ROLLBACK route tests, real Postgres 17).
+- `services/api/tests/m5-10-workflow-backend/` (the DEPLOY and ROLLBACK route tests and the WF8 RULES test, real
+  Postgres 17).
 
 Tests never call a real model or service; model steps use the recorded-output fake.
 
@@ -214,6 +232,16 @@ Tests never call a real model or service; model steps use the recorded-output fa
 | VALIDATE | VALIDATE: a transform that does not load in the isolate is transform_invalid | |
 | VALIDATE | VALIDATE: limits above the brief are limits_above_brief | |
 | VALIDATE | VALIDATE: every issue has a code and a JSON pointer and no fixture value | canary token absent from issues |
+| RULES | RULES: WF1 a routine with no trigger, two triggers or a schedule without a time zone is trigger_invalid | rule `wf.trigger` |
+| RULES | RULES: WF2 a step with two capabilities, a transform over 150 non-blank lines or more than 20 steps is refused | `step_not_single_purpose`, `transform_too_large`, `too_many_steps` |
+| RULES | RULES: WF3 a resolved step without an explicit on_error is error_path_missing | rule `wf.error_path` |
+| RULES | RULES: WF4 a read, draft or model step without retry or timeout_ms is refused and a commit step with retry is retry_not_allowed | `retry_missing`, `timeout_missing` |
+| RULES | RULES: WF5 a commit step without a dedupe key and a brief without item_identity are dedupe_missing | both |
+| RULES | RULES: WF6 a literal secret or a credential-like key with a literal value in args, a template, a transform or a prompt is credential_inline | canary secret absent from the issue |
+| RULES | RULES: WF7 a read or model step with no recorded output for the visible instances is pinned_test_missing | |
+| RULES | RULES: WF8 deploy with a receipt whose held-out check or held-out instances did not pass is 403 heldout_not_passed and writes no version | real Postgres |
+| RULES | RULES: the scaffold of each acceptance case and its reference artifact pass all eight rules | zero issues for cases A, B and C |
+| RULES | RULES: every lint issue names one of the eight rule ids and a code from WORKFLOW_DESIGN_RULES and holds no fixture value | |
 | REPLAY | REPLAY: the native backend replays the visible instances and its items equal the expected items | acceptance case A |
 | REPLAY | REPLAY: replaying the same fixture set twice gives the same batch_hash | |
 | REPLAY | REPLAY: a read that fails twice with 503 then succeeds counts 2 retries on the fake clock | backoff 1 s then 2 s |
@@ -246,7 +274,9 @@ Tests never call a real model or service; model steps use the recorded-output fa
 - **Span tokenisation of `parse_text` fields.** That is ROADMAP task m5-11 after
   [OQ-31](../../docs/OPEN_QUESTIONS.md#oq-31-masked-text-fields-in-build-sandboxes).
 - **Changes to the model router** (m5-03).
-- **Any n8n code, n8n export or third-party backend** ([OQ-30](../../docs/OPEN_QUESTIONS.md#oq-30-n8n-in-offload)).
+- **Any n8n code, the n8n export, its lint or push, or a third-party backend.** The export is slice
+  [m5-12-n8n-export](../m5-12-n8n-export/SPEC.md) ([OQ-30](../../docs/OPEN_QUESTIONS.md#oq-30-n8n-in-offload)); this
+  slice only exports `WORKFLOW_DESIGN_RULES` for it.
 - **Spike S8** (porting one Activepieces piece).
 - **The public list refresh job for tool candidates.** Candidates come in as data here.
 - **Web and Mac screens** for rollback and the stability record (M8 web, M5 Mac tasks).
