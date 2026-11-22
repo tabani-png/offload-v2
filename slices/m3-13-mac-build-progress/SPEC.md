@@ -177,7 +177,7 @@ sheet?" (m5-06); any change to m3-10's folders.
 1. In Local mode, open **Builds**: one row, "Sample build"; the label "Sample data: cloud not connected" is at the top
    of the detail and stays there. The sample plays once: a worker fails one check, is fixed, and every step turns
    green; **Install** stays disabled with "Installing needs the cloud." Press **Replay**.
-2. From Today, press **OK, build** on the card: Builds opens with "Building "<repeat>" needs the cloud…" and the
+2. (Needs m3-11 or m3-12 on the same build.) From Today, press **OK, build** on the card: Builds opens with "Building "<repeat>" needs the cloud…" and the
    labelled sample. Nothing new appears in the list.
 3. Turn on Reduce Motion: the sample shows its final state at once.
 4. With a cloud backend configured (when sign-in and enrollment exist): press OK, build on a suggested fix, read the
@@ -226,5 +226,37 @@ sheet?" (m5-06); any change to m3-10's folders.
   a deliberate click). Left for the owner: the Contract's "the Mac formats them only" for hs-1 numbers versus the
   measured line computed as `ratio` × `estimated_minutes_per_week` ÷ 60 (Design note), until the outcome carries a
   measured-per-week Figure.
+- **Review 2** (`logs/m3-13-mac-build-progress.review1.md`, verdict CHANGES; every finding taken):
+  1. Tests now cover cancel (new tag `CANCEL`: offered only while live, the returned build replaces the one shown, an
+     error becomes a notice, the unsigned route), choosing another build (clears the definition read; refuses ids not
+     on this Mac), **Not now**, a failed answer, no fix to build and a definition the server does not have.
+  2. Disabled actions are drawn faded (`ActionLook`, 0.4) because m3-04's button styles do not read `isEnabled`; the
+     sample's Install is faded with "Installing needs the cloud." under it, and in `.cloud` "Read what it will do
+     first." is on screen until See what changed was read.
+  3. A definition read, an install or their errors are kept only for the build still chosen; an install that ends
+     after another build was chosen is still written to its own record.
+  4. The poll and the plan poll say "Retrying" only when offline, other failures in their own words; a signed-out
+     answer (401) stops polling.
+  5. Coming back to Builds resumes the plan poll; leaving while the answer is on its way is not an error (the plan
+     waits on the opportunity, which tells whether the answer arrived); an earlier plan's failure no longer stops a
+     later plan.
+  6. Hours are rounded half to even to one decimal, as hs-1 displays them (ADR 0022). **Divergence kept for the
+     owner:** the measured hours are still `ratio` × `estimated_minutes_per_week` ÷ 60 computed on the Mac, against the
+     Contract's "the Mac formats them only", until the outcome carries a measured-per-week Figure (an API gap for the
+     outcomes owners).
+  7. The builds started on this Mac live in `UserDefaults` under `ai.offload.builds.startedOnThisMac`: build, fix and
+     routine ids, the suggestion's name as shown, start and install times. **For the SECURITY_PRIVACY owners**
+     (that file is outside this slice): add the key to the list of what the Mac keeps in `UserDefaults`, and include
+     it in the Mac's forget and sign-out flows when they land; a forget path is needed because the name comes from
+     the person's activity. Until then **Remove from list** removes a gone build's entry. The glossary row is
+     corrected (it said "ids and dates only" while listing the name).
+  8. Known providers keep their brand names ("GitHub", "HubSpot", "Google Sheets"); others are title-cased. The
+     `copyLines` and `planNeedsConnection` tests had locked in "Github" and were corrected with this note.
+  9. The plan panel shows "fingerprint 7c41e2" of the brief whose hashes OK, build posts, and the new one after a
+     `hash_mismatch` re-read (`PlanSummary.fingerprint`; the `planSummary` test's expected value gained it).
+  10. An ended build without `ended_at` stops at its last stage's end (or stands still), never counting on to now.
+  11. Test plan step 2 needs m3-11 (Today) or m3-12 (Weekly review) to call `NavigationModel.startBuild`; nothing on
+      this branch does yet. The hand-off is covered by the HANDOFF tests, and Builds opens the labelled sample from
+      the sidebar.
 - `BASE` is set after m3-10 is `done`, so m3-10's placeholder commit in `BuildProgress/` is not counted against this
   slice's `owns`.
