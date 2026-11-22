@@ -139,9 +139,14 @@ deploy that can be retried, and p45b's unrounded threshold and stored raw minute
   starts, through a root-side spawn broker, as another user with the check's group and a clean environment. The tool
   can read neither the held-out check, nor the check's `/proc` entries, nor the harness's nonce; temp folders the check
   makes are shared through the group. Checks may start processes only with `Bun.spawn`/`Bun.spawnSync`, the two the
-  guard routes. A provider that isolates the tool refuses proofs without `split: true`. Tested for real with
+  guard routes. A provider that isolates the tool refuses proofs without `split: true`, and the harness says `split:
+  true` only after probing it (a process of the tool's user must get `EACCES` opening the check). Root goes to the
+  harness exec alone (`exec({ harness: true })`); every other exec, a worker's command above all, runs as `65534`
+  with no added capability (review round 4). Tested for real with
   passwordless `sudo` (skipped without it: GitHub's hosted runners have it); `privilege_split: false` is development
-  only. Open: the `LIVE:` Docker run (it has the cheat case).
+  only. Open (owner action before m2-07/m2-08 rely on it): one `LIVE:` run on a Linux Docker engine. It is the only
+  proof that the production path works there (root PID 1 with three capabilities under `no-new-privileges`, `chown`
+  on the bind mount, the Unix-socket broker), besides network and registry denial, `swept` and the cheat case.
 - **Approvals are in memory** (`MemoryApprovals`): a restart loses them. The Postgres adapter is m2-06.
 - **Durable handoff of the build token**: the inline runner holds it in process (section 4).
 - **`LOCAL:` hand-off to m5-03** (owner action: whoever writes m5-03's SPEC). ROADMAP's m5-03 row does not list the
