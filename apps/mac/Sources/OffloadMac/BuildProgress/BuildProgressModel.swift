@@ -101,18 +101,22 @@ public struct PlanSummary: Equatable, Sendable {
   public var summary: String
   public var estimate: String?
   public var cap: String
+  /// "fingerprint 7c41e2": the brief whose hashes OK, build posts (review 2, finding 9).
+  public var fingerprint: String
 
-  public init(summary: String, estimate: String?, cap: String) {
+  public init(summary: String, estimate: String?, cap: String, fingerprint: String) {
     self.summary = summary
     self.estimate = estimate
     self.cap = cap
+    self.fingerprint = fingerprint
   }
 
   public static func make(fix: Fix, title: String) -> PlanSummary {
     let candidates = [fix.brief["summary"]?.stringValue, fix.brief["title"]?.stringValue, title]
     let summary = candidates.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } ?? BuildCopy.unnamed
-    let estimate = fix.estimate.flatMap(WeeklyHours.of).map { BuildCopy.savesEstimated(Decimals.oneDecimal($0)) }
-    return PlanSummary(summary: summary, estimate: estimate, cap: BuildCopy.buildCap(Money.usd(FixHashes.defaultCapUSD)))
+    let estimate = fix.estimate.flatMap(WeeklyHours.of).map { BuildCopy.savesEstimated(Decimals.hours($0)) }
+    return PlanSummary(summary: summary, estimate: estimate, cap: BuildCopy.buildCap(Money.usd(FixHashes.defaultCapUSD)),
+                       fingerprint: BuildCopy.fingerprint(StepMapping.fingerprint(fix.briefHash)))
   }
 }
 
@@ -164,7 +168,8 @@ public final class BuildProgressModel: ObservableObject {
   public private(set) var isActive = false
   public private(set) var startTask: Task<Void, Never>?
 
-  private var planTask: Task<Void, Never>?
+  /// The plan poll's loop while the fix is designed (readable for tests).
+  public private(set) var planTask: Task<Void, Never>?
   private var pollTask: Task<Void, Never>?
   private var sampleTask: Task<Void, Never>?
   private var loopsEnabled = false
@@ -216,11 +221,19 @@ public final class BuildProgressModel: ObservableObject {
 
   public var canCancel: Bool { !isLocal && client != nil && detail?.actions.offerCancel == true }
 
-  /// The line next to Install.
+  /// The line next to Install, on screen (not only a tooltip): why it is off, or what happened (review 2, finding 2).
   public var installLine: String? {
     if isLocal { return BuildCopy.installNeedsCloud }
     if let installed = installState.installed { return BuildCopy.installed(version: installed.version) }
-    return installState.message
+    if let message = installState.message { return message }
+    if detail?.actions.offerInstall == true, installState.definition == nil { return BuildCopy.readFirst }
+    return nil
+  }
+
+  /// What the plan panel shows while the plan is ready: summary, estimate, cap and the brief's fingerprint.
+  public var planSummary: PlanSummary? {
+    guard let p = plan, case .ready(let fix) = p.phase else { return nil }
+    return PlanSummary.make(fix: fix, title: p.title)
   }
 
   // MARK: Lifecycle
@@ -275,8 +288,9 @@ public final class BuildProgressModel: ObservableObject {
     if case .opportunity(let id, let optionID)? = pending {
       await startPlan(opportunityID: id, optionID: optionID)
       guard !Task.isCancelled else { return }
-      restartPlanLoop()
     }
+    // Also resumes a plan that was waiting when the screen went away (review 2, finding 5).
+    restartPlanLoop()
     restartPolling()
   }
 
@@ -421,8 +435,10 @@ public final class BuildProgressModel: ObservableObject {
       return nil
     } catch {
       guard isActive else { return nil }
+      // In words; "Retrying" only when offline, and no retry when this Mac must sign in again (review 2, finding 4).
+      connectionLine = connectionWords(error)
+      if Self.isSignedOut(error) { return nil }
       pollErrors += 1
-      connectionLine = BuildCopy.offline
       return Self.backoff(pollErrors)
     }
   }
@@ -468,6 +484,16 @@ public final class BuildProgressModel: ObservableObject {
       guard plan?.opportunityID == opportunityID else { return }
       await apply(opportunity)
     } catch {
+      // A later plan is not stopped by this one's failure (review 2, finding 5).
+      guard plan?.opportunityID == opportunityID else { return }
+      if Task.isCancelled || Self.isCancellation(error) {
+        // The screen went away while the answer was on its way: not an error. The plan waits on the opportunity,
+        // which tells whether the answer arrived.
+        plan?.phase = .designing
+        plan?.line = BuildCopy.designing
+        plan?.message = nil
+        return
+      }
       stopPlan(words(error))
     }
   }
@@ -487,7 +513,8 @@ public final class BuildProgressModel: ObservableObject {
       connectionLine = nil
       await apply(opportunity)
     } catch {
-      connectionLine = BuildCopy.offline
+      connectionLine = connectionWords(error)
+      if Self.isSignedOut(error) { return nil }
     }
     return planIsWaiting ? Self.planSeconds : nil
   }
@@ -631,13 +658,18 @@ public final class BuildProgressModel: ObservableObject {
     guard canReadDefinition, let client, let id = selected else { return }
     installState.busy = true
     defer { installState.busy = false }
+    // Every result is kept only while the same build is still chosen (review 2, finding 3).
     do {
-      installState.definition = try await client.definition(id: id)
+      let definition = try await client.definition(id: id)
+      guard selected == id else { return }
+      installState.definition = definition
       installState.message = nil
     } catch APIError.notFound {
+      guard selected == id else { return }
       installState.definition = nil
       installState.message = BuildCopy.definitionMissing
     } catch {
+      guard selected == id else { return }
       installState.message = words(error)
     }
   }
@@ -653,23 +685,33 @@ public final class BuildProgressModel: ObservableObject {
     installState.busy = true
     do {
       let deployed = try await client.deploy(id: id, hashes: hashes)
-      installState.busy = false
-      installState.installed = deployed
-      installState.message = nil
+      // The install belongs to its build's record whatever is chosen now; the screen shows it only for that build
+      // (review 2, finding 3).
       if var record = store.record(id) {
         record.routineID = deployed.routineID
         record.installedAt = now()
         store.add(record)
       }
+      if selected == id {
+        installState.busy = false
+        installState.installed = deployed
+        installState.message = nil
+      }
       await rereadBuild(id)
     } catch let error as APIError {
+      guard selected == id else {
+        await rereadBuild(id)
+        return
+      }
       installState.busy = false
       switch error.code {
       case .hashMismatch?:
         // Read the build and the definition again; Install needs a new press.
         installState.definition = nil
         await rereadBuild(id)
-        if let again = try? await client.definition(id: id) { installState.definition = again }
+        let again = try? await client.definition(id: id)
+        guard selected == id else { return }
+        installState.definition = again
         installState.message = BuildCopy.installChanged
       case .stateConflict?:
         installState.message = BuildCopy.sentence(for: error)
@@ -678,6 +720,7 @@ public final class BuildProgressModel: ObservableObject {
         installState.message = error == .signingUnavailable ? BuildCopy.installNeedsEnrollment : BuildCopy.sentence(for: error)
       }
     } catch {
+      guard selected == id else { return }
       installState.busy = false
       installState.message = words(error)
     }
@@ -693,7 +736,7 @@ public final class BuildProgressModel: ObservableObject {
       gone.insert(id)
       cache[id] = nil
     } catch {
-      connectionLine = BuildCopy.offline
+      connectionLine = connectionWords(error)
     }
     rebuildRows()
     recompute()
@@ -772,6 +815,18 @@ public final class BuildProgressModel: ObservableObject {
   private func connectionWords(_ error: any Error) -> String {
     if let e = error as? APIError, !e.isOffline { return BuildCopy.sentence(for: e) }
     return BuildCopy.offline
+  }
+
+  /// The Mac must sign in again: retrying cannot help.
+  static func isSignedOut(_ error: any Error) -> Bool {
+    guard let e = error as? APIError else { return false }
+    return e == .notSignedIn || e.code == .unauthenticated || e.code == .tokenExpired
+  }
+
+  /// The request was cancelled on this Mac (the screen went away), not refused.
+  static func isCancellation(_ error: any Error) -> Bool {
+    if error is CancellationError { return true }
+    return (error as? APIError) == .transport(code: URLError.Code.cancelled.rawValue)
   }
 
   private func words(_ error: any Error) -> String {
