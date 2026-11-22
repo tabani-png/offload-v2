@@ -11,7 +11,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m3-01-ingest-batches"
-BASE=""                                  # commit this slice stacks on (required once status is in_progress)
+BASE="63775d0a1516b3a09dea79184103ef1bb553be10"                                  # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="services/api/tests/m3-01-ingest-batches"   # one or more folders, space separated
 NEEDS_POSTGRES=1                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 # -------------------------------------------------------------------------
