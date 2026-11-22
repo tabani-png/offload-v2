@@ -16,3 +16,5 @@ export {
   RETENTION_CRON, RETENTION_WORKFLOW, retentionPurgeWorkflow, runRetentionPurge, scheduleRetentionPurge,
   type RetentionDeps, type RetentionResult,
 } from "./ingest/index.ts";
+export { forgetImport, type ForgetImportInput, type ForgetImportResult } from "./imports/forget.ts";
+export { registerImportRoutes } from "./imports/routes.ts";

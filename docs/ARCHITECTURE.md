@@ -142,7 +142,10 @@ Parts:
   and screenwatch archives are read too (MIGRATION 5.7); exclusions are read again before every file and, for frames,
   matched against the frame's OCR text (hosts, titles, private-window markers); app names come from the menu bar only
   when it is one and the masker leaves the name unchanged. Masked observations go to an `ImportSink`
-  (`POST /v1/imports`, then the uploader with the `import_id`; forget scope `import`), slice m3-05.
+  (`POST /v1/imports`, then the uploader with the `import_id`; forget scope `import`), slice m3-05. The server half
+  (slice m3-05b) accepts an imported object only into an import space its member opened, keeps `ts` and sets `day` to
+  the ingest date, widens the import's `first_day`/`last_day`, emits one `observations.ingested` per import space
+  (with its `import_id`), and forgets an import space in one transaction.
 - **Backend mode** (m3-10): `.local` by default; `.cloud` only with an `https` API base URL (`UserDefaults`
   `ai.offload.api.baseURL`) and a member token, which exists only after enrollment. In `.local` the brain and builds
   clients do not exist, so no request can be built; in `.cloud` the screens read the brain (`/v1/profile`,

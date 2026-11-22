@@ -6,18 +6,23 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import {
-  ErrorEnvelopeSchema, FigureSchema, IngestEnvelopeSchema, IngestReceiptSchema, KeyframeMetaSchema, NoticeAckSchema,
-  ObservationSchema, ReviewEventSchema, StepResultSchema,
+  ErrorEnvelopeSchema, FigureSchema, ForgetRequestSchema, ImportSchema, IngestEnvelopeSchema, IngestReceiptSchema,
+  KeyframeMetaSchema, NoticeAckSchema, ObservationSchema, OpenImportRequestSchema, PurgeRequestStateSchema,
+  ReviewEventSchema, StepResultSchema,
 } from "../src/index.ts";
 
 const SCHEMAS: Record<string, z.ZodType> = {
   "error-envelope": ErrorEnvelopeSchema,
   figure: FigureSchema,
+  "forget-request": ForgetRequestSchema,
+  import: ImportSchema,
   "ingest-envelope": IngestEnvelopeSchema,
   "ingest-receipt": IngestReceiptSchema,
   "keyframe-meta": KeyframeMetaSchema,
   "notice-ack": NoticeAckSchema,
   observation: ObservationSchema,
+  "open-import-request": OpenImportRequestSchema,
+  "purge-request-state": PurgeRequestStateSchema,
   "review-event": ReviewEventSchema,
   "step-result": StepResultSchema,
 };

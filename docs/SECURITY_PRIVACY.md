@@ -255,7 +255,9 @@ The Mac app's Sparkle update check goes to Offload's download host and carries n
 - **Export**: `GET /v1/me/export` returns all of a member's C2 data and settings as JSON.
 - **Forget**: entity (cascade to aliases, facts, propositions, embeddings), date range (observations, texts, episodes,
   day records in range; week records recomputed), import space, or all. Durable workflow state is ids only and is
-  purged too.
+  purged too. Import space (M3, m3-05b): one transaction deletes the import's observations, texts, outbox events and
+  their deliveries, and the `imports` row, then writes `purge_requests`, `purge_log` and `privacy.forgotten`.
+  Derived user-model rows built from an import are dropped by the slices that build them (m5-01 onward).
 - **Wipe**: delete the tenant; data keys destroyed; backups expire with the point-in-time recovery window (7 days, [DEPLOYMENT section 7](DEPLOYMENT.md#7-cloud-deploy-for-the-tenant-of-one)).
 - **Pause learning**: stops ingest processing; the Mac stops uploading.
 - Every action writes `purge_log` and an audit event.

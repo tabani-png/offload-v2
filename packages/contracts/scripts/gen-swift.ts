@@ -30,6 +30,13 @@ const DEFAULT_OUT = join(repo, "apps/mac/Sources/OffloadContracts/Generated");
 /** Roots in dependency order: shapes that other schemas repeat come first so their types keep the short names. */
 const ORDER = ["observation", "notice-ack", "review-event", "step-result", "keyframe-meta", "figure", "ingest-receipt", "error-envelope", "ingest-envelope"];
 
+/**
+ * Generated names that another Mac module already declares by hand. OffloadImport's `ImportSourceKind` predates the
+ * generated import types and OffloadImport does not import OffloadContracts, so a file importing both (the app's import
+ * composition) could not name the type unqualified. The generated twin takes another name.
+ */
+const RENAMES: Record<string, string> = { ImportSourceKind: "ImportSpaceSourceKind" };
+
 // biome-ignore lint/suspicious/noExplicitAny: JSON Schema is open-ended input.
 type Schema = any;
 
@@ -118,7 +125,8 @@ class Emitter {
     const key = JSON.stringify({ enum: schema.enum });
     const known = this.byKey.get(key);
     if (known) return known;
-    const name = this.unique(`${prefix}${pascal(hint)}`);
+    const base = `${prefix}${pascal(hint)}`;
+    const name = this.unique(RENAMES[base] ?? base);
     this.byKey.set(key, name);
     const cases = (schema.enum as string[]).map((v) => `    case ${esc(camel(v))} = ${q(v)}`).join("\n");
     this.chunks.push(`public enum ${name}: String, Codable, CaseIterable, Sendable {\n${cases}\n}\n`);

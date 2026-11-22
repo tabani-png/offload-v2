@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://offload.consultance.ai/schemas/open-import-request.json",
+  "type": "object",
+  "properties": {
+    "source_kind": {
+      "type": "string",
+      "enum": [
+        "screenwatch",
+        "screenshots",
+        "videos"
+      ]
+    }
+  },
+  "required": [
+    "source_kind"
+  ],
+  "additionalProperties": false
+}

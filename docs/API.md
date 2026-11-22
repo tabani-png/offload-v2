@@ -168,9 +168,9 @@ session; the server stores a single-use code (10 min) in `device_enrollment_code
 | `GET /v1/profile` (M5) | | `Profile` |
 | `PATCH /v1/profile` (M5) | partial `Profile`; goals ≤ 3, each ≤ 80 chars, one line; enums checked | `Profile` (400 `schema_invalid`) |
 | `GET /v1/exclusions` · `POST` · `DELETE /v1/exclusions/{id}` (M3) | `{ kind, value }` | `Exclusion` |
-| `POST /v1/imports` · `GET /v1/imports` (M3) | `{ source_kind }` | `{ import_id }` · `Import[]` |
+| `POST /v1/imports` · `GET /v1/imports` (M3, m3-05b) | `{ source_kind }` (`screenwatch`, `screenshots`, `videos`; strict, else 400 `invalid_request`); session or member token | 201 `{ import_id }`, audited as `import.opened` (`{ source_kind }`) · `Import[]`, the member's own, newest first: `{ id, source_kind, first_day, last_day, created_at }`. `first_day` and `last_day` are the UTC dates of the earliest and latest `ts` of the import's accepted objects (null until one is accepted). No `Idempotency-Key` yet: a second call opens a second, empty import space |
 | `GET /v1/me/export` (M7) | | 202 `{ export_id }`; then `GET /v1/me/export/{id}` → signed URL to JSON |
-| `POST /v1/me/forget` (scope `import` M3; others M7) | `{ scope: "entity" \| "range" \| "all" \| "import", entity_id?, from?, to?, import_id? }` | 202 `{ purge_request_id }`; `GET /v1/purge-requests/{id}` → `{ state }` |
+| `POST /v1/me/forget` (scope `import` M3, m3-05b; others M7) | `{ scope: "entity" \| "range" \| "all" \| "import", entity_id?, from?, to?, import_id? }`; scope `import` takes `import_id` only; until M7 the other scopes are 400 `invalid_request` | 202 `{ purge_request_id }`; `GET /v1/purge-requests/{id}` → `{ state }` (the caller's own requests, else 404). Scope `import` runs before the answer (state `done`): in one transaction it deletes every row with that `import_id` (`observations`, `observation_texts`, the `events_outbox` events that name it and their `outbox_deliveries`, the `imports` row), writes `purge_requests`, `purge_log` (`rows_deleted` per table) and audit `privacy.forgotten` (`{ scope, import_id, purge_request_id }`). 404 `not_found` for an import that is not the caller's or is already forgotten |
 | `POST /v1/entities/{id}/confirm-name` (M7) | `{ name }` or `{ dont_track: true }` | `Entity` |
 | `POST /v1/pseudonyms/candidates` (M5) | `{ opportunity_id, connection_id }` (Mac UI) | `{ candidates: [{ ref, value }] }` (C6 values from the connector, to the member's own device only) |
 | `POST /v1/pseudonyms/matches` (M5) | `{ opportunity_id, matches: [{ pseudonym: "h_…", candidate_ref }] }` (the Mac hashes candidates locally) | 204 |
@@ -430,20 +430,23 @@ Required `Observation` fields per `kind`:
 6. Envelope schema; unknown `kind` → `400 unknown_kind`.
 7. Per object: schema (`schema_invalid`; `ts` more than 10 minutes in the future is `schema_invalid`); `too_old` when
    `ts` is older than now − 7 days (imported objects excepted: they carry `source = "import"` and the `import_id`
-   of an open import, and their `day` is the ingest date, [ADR 0020](adr/0020-device-ingest-protocol.md)); kind enabled (`not_enabled`); upload consent for `observation_batch`
+   of an import space the device's member opened and has not forgotten, else `schema_invalid`; an `import_id` without
+   `source = "import"` is `schema_invalid`; their `day` is the ingest date, [ADR 0020](adr/0020-device-ingest-protocol.md)); kind enabled (`not_enabled`); upload consent for `observation_batch`
    (`consent_missing`); leak scan (`leak_detected`, audit
    `privacy.leak_blocked` with object id and detector name only); exclusion (`excluded`: `host`, `app_bundle_id` or
    `title` matches a member exclusion).
 8. In one transaction: insert accepted objects `ON CONFLICT DO NOTHING` (`observations` and `observation_texts` key
    `(tenant_id, device_id, object_id, day)`; `review_events` and `notice_acks` key `(tenant_id, device_id,
    object_id)`), insert `ingest_batches` with `body_sha256` and the receipt, update `devices.last_seq`, write
-   `observations.ingested` to `events_outbox`.
+   `observations.ingested` to `events_outbox`. The batch's import spaces are read again here `FOR NO KEY UPDATE` (forget takes
+   the row `FOR UPDATE`), so objects of an import space forgotten since step 7 are `schema_invalid`; accepted imported
+   objects widen `imports.first_day` and `last_day` (m3-05b).
 9. Return the receipt.
 
 `IngestReceipt`: `{ "accepted": ["01JC..."], "rejected": [{ "id": "01JC...", "code": "leak_detected" }] }`.
 A batch whose objects were all rejected is still a processed batch: its receipt is stored and its `seq` is used, so a resend of the
 same bytes returns the same receipt. Only a whole-request failure (steps 1 to 6) leaves `seq` free. `observations.ingested` is written only
-when at least one object was accepted. The rate limit is a per-process sliding window of 60 requests per minute per device; `429` carries
+when at least one object was accepted: one event for the live objects and one per import space (with its `import_id`). The rate limit is a per-process sliding window of 60 requests per minute per device; `429` carries
 `Retry-After`. Retention: the daily `retentionPurge` workflow (03:15 UTC) drops `observations` and `observation_texts` partitions older
 than `OFFLOAD_RAW_TTL_DAYS` and `OFFLOAD_TEXT_TTL_DAYS` and writes `purge_log` (`raw_ttl`, `text_ttl`) for each tenant that lost rows.
 Object rejection codes: `schema_invalid`, `leak_detected`, `excluded`, `too_old`, `unknown_kind`, `not_enabled`,
@@ -514,7 +517,7 @@ Written to `events_outbox` in the same transaction as the change; delivered to d
 
 | Type | Emitted by | Data |
 |---|---|---|
-| `observations.ingested` | api (ingest) | `{ device_id, member_id, count, first_ts, last_ts }` |
+| `observations.ingested` | api (ingest) | `{ device_id, member_id, seq, accepted, import_id? }` (`accepted` counts this event's objects; one event per batch for live objects and one per import space, m3-05b) |
 | `day.closed` | brain | `{ member_id, day }` |
 | `records.updated` | brain | `{ member_id, kind: "day" \| "week" \| "month" \| "quarter", key }` |
 | `opportunity.ranked` | brain | `{ member_id, iso_week, opportunity_ids[] }` |

@@ -92,9 +92,13 @@ function judge(raw: unknown, i: number, k: Context7): Verdict {
   const parsed = ObservationSchema.safeParse(raw);
   if (!parsed.success) return { id, code: "schema_invalid" };
   const o = parsed.data;
+  // uuids are compared and stored in lower case (the database returns them so; forget lowercases too).
+  if (o.import_id !== undefined) o.import_id = o.import_id.toLowerCase();
   const ts = Date.parse(o.ts);
   if (Number.isNaN(ts)) return { id, code: "schema_invalid" };
   const isImport = o.source === "import";
+  // An import_id belongs only on an imported object, and only of an import space the member opened (m3-05b).
+  if (!isImport && o.import_id !== undefined) return { id, code: "schema_invalid" };
   if (isImport && !k.openImports.has(o.import_id!)) return { id, code: "schema_invalid" };
   if (!isImport && ts < k.now - TOO_OLD_MS) return { id, code: "too_old" };
   if (ts > k.now + FUTURE_MS) return { id, code: "schema_invalid" };
@@ -138,6 +142,62 @@ async function insertObservation(tx: Tx, p: DevicePrincipal, v: Verdict): Promis
       "perm" in o ? JSON.stringify(o.perm) : null,
     ],
   );
+}
+
+/** The receipt for these verdicts, in object order. */
+const receiptOf = (verdicts: Verdict[]): IngestReceipt => ({
+  accepted: verdicts.filter((v) => v.code === undefined).map((v) => v.id),
+  rejected: verdicts.filter((v) => v.code !== undefined).map((v) => ({ id: v.id, code: v.code! })),
+});
+
+/** Import ids named by accepted imported objects. */
+const importIdsOf = (verdicts: Verdict[]): string[] =>
+  [...new Set(verdicts.flatMap((v) => (v.obs?.source === "import" ? [v.obs.import_id!] : [])))];
+
+/**
+ * Re-reads the batch's import spaces in the insert transaction under FOR NO KEY UPDATE: forget takes the row FOR
+ * UPDATE, so an import space forgotten after the per-object check rejects its objects here instead of leaving orphan
+ * rows. Not FOR SHARE: two devices of one member writing into one import space would each hold a share lock and then
+ * deadlock on the first_day/last_day update; this lock lets the second wait for the first instead.
+ */
+async function recheckImports(tx: Tx, p: DevicePrincipal, verdicts: Verdict[]): Promise<Verdict[]> {
+  const ids = importIdsOf(verdicts);
+  if (ids.length === 0) return verdicts;
+  const open = new Set((await tx.query<{ id: string }>(
+    "select id from imports where member_id = $1 and wiped_at is null and id = any($2::uuid[]) order by id for no key update", [p.memberId, ids],
+  )).rows.map((r) => r.id));
+  return verdicts.map((v) => (v.obs?.source === "import" && !open.has(v.obs.import_id!) ? { id: v.id, code: "schema_invalid" as const } : v));
+}
+
+/** Widens each import space's first_day and last_day to the UTC dates of its accepted objects' ts. */
+async function widenImportDays(tx: Tx, p: DevicePrincipal, verdicts: Verdict[]): Promise<void> {
+  for (const importId of importIdsOf(verdicts)) {
+    const days = verdicts.filter((v) => v.obs?.import_id === importId).map((v) => new Date(v.obs!.ts).toISOString().slice(0, 10)).sort();
+    await tx.query(
+      "update imports set first_day = least(first_day, $3::date), last_day = greatest(last_day, $4::date) where member_id = $1 and id = $2",
+      [p.memberId, importId, days[0], days[days.length - 1]],
+    );
+  }
+}
+
+/**
+ * observations.ingested: one event for the batch's live objects and one per import space, so forget scope import
+ * can delete exactly the events that name it. Ids and counts only.
+ */
+async function writeIngestedEvents(tx: Tx, p: DevicePrincipal, seq: number, verdicts: Verdict[]): Promise<void> {
+  const groups = new Map<string | null, number>();
+  for (const v of verdicts) {
+    if (!v.obs) continue;
+    const key = v.obs.source === "import" ? v.obs.import_id! : null;
+    groups.set(key, (groups.get(key) ?? 0) + 1);
+  }
+  for (const [importId, accepted] of groups) {
+    const payload = { device_id: p.deviceId, member_id: p.memberId, seq, accepted, ...(importId === null ? {} : { import_id: importId }) };
+    await tx.query(
+      "insert into events_outbox (tenant_id, id, type, version, payload) values ($1, $2, 'observations.ingested', 1, $3)",
+      [p.tenantId, uuidv7(), JSON.stringify(payload)],
+    );
+  }
 }
 
 interface StoredBatch {
@@ -231,38 +291,31 @@ export function registerIngestRoutes(app: Hono, deps: IngestDeps): void {
     } else {
       const k = await withTenant(deps.pool, p.ctx, async (tx): Promise<Context7> => {
         const own = (await tx.query<ExclusionRule>("select kind, value from exclusions where member_id = $1", [p.memberId])).rows;
-        const importIds = [...new Set(objects.flatMap((o) => (typeof o === "object" && o !== null && typeof (o as { import_id?: unknown }).import_id === "string" ? [(o as { import_id: string }).import_id] : [])))]
+        const importIds = [...new Set(objects.flatMap((o) => (typeof o === "object" && o !== null && typeof (o as { import_id?: unknown }).import_id === "string" ? [(o as { import_id: string }).import_id.toLowerCase()] : [])))]
           .filter((x) => UUID_RE.test(x));
         const open = importIds.length === 0 ? [] : (await tx.query<{ id: string }>("select id from imports where member_id = $1 and wiped_at is null and id = any($2::uuid[])", [p.memberId, importIds])).rows;
         return { now, consented: await hasUploadConsent(tx, p.memberId), rules: [...BUILTIN_EXCLUSIONS, ...own], openImports: new Set(open.map((r) => r.id)) };
       });
       verdicts = objects.map((o, i) => judge(o, i, k));
     }
-    const receipt: IngestReceipt = {
-      accepted: verdicts.filter((v) => v.code === undefined).map((v) => v.id),
-      rejected: verdicts.filter((v) => v.code !== undefined).map((v) => ({ id: v.id, code: v.code! })),
-    };
-
     // 8. one transaction: objects, batch row with receipt, last_seq, outbox event, leak audits.
     const stored = await withTenant(deps.pool, p.ctx, async (tx) => {
       // The device row is the lock that serialises two batches of one device (and a resend racing its original).
       const dev = (await tx.query<{ last_seq: string }>("select last_seq from devices where tenant_id = $1 and id = $2 for update", [p.tenantId, p.deviceId])).rows[0];
       const again = (await tx.query<StoredBatch>("select body_sha256, receipt from ingest_batches where device_id = $1 and seq = $2", [p.deviceId, seq])).rows[0];
-      if (again) return { replayOf: again };
+      if (again) return { replayOf: again, receipt: null };
       if (!dev || seq <= Number(dev.last_seq)) throw new ApiError(409, "seq_replay", "seq is not above the last accepted seq");
-      for (const v of verdicts) if (v.obs) await insertObservation(tx, p, v);
+      const final = await recheckImports(tx, p, verdicts);
+      const receipt = receiptOf(final);
+      for (const v of final) if (v.obs) await insertObservation(tx, p, v);
+      await widenImportDays(tx, p, final);
       await tx.query(
         "insert into ingest_batches (tenant_id, device_id, seq, kind, body_sha256, object_count, receipt) values ($1, $2, $3, $4, $5, $6, $7)",
         [p.tenantId, p.deviceId, seq, kind, bodySha256, objects.length, JSON.stringify(receipt)],
       );
       await tx.query("update devices set last_seq = $3 where tenant_id = $1 and id = $2", [p.tenantId, p.deviceId, seq]);
-      if (kind === "observation_batch" && receipt.accepted.length > 0) {
-        await tx.query(
-          "insert into events_outbox (tenant_id, id, type, version, payload) values ($1, $2, 'observations.ingested', 1, $3)",
-          [p.tenantId, uuidv7(), JSON.stringify({ device_id: p.deviceId, member_id: p.memberId, seq, accepted: receipt.accepted.length })],
-        );
-      }
-      for (const v of verdicts) {
+      if (kind === "observation_batch") await writeIngestedEvents(tx, p, seq, final);
+      for (const v of final) {
         if (v.code === "leak_detected") {
           await appendAudit(tx, {
             principalId: p.deviceId, action: "privacy.leak_blocked", subjectType: "observation", subjectId: v.id,
@@ -270,12 +323,12 @@ export function registerIngestRoutes(app: Hono, deps: IngestDeps): void {
           });
         }
       }
-      return { replayOf: null };
+      return { replayOf: null, receipt };
     });
     if (stored.replayOf) return replay(stored.replayOf);
 
     // 9. the receipt.
     c.header("cache-control", "no-store");
-    return c.json(receipt);
+    return c.json(stored.receipt!);
   });
 }

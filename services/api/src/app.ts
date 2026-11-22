@@ -13,6 +13,7 @@ import {
 } from "@offload/db";
 import { calculateJwkThumbprint } from "jose";
 import { registerIngest, uploadConsentState } from "./ingest/index.ts";
+import { registerImportRoutes } from "./imports/routes.ts";
 import { ApiError, errorResponse, invalidRequest, toApiError, tokenExpired, unauthenticated } from "./http.ts";
 import { systemClock, type Clock } from "./clock.ts";
 import { random32, s256, safeEqual, sha256Hex } from "./auth/crypto.ts";
@@ -450,13 +451,15 @@ export function createApp(deps: AppDeps): Hono {
     return c.body(null, 204);
   });
 
-  registerIngest(app, {
+  const ingestDeps = {
     pool, clock, tokens,
-    authenticateMember: async (c) => {
+    authenticateMember: async (c: Context) => {
       const p = await authenticate(c);
       return { tenantId: p.tenantId, memberId: p.memberId, tenantRole: p.tenantRole };
     },
-  });
+  };
+  registerIngest(app, ingestDeps);
+  registerImportRoutes(app, ingestDeps);
 
   return app;
 }
