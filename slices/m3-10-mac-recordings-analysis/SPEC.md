@@ -252,6 +252,29 @@ on a Mac with the m3-09 test build.
   are protected by POSIX modes and macOS file protection, not by the AES-GCM day-file sealing m3-02 brings; they move
   into the sealed store with m3-02. Vision accuracy on small menu bar text varies by display scale.
 
+### Implementation notes (build, 2026-11-22)
+- **Shapes as built.** `OnDeviceRecordings.make(neverWatch:store:folders:panel:picker:recognizer:pseudonymKey:readers:clock:timeZone:durations:appNames:)`
+  returns an `OnDeviceRecordings` value (`model`, `sink`, `ledger`, `observations`, `picker`, `paths`, `candidates`)
+  rather than the bare model, so the Recordings screen can offer **Use this folder** (an `OnDeviceFolderPicker` that
+  answers the next pick without the open panel) and tests can reach the sink and ledger; everything after `folders`
+  is injectable and defaults to the live piece. `LocalAnalysis.live(neverWatch:events:)` builds the insights store
+  (`LocalObservationStore` reader, the live `LocalEventSource`, `FileLocalAnswerStore`, Never watch rules through an
+  `ExclusionRulesBox` refreshed on the main actor with installed apps' names) and the panel; `AppModel.startLocalAnalysis`
+  wires the offer rule, the coordinator, the Never watch recount and the launch refresh.
+- **`InsightsModel.schedule`** marks the model analysing synchronously and runs the store call, so the done line says
+  "counting on this Mac" from the moment an import finishes until its days are counted, then "9 things you repeat".
+- **The idle-gap rule is for live capture only.** Imports write a focus only when it changes and carry their
+  idleness as explicit `idle_start`/`idle_end` (screenwatch rows more than 120 s apart, a recording's end), so a quiet
+  stretch inside an import is not idle; applying the 300 s rule to them would undercount any long stay in one window.
+  Live events (one per input) keep the rule. INSIGHTS tests pin both.
+- **Snapshot repeats** keep every repeat ranked, declined ones with score 0 (`isDeclined`); `thingsYouRepeat` (what
+  "9 things you repeat" counts) leaves declined ones out and `topRepeats` is its first 5.
+- **Local Figures** use the brain's units plus `seconds` for durations counted on the Mac (local only, never sent).
+  Figure ids match the brain port's `figure()` byte for byte (golden test).
+- **Masker order.** Outputs are the SPEC's; emails are recognised before the card rule and phones before the
+  long-digit rule, so an address's or a phone's digits are never read as an account number or a code. A date
+  (`2026-11-22`) is never an account number; a sentence's full stop may follow a code.
+
 ## Red tests (write these first, run them, see them fail)
 Folder `apps/mac/Tests/OffloadMacTests/M310/`, Swift Testing, every test `@Test("TAG: ...")` inside
 `@Suite struct M310` (tests in extensions of `M310` across files).
@@ -333,3 +356,20 @@ contents (m3-11, m3-12, m3-13); keyframes; `services/**` and `packages/**`.
 - Glossary gains **Local insights**, **Backend mode**, **Sample data** and **Interim masker** (in this slice).
 - The owner's install guide (`apps/mac/TestBuild/INSTALL_AND_TEST.md`, m3-09's file) should gain the Test plan
   above; m3-09 owns it.
+- **Build divergences** (2026-11-22, see Implementation notes): the 300 s idle-gap rule applies to live capture only;
+  emails and phones are masked before the digit rules; `LocalImportSink` throws its own `LocalImportSink.UnknownSpace`
+  because OffloadImport's `UnknownImportSpace` has no public initialiser (m3-05's file is out of scope; a public init
+  there would let the sink throw the shared type); `OnDeviceRecordings.make` returns a value holding the model, sink,
+  ledger and folders found; `AppModel` gains a fourth defaulted stored property, `onDeviceRecordings`, for the
+  Recordings screen's folders (still additive); local Figures add the unit `seconds`.
+- **API addition for m3-13**: `BuildsClient.opportunity(id:)` (`GET /v1/opportunities/{id}`, API.md) so Build progress
+  can poll an opportunity until its fix exists without editing `Backend/`.
+- **Red tests seen failing**: the red commit adds the M310 suite before any `Analysis/`, `OnDevice/`, `Backend/` or
+  `Navigation/` source exists, so the suite does not compile at that commit (every tag red). No Swift toolchain on the
+  Linux box: the green run is the macOS CI `mac` job, which is the done gate.
+- **Credits** (for NOTICE, which this slice may not edit): `LocalDays.fastUTC` uses Howard Hinnant's
+  `days_from_civil` (from "chrono-Compatible Low-Level Date Algorithms", public domain); the floating panel reuses
+  m3-05's `KeyablePanel` (after farzaa/clicky, MIT, already credited by m3-05). No other code was ported: the brain
+  and build-loop ports were read for shapes and their JSON fixtures generated with their own builders.
+- **Security review needed** before `done` (SECURITY_PRIVACY section 13): the interim masker, the local sink and the
+  local pseudonym key.
