@@ -26,6 +26,8 @@ public final class AppModel: ObservableObject {
   public let insights: InsightsModel
   /// m3-10: the on-device recordings import (the folders found, the local sink); nil when it could not be set up.
   public let onDeviceRecordings: OnDeviceRecordings?
+  /// m3-12: the weekly review (its screen, its Settings section and the review notification), built on first use.
+  public private(set) lazy var weeklyReview: WeeklyReviewHub = WeeklyReviewHub(app: self)
 
   private var frontmostObserver: NSObjectProtocol?
   private var backgroundChecks: Task<Void, Never>?
@@ -120,6 +122,7 @@ public final class AppModel: ObservableObject {
       sampleWeek: sampleWeek, backends: backends, insights: local.insights, onDeviceRecordings: local.onDevice
     )
     app.startLocalAnalysis(rules: local.rules)
+    app.weeklyReview.start()
     app.trackFrontmostApp()
     app.startBackgroundChecks()
     return app
