@@ -112,6 +112,7 @@ them. Tests create a unique schema and unique roles per file and drop them after
 For the durable step that calls `runMemberUpdate` (W1-C, m5-05): `TimezoneMismatchError` (`code: "timezone_mismatch"`,
 `retryable: false`) is not retryable. The same window fails on every retry; the step rebuilds the window in the
 profile's timezone (or gives up and records why). The handlers read the request body before `RunInTenant` opens.
+While `profiles.learning_paused` is true the job returns `paused: true` and writes nothing (ONBOARDING 11.12).
 
 ## 5. Privacy and numbers
 
@@ -136,7 +137,8 @@ profile's timezone (or gives up and records why). The handlers read the request 
 
 ## 7. Known gaps (left for later slices)
 
-Numbers written as words are not caught by `checkNarrative`. Goal embeddings and task centroids need the local
+`checkNarrative` reads cardinal number words (`three`, `forty-two`) like digits and refuses multipliers, fractions and
+scales (`twice`, `half`, `hundred`); ordinals (`first`, `third week`) other than `third` are not read. Goal embeddings and task centroids need the local
 embedder (m5-01); until then `bestGoal` gets vectors from the caller. `competes` has no producer yet. Sheets vs docs on
 `docs.google.com` cannot be told apart. The figure-evidence route (`GET /v1/figures/{id}/evidence`) is not built here.
 Any alignment above 0 counts as advancing a goal (the formula sets no floor; real embeddings will need one, an owner

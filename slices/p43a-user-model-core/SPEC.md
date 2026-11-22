@@ -43,7 +43,8 @@ map, the bugs fixed and the stubs: [DESIGN.md](DESIGN.md).
   persistent in ≥ 75% of recorded weeks) and quarters (≥ 8/13), Theil-Sen slope over (week index, minutes) with 3 or
   more weeks. Every number is a `Figure { id, value, unit, arithmetic, evidence[], source_purged_at }`, id = `fig_` +
   16 hex of sha256(JCS(figure without id)).
-- Narrative (`src/records/narrative.ts`): `checkNarrative(text, record)`, `weekSentence(record)` (code sentence),
+- Narrative (`src/records/narrative.ts`): `checkNarrative(text, record)` (digits and cardinal number words must be
+  record values; multipliers, fractions and scales are refused), `weekSentence(record)` (code sentence),
   `weekNarrativePrompt(record, userContext)`, `writeWeekSentence(record, userContext, complete)`.
 - Propositions (`src/user-model/{propose,merge}.ts`): kinds `repeats` and `time_share` (no `sequence` before M7);
   `score = 0.45·min(1, days/10) + 0.35·(1 − e^(−instances/6)) + 0.2·sameness`, `confidence = clamp(round(1 + 9·score),
