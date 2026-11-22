@@ -1,5 +1,8 @@
-// The tenant pseudonym key in this device's Keychain item (service = the bundle id, this device only). Created at the
-// first enrollment; a second Mac receives it wrapped (m3-06) or through the recovery code.
+// The tenant pseudonym key in this device's Keychain item (service = the bundle id, this device only). A second Mac
+// receives it wrapped (m3-06) or through the recovery code. Since m3-14, Local-mode capture (and the recordings import)
+// creates it on the first capture, before any enrollment: on the first enrolled Mac that key becomes the tenant key; on
+// a Mac that later joins a tenant as a second Mac, `store(_:)` replaces it, and the buffer masked under the local key
+// must not be uploaded (follow-up for enrollment/m3-06, slices/m3-14-mac-app-integration/SPEC.md, Scope changes).
 import Foundation
 import OffloadMasker
 import OffloadStore

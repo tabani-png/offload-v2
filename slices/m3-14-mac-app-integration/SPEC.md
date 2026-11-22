@@ -11,8 +11,8 @@ size: M
 parallel_group: M3-D
 owns: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Tests/OffloadMacTests/M314/**]
 verify: bash slices/m3-14-mac-app-integration/verify.sh
-min_tests: 47
-paths_in_scope: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Sources/OffloadMac/CaptureRuntime.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/Onboarding/Services.swift, apps/mac/Sources/OffloadMac/Updates/CaptureLifecycle.swift, apps/mac/Sources/OffloadUploader/Uploader.swift, apps/mac/Sources/OffloadUploader/DeviceKey.swift, apps/mac/Sources/OffloadUploader/ImportOutbox.swift, apps/mac/Sources/OffloadUploader/Tokens.swift, apps/mac/Package.swift, docs/ONBOARDING.md, apps/mac/Tests/OffloadMacTests/M314/**, apps/mac/README.md, docs/ARCHITECTURE.md, slices/m3-14-mac-app-integration/**]
+min_tests: 48
+paths_in_scope: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Sources/OffloadMac/CaptureRuntime.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/Onboarding/Services.swift, apps/mac/Sources/OffloadMac/Updates/CaptureLifecycle.swift, apps/mac/Sources/OffloadUploader/Uploader.swift, apps/mac/Sources/OffloadUploader/DeviceKey.swift, apps/mac/Sources/OffloadUploader/ImportOutbox.swift, apps/mac/Sources/OffloadUploader/Tokens.swift, apps/mac/Sources/OffloadUploader/PseudonymKeyStore.swift, apps/mac/Package.swift, docs/ONBOARDING.md, apps/mac/Tests/OffloadMacTests/M314/**, apps/mac/README.md, docs/ARCHITECTURE.md, slices/m3-14-mac-app-integration/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadContracts/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Tests/OffloadMacTests/M302/**, apps/mac/Tests/OffloadMacTests/M303/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**]
 red_tests: [ENTRY, LAUNCH, CAPTURE, UPLOAD, EXCLUDE, NOW, IMPORT]
 ---
@@ -88,7 +88,8 @@ running observer, and imports go through the uploader when this Mac is signed in
   `UploadRuntime.Network` (`.live`: URLSession and one `DeviceSession` per audience; tests inject a scripted transport).
 - **Offer rule** (`Composition/ModeLines.swift`, `ImportOffer`): the composition replaces m3-04's "while sending"
   `offerCheck`. Through the uploader: offered while the person is sending with no new notice waiting (ONBOARDING
-  section 8). On this Mac: offered whenever m3-10's on-device sink exists, in Local mode too (see Scope changes).
+  section 8). On this Mac: offered when m3-10's on-device sink exists and onboarding is past screen 2 (or done), in
+  Local mode too (see Scope changes).
 - **Menu lines** (`ModeLines`, `AppComposition.modeLines`, read each time the menu draws): "Local mode: nothing leaves
   this Mac" whenever nothing is uploaded (GLOSSARY: signed out or without upload consent), then why the import is not
   offered ("Recordings import is coming: it needs on-device text reading" without an importer; "Recordings import
@@ -246,3 +247,30 @@ passing and every tag present, then the full `swift test`. On Linux it prints SK
 - **Finding 9:** `CaptureRuntime.tickOnce()` holds the tick body and is tested. The 86d31c9 ordering (paused refusal
   before its test) is history; its test came in 3a6c895.
 - **Finding 10:** an import detector hit now stops that flush like a live one (set aside, counted, nothing sent).
+
+### Review 3 (2026-11-22)
+- **Finding 1 (blocker, the test target did not parse):** 8d79e5a dropped the closing brace of `extension M314` in
+  `EntryLaunchTests.swift`; added back (3077f28). A structural check (strings and comments stripped; braces, parens,
+  brackets) over all 160 Swift files under `apps/mac` reports none open. No Swift toolchain here: the target has never
+  been compiled by this slice's author, so the mac CI job's `swift build` and `swift test` are the first build; the
+  orchestrator runs it (agents do not push).
+- **Finding 2 (major, pseudonym key before enrollment): recorded divergence, not changed.** Capture is local-only
+  since this slice, so the first Local-mode capture creates the pseudonym key (`CaptureRuntime.masker`,
+  `PseudonymKeyStore.loadOrCreate`), where SECURITY_PRIVACY section 6 says "generated on the first enrolled Mac". On the
+  Mac that becomes the tenant's first, that key is the tenant key (the same bytes get wrapped for later Macs), so
+  nothing diverges in effect. On a Mac that joins an existing tenant as a second Mac, m3-06's `store(_:)` replaces it,
+  and up to 7 days of buffer (and any staged import objects) are masked under the old key. **Follow-up for
+  enrollment/m3-06:** when a Mac stores a tenant key that differs from its local one, set the upload cursor
+  (`UploadState.batchedThrough`) to the newest stored observation id and clear the import outbox before the first
+  flush, so nothing masked under the local key leaves. Nothing can be uploaded before that point today: the app has no
+  sign-in (`UnavailableAccountService`), so `BackendMode` is `.local` and no upload runtime exists. The `PseudonymKeyStore`
+  header says so (added to `paths_in_scope`); SECURITY_PRIVACY is outside this slice's paths, so the owner updates it.
+- **Finding 3:** the on-device import is offered only past screen 2 (or when setup is done); a fresh-state case and a
+  pure `ImportOffer` test cover it; the menu comment and ONBOARDING section 8 say so.
+- **Finding 4:** `CaptureRuntime.observerTick` lets a test see that the Never watch file is written before the
+  observer runs; `tickOnce` does nothing before `start()` (no file before consent). `ImportOffer` has a case with a
+  pending notice and consent still on record.
+- **Finding 5 (not a defect of this slice):** the owner's full goal needs m3-10 on top of this branch (OCR and the local
+  store; the menu says the import is coming). A test build from this branch alone is not the full one.
+- **Finding 6:** `.timeLimit(.minutes(1))` on the held-flush test; `exclusions.json` is written from a temp file created
+  0600 in the store's 0700 folder and swapped in with the new file's metadata.
