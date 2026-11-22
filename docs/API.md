@@ -201,7 +201,7 @@ User model shapes (handlers in `services/brain/src/http/handlers.ts`, slices p43
   `learning_paused`) is 400 `schema_invalid`. `goals` is a list of strings (or `{ text }`), at most 3, each one line of
   at most 80 characters with no `<`, `>`, email address or link. The same text (case-insensitive) keeps its goal id; a
   goal left out is archived. Goal, role and industry text may not hold a control or invisible format character (a tab,
-  NEL, a zero-width space, a line separator) nor a link, including a bare `www.` or any host
+  NEL, a zero-width space, a line separator; so emoji joined with a zero-width joiner are refused too) nor a link, including a bare `www.` or any host
   name (`acme.com`, `bit.ly`, `shop.example`), an IP address, or a full-width dot. Code file names are allowed: a
   dotted word ending in a code or document suffix (`md`, `js`, `ts`, `py`, `sh`, `rs`, `json`, `pdf` and the like, for
   example `README.md` or `Node.js`), so a host on one of those suffixes (`bun.sh`) is accepted too. The weekly
