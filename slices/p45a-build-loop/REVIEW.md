@@ -1437,3 +1437,196 @@ VERDICT: CHANGES
 | 7 NIT (wrong 409 code for the second concurrent OK) | **Fixed.** Red first: a Postgres test, 6 rounds of a stale build followed by two concurrent inserts with the same fresh held-out hash. The loser must be `BuildConflict("already_running")`; before the fix it was `HeldOutUsed` every time. Fix: `insertQueued` reads the live builds again (a new statement, a new snapshot, still `FOR UPDATE`) once it holds the lock, before the `used` check | dd889c4, 177d8df |
 
 Tests: p45a 144 (was 140): 143 pass and 1 skip, the live Docker block, which needs a Docker engine. The 4 new tests are the privileged destroy, the privileged run-time refusals, the harness-exec refusal and the Postgres race. The round 4 destroy test was replaced in place, and the new linter cases extend an existing test. p45b: 17, unchanged. The privileged tests ran here under `sudo` and `setpriv`.
+
+## Round 6
+
+Independent review (Opus 5.5; wrote none of the code and none of rounds 1 to 5), 2026-11-22, branch `port/build-loop` at
+`c922b30`. The brief names `8f6ff2d` as the base, but the branch was rebased onto `origin/main` (`9565129`, commit
+`7612d68`): `8f6ff2d..HEAD` also holds the eight Wave 1 commits already on main (`services/brain`, `slices/m*`, …),
+which are not this port. The port's diff is `9565129..HEAD` (47 files). Focus: `7612d68..HEAD`, the round 5 fixes.
+
+**Read:**
+- AGENTS.md (review gate, privacy rules) and CLAUDE.md;
+- both SPECs, DESIGN.md, and rounds 1 to 5 with their author responses;
+- DATA_MODEL section 1 (member isolation), section 6 (`builds`, `worker_attempts`, `budget_reservations`,
+  `build_receipts`, `approvals`), the API.md builds rows, SECURITY_PRIVACY section 13, MIGRATION 5.6;
+- all of `harness.ts`, `sandbox/docker.ts`, `sandbox/provider.ts`, `shards.ts`, `attempt.ts`, `loop.ts`,
+  `store-pg.ts` (insert, reserve, deploy), the check linter in `checks.ts`, and the SQL's RLS block;
+- `git diff 7612d68..HEAD` on `src` and both test folders, and every removed assertion line since `9565129`.
+
+### Runs (this reviewer, DATABASE_URL set, passwordless `sudo` and `setpriv` available, no Docker)
+
+| Command | Result |
+|---|---|
+| `bash slices/p45a-build-loop/verify.sh` | Slice suite **144 tests across 10 files: 143 pass, 1 skip (`LIVE:` Docker), 0 fail** (min 75). All 24 tags pass: GATE 12, CHECKS 5, HELDOUT 11, TEETH 5, DEFAULT1 1, SHARDS 27, FANOUT 9, STALL 2, LOCK 15, SHIP 4, BUDGET 6, CAP 3, TAMPER 2, PROOF 3, VERDICT 1, SANDBOX 19, INFRA 3, DEPLOY 1, READY 4, TDD 3, STEPS 1, ERROR 1, API 3, RLS 2. Typecheck ok. Scope checked (46 files). With the operator's `DATABASE_URL` the full-suite step fails (see NIT 6); against a disposable `*_test` database: **`p45a-build-loop: PASS`** (exit 0) |
+| `bash slices/p45b-measured-saving/verify.sh` | Slice suite **17 tests across 1 file: 17 pass** (min 12). SHIP 3, MEASURE 6, FLAG 2, MONTH 1, OUTCOME 2, FIGURE 3. Scope checked (24 files). Same full-suite note; against the disposable database: **`p45b-measured-saving: PASS`** (exit 0) |
+| `bun test` (full suite) | Operator's `DATABASE_URL`: **366 tests ran, 350 pass, 1 skip, 15 fail**. All 15 are W1-C's `packages/db/tests/m1-03-tenancy-rls/*` ("refusing to reset a database that is not disposable", `packages/testkit/src/pg.ts:252`), none is the builder's. Against a scratch database `offload_r6_test` (created, then dropped): **448 tests across 66 files, 447 pass, 1 skip, 0 fail** |
+| `bash scripts/verify-all.sh` | Operator's `DATABASE_URL`: exit 1 at `bun test` (the 15 W1-C failures). Disposable database: exit 1 at `slices` (`m1-01-durable-spike` scope, a done slice of another stream). Disposable database plus `SLICE_UPSTREAM=origin/main`: **`verify-all: green`** (exit 0): typecheck, 448 tests (447 pass, 1 skip), license boundary ok, slices ok (15 specs; p45a PASS, p45b PASS), doc links ok (79 files), copy ok, secrets ok, workflows ok (3 files), Swift skipped (needs macOS) |
+| Privileged tests | `sudo -n` and `setpriv` work, so every `(privileged)` test ran under the container's real capability set. The only skip is `LIVE:` |
+| Scope (by hand, `9565129..HEAD`) | 47 files, all in `paths_in_scope`: `services/builder/**`, `packages/hours-saved/src/measured/**`, its test folder and `src/index.ts`, both slice folders, NOTICE, docs/API.md, DATA_MODEL.md, MIGRATION.md. Nothing under `packages/{db,contracts,policy,testkit,routine-sdk,connectors-sdk}`, `services/{api,runtime,broker,brain}`, `apps`, `ee`, `.github` or `docs/adr`. `bun.lock` and `package.json` unchanged. NOTICE lists superpowers (MIT text included) and the ideas-only entries |
+| Hygiene | No `console.*` in `src`. After all runs: no `p45a%` schema or role left in Postgres, the scratch database dropped, `git status` clean before this file was written |
+
+### Mutation checks (tests really fail without the code)
+
+`/tmp/r6-mut/mut.sh` (outside the repo) changed one guard with `perl -0pi`, checked the file really changed, ran both
+slice folders, and restored the file with `git checkout --`. No stash. `git status` was clean after every run.
+
+**The round 5 fixes**
+
+| Mutation | Failing tests |
+|---|---|
+| `chown` before `chmod` again on the run folder (`harness.ts:138`) | 7 (every privileged shard test) |
+| `destroy` skips the cleanup container (`docker.ts:302`) | 1 (`SANDBOX: (privileged) destroy removes folders and files a sandbox user made`) |
+| `list(tag)` ignores the on-disk records (`docker.ts:343`) | 1 (`SANDBOX: destroy never throws … keeps it listed (on disk)`) |
+| the guard does not pin `Bun.$` (`harness.ts:74`) | 1 (`SHARDS: (privileged) a check that starts the tool outside Bun.spawn/spawnSync`) |
+| `exec` accepts `harness: true` on any argv (`docker.ts:266`) | 1 (`SANDBOX: harness: true is refused unless …`) |
+| `insertQueued` reads the live builds once (`store-pg.ts:96`) | 1 (`LOCK: (Postgres) after a stale build, the second of two concurrent OKs …`) |
+| `destroy` forgets the box before removing it | 0: equivalent, the on-disk record still finds it |
+| linter rule "destructuring from Bun" removed (`checks.ts:92`) | 0: equivalent, the alias rule (`checks.ts:93`) catches the same lines |
+
+**473cafb and the other security fixes (all still fail)**
+
+| Mutation | Failing tests |
+|---|---|
+| `bun test` with cwd `/work` (`harness.ts:210`) | 13 (`SHARDS:` planted bunfig preload, node_modules, tsconfig paths, package.json imports, `.env`, …) |
+| guard `onLoad` off / `--config=/check/bunfig.toml` dropped | 2 / 2 |
+| `--network none` → `bridge` / no `--cap-drop ALL` / `/check` read-write / no `--read-only` | 1 / 2 / 2 / 1 |
+| shard passes on exit 0 alone, proof ignored (`shards.ts:73`) | 2 (`PROOF:`) |
+| split proof not required (`shards.ts:72`) | 3 |
+| docker exit 125 treated as a result, not infra (`docker.ts:278`) | 1 |
+| approval TTL off / single use off | 2 / 48 |
+| OK's hash gate off (`loop.ts:79`) | 1 (`GATE:` wrong brief hash, 403) |
+| Postgres reservation ceiling ×100 / its `FOR UPDATE` removed | 2 / 2 (`CAP:`) |
+| held-out shard left out of the teeth gate (`loop.ts:183`) | 4 |
+| held-out text appended to the fan-out feedback (`loop.ts:297`) | 1 (`FANOUT:`) |
+| fan-out not awaited (`loop.ts:301`) | 18 |
+| deploy once off in Postgres (`store-pg.ts:209`) | 1 (`SHIP:`) |
+| `..` allowed in a sandbox path (`provider.ts:92`) | 1 |
+| stale recovery off (memory store) | 10 |
+
+### Test history
+
+- Red before green holds for every round 5 fix: `e074daa` < `f3f704a`, `b779b77` < `aff59bf`, `9f0b0b3` < `ef39fe7`,
+  `0020d45` < `f22c894`, `dd889c4` < `177d8df`. The mutations above show each new test fails without its fix.
+- Removed assertion lines since round 5:
+  - `e074daa` drops `expect(cmd[0]).toBe("bun")` inside the test emulator, because the emulator now also runs the
+    cleanup container's `find`. The harness argv stays pinned by `docker.test.ts` (`SANDBOX: the docker argv is exact`,
+    and the `HARNESS_ARGV` equality at `docker.test.ts:47`). Not a weakening.
+  - `b779b77` replaces "destroy forgets a sandbox …" with "destroy never throws … keeps it listed", the behaviour round 5
+    finding 2 asked for. Stricter, not weaker.
+  - `ef39fe7` turns the bypass loop into one `toEqual` over all cases, adds two cases and pins the refusal message.
+    Stricter.
+- **No assertion is weakened.** No `.skip`, `.todo`, `.only` or `it(`; the skips are `describe.skipIf(!dockerUp)`
+  (`LIVE:`) and `test.skipIf(!sudoOk)` (they ran here).
+- Every MIGRATION 5.6 carry test is present in v2 words (rounds 1 to 5 mapped them; nothing since removed one). Every
+  builder row of SECURITY section 13 has a test; "no registry reachable" is still only the never-run `LIVE:` test.
+
+### My own checks (scratch files in `/tmp/r6-scratch`; nothing in the repo changed)
+
+1. **A sandbox user's read-only folder.** I copied the test emulator into a scratch test, made `work/tests/` with a
+   file in it as uid 65534 (`setpriv --reuid=65534`), then called `destroy()` on a split provider:
+   - `0755 tests/` (control): the sandbox root is gone and no longer listed;
+   - `chmod 555 tests/`: **the root is left behind** (and listed);
+   - `chmod 000 tests/`: **the root is left behind** (and listed).
+   The cleanup container runs `find /work -mindepth 1 -delete` as the owner, and the owner cannot unlink entries in a
+   folder it made non-writable or unreadable without first changing its mode (finding 1).
+2. **The second OK without a stale build** (by reading `store-pg.ts:93-104`, not reproduced; the window is two round
+   trips). With no live row, `SELECT … FOR UPDATE` locks nothing and does not wait on another transaction's
+   uncommitted insert (finding 2).
+3. **`harness: true` with a caller's environment** (by reading). `exec` pins argv and cwd (`docker.ts:32`, `:266`),
+   but `OFFLOAD_CHECK_DIR` and `OFFLOAD_WS` are allowlisted names (`provider.ts:82`) and the harness takes `CHECK`
+   from them (`harness.ts:126`) for `--config`, cwd and the test file (`harness.ts:209-210`) (finding 3).
+
+### Round 5 findings, status
+
+| Finding | Status |
+|---|---|
+| 1 MAJOR (`chmod` after `chown`) | **Fixed** (`harness.ts:138`, `:186-187`). The emulator now applies `--user` and `--cap-add` through `setpriv` (`guard.test.ts:84-89`) and the privileged tests need `setpriv` (`guard.test.ts:304-313`). The mutation fails 7 tests |
+| 2 MAJOR (sandbox-user folders left and forgotten) | **Fixed for the normal path** (cleanup container `docker.ts:302-308`, record `docker.ts:100`, `list` from disk `docker.ts:343`, rehydrate `docker.ts:296`). A worker that makes its own folder read-only still defeats it; the folder stays recorded (finding 1) |
+| 3 MINOR (process APIs past the linter) | **Fixed** in both layers (`checks.ts:89-93`, `harness.ts:69-86`), with 7 run-time cases |
+| 4 MINOR (owner actions) | Carried (finding 5) |
+| 5 NIT (root on a caller's word) | **Fixed** for argv and cwd (`docker.ts:32`, `:227`, `:266`). The environment is still the caller's (finding 3) |
+| 6 NIT (two unpinned defensive rules) | Recorded in DESIGN section 7 as belt-and-braces. Accepted |
+| 7 NIT (wrong 409 after a stale build) | **Fixed** (`store-pg.ts:95-100`) with a Postgres test. The no-stale variant remains (finding 2) |
+
+### Findings
+
+1. **MINOR: a sandbox user can still make its sandbox folder unremovable.** `destroy()` empties `/work` as each
+   foreign owner with `find /work -mindepth 1 -delete` (`docker.ts:321-337`), and `find` never changes a mode.
+   - Evidence: my check 1. A folder in `/work` with mode `0555` or `0000`, owned by 65534, survives the cleanup
+     container. The host `rmSync` then fails (`docker.ts:309-317`), and the sandbox root, with the artifact and any
+     fixture copies the worker made, stays on the builder host.
+   - Who can do it: any worker (`chmod 555 tests`, or a test of the "read-only folder" edge that `TDD_INSTRUCTIONS`
+     asks for, `attempt.ts:19-23`), and the built tool in a verification sandbox, which also runs as 65534 in
+     `/work`.
+   - Why only MINOR: it fails closed. The record keeps the folder in `list(tag)` (round 5's fix works), the folder is
+     private to the builder's uid, and nothing passes that should not. But SANDBOX's "temps removed" does not hold
+     against the party the sandbox exists to contain, and every later `destroy` or reaper call fails the same way.
+   - Required fix:
+     - Let the owner restore its own modes before deleting, in the same cleanup container. For example, entrypoint
+       `sh`, args `-c 'chmod -R u+rwX /work 2>/dev/null; find /work -mindepth 1 -delete'`. The owner may `chmod` its own
+       files with no capability, and `chmod -R` changes a folder before it reads it.
+     - Red test first: the privileged destroy test with `chmod 555` and `chmod 000` cases.
+
+2. **NIT: the second of two concurrent OKs can still get `state_conflict` when there is no stale build.**
+   - Evidence (`store-pg.ts:95-102`): with no live row, both live queries lock nothing. If the first OK commits
+     between the second OK's second live query and its `used` query, the second sees the first's row in `used` and
+     answers `HeldOutUsed` (409 `state_conflict`). API.md (OK, build row) promises `already_running` to the second of
+     two concurrent requests.
+   - Both answers are 409 and nothing unsafe happens. The memory store is not affected.
+   - Required fix: when `used` is true, run the live query once more and answer `already_running` if a fresh live build
+     exists now. Do not just exclude live builds from `used`: a stale build being recovered here still used its
+     held-out hash.
+
+3. **NIT: `harness: true` pins the argv and the cwd, but not the environment.**
+   - `OFFLOAD_CHECK_DIR` and `OFFLOAD_WS` are allowlisted (`provider.ts:82`). A worker holding the provider through
+     `WorkerTurn` (`attempt.ts:25-27`, m2-07) can run `exec({ argv: HARNESS_ARGV, cwd: "/check", harness: true, env:
+     { OFFLOAD_CHECK_DIR: "/work" } })`. The root harness then runs `bun test --config=/work/bunfig.toml`, which
+     preloads the worker's own code as `OFFLOAD_CHECK_UID`, the builder's host uid (`harness.ts:126`, `:209-210`).
+   - This gains nothing today: it is the worker's own sandbox, `setuid` drops the three capabilities, and `/check` is
+     readable there anyway. But it is the same "privilege on a caller's word" round 5 NIT 5 closed for argv.
+   - Required fix: on a harness exec, the provider refuses any `env` that differs from `HARNESS_ENV`, or sets
+     `HARNESS_ENV` itself. Alternatively, m2-07's worker gets a narrowed handle without `harness`.
+
+4. **NIT: the on-disk records are trusted as found.**
+   - `onDisk()` (`docker.ts:106-123`) reads every `offload-sbx-*/sandbox.json` under the provider root. That root
+     defaults to `os.tmpdir()` (`docker.ts:75`), which other host users share.
+   - `destroy()` then passes the record's `image` to `docker run` (`docker.ts:296`, `:304`, `:335`) and follows
+     `work` wherever the entry points.
+   - Only a local host user can plant a record, and only a reaper-style `list` then `destroy` reaches it; no build path
+     does today.
+   - Required fix, before the reaper (m2-08) uses `list`:
+     - check `record.id === "sbx_" + sha256(root).slice(0, 16)`;
+     - skip symlinked entries;
+     - use the configured image, not the record's;
+     - default the root to a private builder folder.
+
+5. **MINOR (owner actions, carried, unchanged in DESIGN section 7):**
+   - The `LIVE:` Docker run has never run. It is the only proof of the production path: root PID 1 with three
+     capabilities under `no-new-privileges`, `chown` on the bind mount, the broker socket, network and registry
+     denial, `swept`, and now the cleanup container.
+   - `LOCAL:` tests and `redirect: "error"` for m5-03.
+   - The winner order (bytes against ADR 0029's smallest diff).
+   - Sandbox-time billing (m2-08).
+   - Start before claim (W1-C).
+   - The image digest pin (S4).
+
+6. **NIT (environment and shared scripts, nothing in this slice to change):**
+   - With the `DATABASE_URL` the operator set, W1-C's `packages/db` tests refuse the database (it is neither `*_test`
+     nor commented `offload:disposable`). So both slices' `verify.sh` print `FAIL full suite exited 1`, and
+     `verify-all.sh` stops at `bun test`.
+   - `verify-all.sh` also needs `SLICE_UPSTREAM=origin/main` for `m1-01-durable-spike`'s scope check after the merge.
+   - Both are green with a disposable database and that variable.
+   - Separately, `verify.sh`'s scope step checks `9565129..1f4932f` (up to the commit that set `status: done`), so
+     the review-round commits after it are not scope-checked by the script. I checked `9565129..HEAD` by hand: in
+     scope.
+   - The operator should run the gate with a disposable database. The scope-range question belongs to
+     `scripts/lib/slice-changes.sh`, outside this slice.
+
+p45b: unchanged since round 5 (`git diff 7612d68..HEAD -- packages/hours-saved` is empty). Its 17 tests pass.
+
+**Required before PASS:** none. No BLOCKER or MAJOR is open. Finding 1 is recommended now (a one-line entrypoint
+change with a red test). Findings 2 to 4 and 6 are recommended. Finding 5 stays with its owners, and the `LIVE:` run is
+required before m2-07/m2-08 rely on the user split.
+
+VERDICT: PASS
