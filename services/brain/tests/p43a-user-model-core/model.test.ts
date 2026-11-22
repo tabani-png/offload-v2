@@ -164,6 +164,14 @@ describe("p43a contradiction (graphiti) and revision (gum)", () => {
     expect(v1.invalidAt!).toBeGreaterThanOrEqual(v1.validAt);
   });
 
+  test("SUPERSEDE: a rate change of exactly 50% revises; just over 50% starts a new version", () => {
+    const old = prop({});
+    const at50 = prop({ validAt: 1000, perDay: { "2026-11-02": { instances: 150, minutes: 450 } } });
+    expect(mergePropositions([old], [at50], { now: 3000, analysedDays: days }).filter((p) => p.key === old.key).length).toBe(1);
+    const over = prop({ validAt: 1000, perDay: { "2026-11-02": { instances: 151, minutes: 453 } } });
+    expect(mergePropositions([old], [over], { now: 3000, analysedDays: days }).filter((p) => p.key === old.key).length).toBe(2);
+  });
+
   test("REVISE: a similar rate merges into the same version, evidence days are unioned and counts recomputed", () => {
     const old = prop({});
     const fresh = prop({ validAt: 1000, perDay: { "2026-11-02": { instances: 90, minutes: 270 } } });

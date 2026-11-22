@@ -156,10 +156,27 @@ describe("p43a rollups", () => {
       `A steady week: ${r.hours.total.value} h, see www.evil.example/now.`,
       `A steady week of ${r.hours.total.value} h. Visit www.evil.example for tips.`,
       `A steady week of ${r.hours.total.value} h; see evil.example.`,
+      `A steady week of ${r.hours.total.value} h; try evil.sh for tips.`,
+      `A steady week of ${r.hours.total.value} h; read docs.rs today.`,
     ]) {
       expect(checkNarrative(leaky, r).ok).toBe(true);
       expect({ leaky, out: await writeWeekSentence(r, undefined, async () => leaky) }).toEqual({ leaky, out: { sentence: code, source: "code" } });
     }
+  });
+
+  test("NARRATIVE: numbers written as words are checked like digits; multipliers and fractions are refused", async () => {
+    const rec = { blocks: figure(3, "count", "3 focus blocks", []), hours: figure(12, "hours", "12 h", []) };
+    expect(checkNarrative("You had three focus blocks.", rec).ok).toBe(true);
+    expect(checkNarrative("You spent Twelve hours at the desk.", rec).ok).toBe(true);
+    expect(checkNarrative("A calm week with steady focus.", rec).ok).toBe(true);
+    const bad = checkNarrative("You spent forty hours this week, twice the usual.", rec);
+    expect(bad.ok).toBe(false);
+    expect(bad.unknown).toEqual(expect.arrayContaining(["forty", "twice"]));
+    for (const s of ["You had four focus blocks.", "You had twenty-one calls.", "You had twenty one calls.", "Half your time was meetings.", "Meetings doubled.", "A dozen calls.", "Over a hundred emails.", "A third of your week."]) {
+      expect({ s, ok: checkNarrative(s, rec).ok }).toEqual({ s, ok: false });
+    }
+    const r = week(WEEKS[3]);
+    expect(await writeWeekSentence(r, undefined, async () => "You spent forty hours this week, twice the usual.")).toEqual({ sentence: weekSentence(r), source: "code" });
   });
 
   test("NARRATIVE: a refused model sentence is replaced by the code sentence", async () => {
