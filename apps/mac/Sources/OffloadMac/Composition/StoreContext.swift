@@ -1,7 +1,9 @@
 // The encrypted local buffer, built once by the composition root and shared by capture, the uploader and the import
 // outbox (slice m3-14-mac-app-integration, review 1). One KeyRing means one master key and one key cache: two rings
 // over the same Keychain could each create a master key on a fresh Mac and lose whatever was sealed under the other.
-// Building this touches nothing: the Keychain and the disk are used on the first read or write, after consent.
+// Building this writes nothing and never touches the Keychain: the one read is the import ledger's file (if it
+// exists), which m3-05's ledger loads when it is made. The Keychain and every write wait for the first use, after
+// consent.
 import Foundation
 import OffloadContracts
 import OffloadImport
