@@ -150,7 +150,7 @@ public enum ConnectionCatalog {
   public func recordUploadConsent(noticeVersion: String) async throws { recordedVersions.append(noticeVersion) }
 }
 
-/// Local mode (no backend on this Mac, m3-14 BackendMode): no uploader exists, so starting it does nothing.
+/// Local mode (no backend on this Mac, m3-14 UploadBackend): no uploader exists, so starting it does nothing.
 @MainActor public final class NoUploader: Uploader {
   public init() {}
   public func start() {}

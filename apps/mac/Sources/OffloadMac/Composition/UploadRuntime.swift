@@ -1,5 +1,5 @@
 // The uploader side of PR #13's CaptureRuntime (slice m3-14-mac-app-integration). It exists only when this Mac is
-// enrolled (`BackendMode.cloud`), and it runs only when LaunchPlan or onboarding's "Start sending" says so; `pause()`
+// enrolled (`UploadBackend.cloud`), and it runs only when LaunchPlan or onboarding's "Start sending" says so; `pause()`
 // (a changed notice, row 11.11, or an update) stops its turns. PR #13's Uploader is built on the first turn, over the
 // composition's one StoreContext. It is also the recordings import's only way out (ImportUploadQueue): opening an
 // import space, staging its objects and forgetting it all go through this runtime, the egress guard and the ledger
@@ -26,18 +26,18 @@ final class UploadGate: @unchecked Sendable {
   /// The way out: the one transport and how a token session is made for an audience. `.live` is URLSession and PR #13's
   /// DeviceSession; tests pass a scripted transport and fixed tokens.
   public struct Network: Sendable {
-    public var transport: any HTTPTransport
+    public var transport: any OffloadUploader.HTTPTransport
     public var session: @Sendable (_ apiBase: URL, _ deviceID: String, _ signer: any DeviceSigner,
-                                   _ transport: any HTTPTransport, _ audience: TokenAudience) -> any TokenProvider
+                                   _ transport: any OffloadUploader.HTTPTransport, _ audience: TokenAudience) -> any TokenProvider
 
-    public init(transport: any HTTPTransport,
-                session: @escaping @Sendable (URL, String, any DeviceSigner, any HTTPTransport, TokenAudience) -> any TokenProvider) {
+    public init(transport: any OffloadUploader.HTTPTransport,
+                session: @escaping @Sendable (URL, String, any DeviceSigner, any OffloadUploader.HTTPTransport, TokenAudience) -> any TokenProvider) {
       self.transport = transport
       self.session = session
     }
 
     public static var live: Network {
-      Network(transport: URLSessionTransport(), session: { apiBase, deviceID, signer, transport, audience in
+      Network(transport: OffloadUploader.URLSessionTransport(), session: { apiBase, deviceID, signer, transport, audience in
         DeviceSession(apiBase: apiBase, deviceID: deviceID, signer: signer, transport: transport, time: SystemTime(),
                       audience: audience)
       })

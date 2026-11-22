@@ -57,7 +57,7 @@ public enum DeviceKey {
     static let softwareAccount = "device-key"
 
     /// True when this Mac already has its key (made at enrollment). Reads only; never creates one.
-    /// (m3-14-mac-app-integration: `BackendMode` is `.cloud` only for an enrolled Mac.)
+    /// (m3-14-mac-app-integration: `UploadBackend` is `.cloud` only for an enrolled Mac.)
     public static func isStored(secrets: any SecretStore) -> Bool {
         (try? secrets.read(account: secureEnclaveAccount)) != nil || (try? secrets.read(account: softwareAccount)) != nil
     }

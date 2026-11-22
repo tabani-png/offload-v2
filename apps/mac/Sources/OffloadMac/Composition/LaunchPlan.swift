@@ -19,7 +19,7 @@ public struct LaunchFacts: Equatable, Sendable {
   public var reconsentPending: Bool
   /// The local buffer can be opened (row 11.6).
   public var bufferReadable: Bool
-  /// This Mac has a backend to send to (`BackendMode.cloud`).
+  /// This Mac has a backend to send to (`UploadBackend.cloud`).
   public var uploadsAvailable: Bool
 
   public init(captureConsented: Bool, sending: Bool, reconsentPending: Bool, bufferReadable: Bool, uploadsAvailable: Bool) {

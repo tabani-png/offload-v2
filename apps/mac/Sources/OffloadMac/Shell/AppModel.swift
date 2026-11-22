@@ -27,7 +27,7 @@ public final class AppModel: ObservableObject {
 
   /// `currentNoticeVersion` is the server's "What leaves your Mac" version from `GET /v1/me` (nil until sign-in
   /// exists, m1-04).
-  /// `uploadsAvailable` is false in Local mode (no backend, so no uploader exists; m3-14's BackendMode). Tests of
+  /// `uploadsAvailable` is false in Local mode (no backend, so no uploader exists; m3-14's UploadBackend). Tests of
   /// m3-04 inject fake services and keep the default.
   public init(options: LaunchOptions, bundlePath: String, bufferReadable: Bool, store: OnboardingStore,
               services: OnboardingServices, probe: PermissionProbe, events: LocalEventSource, sampleWeek: SampleWeekFlag,

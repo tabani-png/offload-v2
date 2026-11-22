@@ -26,6 +26,13 @@ public final class ImportMaskerAdapter: ImportTextMasker, @unchecked Sendable {
     return masker.mask(text).text
   }
 
+  /// Loads the masker now. Throws when its pseudonym key cannot be loaded (a locked Keychain, access denied), so an
+  /// import can stop before it reads anything instead of writing empty text (review 4, finding 4).
+  public func ready() throws {
+    guard current() == nil else { return }
+    throw ImportUploadRefusal(reason: "the masker's key could not be loaded")
+  }
+
   private func current() -> TextMasker? {
     lock.withLock {
       if let loaded { return loaded }
@@ -39,13 +46,30 @@ public final class ImportMaskerAdapter: ImportTextMasker, @unchecked Sendable {
 public enum ImportComposition {
   /// The importer, or nil while there is no on-device text reading or no sink (Import then reads nothing). The
   /// person's Never watch list is read before every file.
-  public static func importer(recognizer: (any TextRecognizer)?, masker: any ImportTextMasker, sink: (any ImportSink)?,
+  /// The sink is wrapped so an import space opens only once the masker's key loads: otherwise the import ends with
+  /// "the import space could not be opened", reads nothing and records no file.
+  public static func importer(recognizer: (any TextRecognizer)?, masker: ImportMaskerAdapter, sink: (any ImportSink)?,
                               ledger: any RecordingLedger, neverWatch: any ExclusionSource,
                               protected: [URL]) -> RecordingImporter? {
     guard let recognizer, let sink else { return nil }
     return RecordingImporter(recognizer: recognizer, masker: masker, exclusions: NeverWatchImportExclusions(source: neverWatch),
-                             sink: sink, ledger: ledger, protected: protected)
+                             sink: MaskerCheckedSink(sink: sink, masker: masker), ledger: ledger, protected: protected)
   }
+}
+
+/// Opens an import space only when the masker is ready; writes and forgets go straight through.
+struct MaskerCheckedSink: ImportSink {
+  let sink: any ImportSink
+  let masker: ImportMaskerAdapter
+
+  func openImport(sourceKind: ImportSourceKind) async throws -> ImportSpace {
+    try masker.ready()
+    return try await sink.openImport(sourceKind: sourceKind)
+  }
+
+  func write(_ observations: [ImportObservation], to space: ImportSpace) throws { try sink.write(observations, to: space) }
+
+  func forget(_ space: ImportSpace) async throws { try await sink.forget(space) }
 }
 
 /// What the import needs from the uploader (UploadRuntime in the app; a fake in tests).

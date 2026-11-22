@@ -1,34 +1,71 @@
 // The one composition root of the Offload app (slice m3-14-mac-app-integration). OffloadApp asks `live()` once; no
 // other file builds AppModel, AppUpdates, CaptureRuntime or UploadRuntime (test ENTRY). The order of launch is here:
 //
-// 1. BackendMode: `.local` unless this Mac is enrolled (the test build is `.local`).
+// 1. UploadBackend: `.local` unless this Mac is enrolled (the test build is `.local`). The screens' own flag is m3-10's
+//    BackendMode; both read the API base from `ai.offload.api.baseURL`.
 // 2. One NeverWatchStore for the screens, the menu bar, the observer (through its exclusions file) and the import.
 // 3. CaptureRuntime (built on its first start, not before) and, only in `.cloud`, UploadRuntime.
 // 4. The updater (m3-03), before any scene as before, with an UpdatePreparation over that same capture and uploader.
 // 5. The recordings import with the sink the launch facts allow (the uploader when sending, else m3-10's on-device
 //    sink when it exists) and the real masker; no importer until m3-10's on-device text reading exists.
-// 6. AppModel: reads both permissions, checks the notice version, then starts capture and the uploader per LaunchPlan.
+// 6. m3-10's analysis hook (`CompositionSeams.analysis`) gets the live events and the Never watch list and may supply
+//    the recordings model; it runs again after AppModel exists. The offer rule (ImportOffer) is applied last.
+// 7. AppModel: reads both permissions, checks the notice version, then starts capture and the uploader per LaunchPlan.
 import AppKit
 import Foundation
 import OffloadImport
 import OffloadStore
 
-/// Where m3-10 (on-device OCR, local analysis store; sibling branch) plugs in. Both nil in this slice.
-public struct CompositionSeams {
-  /// On-device text reading for the recordings import (m3-10).
-  public var textRecognizer: (any TextRecognizer)?
-  /// Where an import space goes when this Mac does not send (m3-10's local store).
-  public var onDeviceImportSink: (any ImportSink)?
+/// What the composition hands the analysis (m3-10's `LocalAnalysis.live(neverWatch:events:mode:)`): the one Never watch
+/// list and the live events of this Mac's capture, so the merged Today reads real data (review 4, finding 1).
+@MainActor public struct AnalysisInputs {
+  public let neverWatch: NeverWatchStore
+  /// The capture runtime's events (StoreEventSource over the encrypted day store).
+  public let events: any LocalEventSource
+  public let uploadBackend: UploadBackend
+}
 
-  public init(textRecognizer: (any TextRecognizer)? = nil, onDeviceImportSink: (any ImportSink)? = nil) {
+/// What the analysis gives back.
+@MainActor public struct AnalysisPlug {
+  /// The recordings model to use instead of the composition's (m3-10's `local.onDevice?.model`). Nil keeps the
+  /// composition's own.
+  public var recordings: RecordingsImportModel?
+  /// True when that model imports on this Mac (m3-10's on-device import): the offer rule then treats it as the
+  /// on-device sink.
+  public var onDeviceImport: Bool
+  /// Runs once AppModel exists (m3-10's `app.startLocalAnalysis(rules:)`). Any offer rule it sets is replaced by the
+  /// composition's (one rule, ImportOffer).
+  public var afterLaunch: (@MainActor (AppModel) -> Void)?
+
+  public init(recordings: RecordingsImportModel? = nil, onDeviceImport: Bool = false,
+              afterLaunch: (@MainActor (AppModel) -> Void)? = nil) {
+    self.recordings = recordings
+    self.onDeviceImport = onDeviceImport
+    self.afterLaunch = afterLaunch
+  }
+}
+
+/// Where the sibling UI slices plug in (m3-10 on-device OCR, local store and analysis; m3-11 to m3-13 screens on top of
+/// it). All nil in this slice. SPEC Scope changes, "Integration with m3-10 to m3-13", has the merge steps.
+public struct CompositionSeams {
+  /// On-device text reading for the composition's own recordings import.
+  public var textRecognizer: (any TextRecognizer)?
+  /// Where an import space goes when this Mac does not send.
+  public var onDeviceImportSink: (any ImportSink)?
+  /// m3-10's analysis: called before AppModel is built, with the live events and the one Never watch list.
+  public var analysis: (@MainActor (AnalysisInputs) -> AnalysisPlug)?
+
+  public init(textRecognizer: (any TextRecognizer)? = nil, onDeviceImportSink: (any ImportSink)? = nil,
+              analysis: (@MainActor (AnalysisInputs) -> AnalysisPlug)? = nil) {
     self.textRecognizer = textRecognizer
     self.onDeviceImportSink = onDeviceImportSink
+    self.analysis = analysis
   }
 }
 
 /// Everything the root reads from the Mac. `live()` fills it with the real pieces; tests with fakes.
 @MainActor public struct CompositionEnvironment {
-  public var backend: BackendMode
+  public var uploadBackend: UploadBackend
   /// The one encrypted buffer (under `StoreLayout.defaultHome()`, Application Support/Offload), shared by capture,
   /// the uploader and the import outbox.
   public var store: StoreContext
@@ -46,11 +83,11 @@ public struct CompositionSeams {
   /// False in tests: capture never ticks and the uploader never takes a turn.
   public var timers: Bool
 
-  public init(backend: BackendMode, store: StoreContext, onboardingStore: OnboardingStore,
+  public init(uploadBackend: UploadBackend, store: StoreContext, onboardingStore: OnboardingStore,
               probe: PermissionProbe, options: LaunchOptions, bundlePath: String, bufferReadable: Bool,
               currentNoticeVersion: String?, loginItem: LoginItemService, relauncher: Relauncher,
               account: AccountService, consent: ConsentService, timers: Bool = true) {
-    self.backend = backend
+    self.uploadBackend = uploadBackend
     self.store = store
     self.onboardingStore = onboardingStore
     self.probe = probe
@@ -73,7 +110,8 @@ public struct CompositionSeams {
     @MainActor (RecordingImporter?, (any ImportSink)?, (any RecordingLedger)?, NeverWatchStore) -> RecordingsImportModel?
   typealias UpdatesBuilder = @MainActor (UpdatePreparation) -> AppUpdates?
 
-  public let backend: BackendMode
+  /// Whether this Mac may upload (not the screens' BackendMode).
+  public let uploadBackend: UploadBackend
   public let neverWatch: NeverWatchStore
   public let capture: CaptureRuntime
   /// Nil in Local mode: nothing exists that could send.
@@ -87,13 +125,13 @@ public struct CompositionSeams {
 
   init(environment env: CompositionEnvironment, seams: CompositionSeams = CompositionSeams(),
        recordings: RecordingsBuilder, updates makeUpdates: UpdatesBuilder) {
-    backend = env.backend
+    uploadBackend = env.uploadBackend
     let neverWatch = NeverWatchStore()
     self.neverWatch = neverWatch
     let capture = CaptureRuntime(context: env.store, neverWatch: neverWatch, ticks: env.timers)
     self.capture = capture
     var uploads: UploadRuntime?
-    if case .cloud(let apiBase, let deviceID) = env.backend {
+    if case .cloud(let apiBase, let deviceID) = env.uploadBackend {
       uploads = UploadRuntime(apiBase: apiBase, deviceID: deviceID, context: env.store, turns: env.timers)
     }
     self.uploads = uploads
@@ -110,19 +148,22 @@ public struct CompositionSeams {
     var ledger: (any RecordingLedger)?
     var importer: RecordingImporter?
     if seams.textRecognizer != nil, sink != nil {
-      let fileLedger = FileRecordingLedger(file: env.store.importLedgerFile)
-      ledger = fileLedger
+      // The store's one ledger, so "Start fresh" resets the instance the importer holds (review 4, finding 3).
+      ledger = env.store.importLedger
       importer = ImportComposition.importer(recognizer: seams.textRecognizer, masker: capture.importMasker(), sink: sink,
-                                            ledger: fileLedger, neverWatch: neverWatch, protected: [env.store.home])
+                                            ledger: env.store.importLedger, neverWatch: neverWatch,
+                                            protected: [env.store.home])
     }
-    importerReady = importer != nil
+    let plug = seams.analysis?(AnalysisInputs(neverWatch: neverWatch, events: capture.events,
+                                              uploadBackend: env.uploadBackend))
+    importerReady = importer != nil || plug?.recordings?.canImport == true
 
     let sampleWeek = SampleWeekFlag()
     let services = OnboardingServices(
       account: env.account, consent: env.consent, uploader: uploads ?? NoUploader(), capture: capture,
       profile: LocalProfileService(), neverWatch: neverWatch, exclusions: LocalExclusionService(),
       connections: UnavailableConnectionService(), loginItem: env.loginItem, relauncher: env.relauncher,
-      sampleWeek: sampleWeek, recordings: recordings(importer, sink, ledger, neverWatch)
+      sampleWeek: sampleWeek, recordings: plug?.recordings ?? recordings(importer, sink, ledger, neverWatch)
     )
     app = AppModel(
       options: env.options, bundlePath: env.bundlePath, bufferReadable: env.bufferReadable, store: env.onboardingStore,
@@ -132,10 +173,12 @@ public struct CompositionSeams {
     // Row 11.6 "Start fresh" deletes the unreadable buffer before setup starts over.
     let store = env.store
     app.onStartFresh = { try? store.discard() }
+    // m3-10's start (insights, its follow of the Never watch list), then the one offer rule.
+    plug?.afterLaunch?(app)
     // The offer rule follows where the import's data goes (ImportOffer), read live, replacing m3-04's
-    // "while sending" default.
+    // "while sending" default and any rule the analysis set.
     let uploadsAvailable = uploads != nil
-    let hasOnDeviceSink = seams.onDeviceImportSink != nil
+    let hasOnDeviceSink = seams.onDeviceImportSink != nil || plug?.onDeviceImport == true
     let model = app
     model.recordings?.offerCheck = { [weak model] in
       guard let model else { return false }
@@ -147,7 +190,7 @@ public struct CompositionSeams {
   /// What the menu bar item says now about where data goes (ModeLines), from the live onboarding state.
   public var modeLines: [String] {
     let s = app.onboarding.state
-    let sendingNow = backend.allowsUploads && s.sending && !s.reconsentPending
+    let sendingNow = uploadBackend.allowsUploads && s.sending && !s.reconsentPending
     return ModeLines.lines(local: !sendingNow, importerReady: importerReady,
                            importOffered: app.recordings?.isOffered ?? false)
   }
@@ -160,7 +203,7 @@ public struct CompositionSeams {
     let secrets = KeychainSecretStore()
     let store = StoreContext(home: StoreLayout.defaultHome(), secrets: secrets)
     let env = CompositionEnvironment(
-      backend: BackendMode.live(info: Bundle.main.infoDictionary, secrets: secrets), store: store,
+      uploadBackend: UploadBackend.live(secrets: secrets), store: store,
       onboardingStore: UserDefaultsOnboardingStore(), probe: LivePermissionProbe(),
       options: LaunchOptions.parse(arguments: arguments), bundlePath: Bundle.main.bundlePath,
       bufferReadable: store.bufferReadable(),
