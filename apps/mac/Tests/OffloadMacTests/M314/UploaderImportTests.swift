@@ -243,7 +243,7 @@ extension M314 {
     #expect(rig.sentIDs.count == 4)
   }
 
-  @Test("UPLOAD: an import staged while a flush waits on the network is not overwritten by the flush")
+  @Test("UPLOAD: an import staged while a flush waits on the network is not overwritten by the flush", .timeLimit(.minutes(1)))
   func stagingDuringAFlush() async throws {
     let rig = ImportRig(server: ImportServer(holdFirstBatch: true))
     let live = try rig.addLiveFocus()

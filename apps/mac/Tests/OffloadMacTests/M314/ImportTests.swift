@@ -171,6 +171,12 @@ extension M314 {
 
   @Test("IMPORT: the import is offered by where it goes: on this Mac once an on-device sink exists, through the uploader only while sending")
   @MainActor func importOffer() {
+    // Before screen 2 is resolved, even with an on-device sink: not offered (no folder read at launch, no prompt).
+    let early = M314App.composition(state: M314State.fresh,
+                                    seams: CompositionSeams(textRecognizer: M314Recognizer(), onDeviceImportSink: M314LocalSink()),
+                                    realRecordings: true)
+    defer { early.capture.stop() }
+    #expect(early.app.recordings?.isOffered == false)
     // This build: no on-device sink, Local mode: not offered (and the menu says the import is coming).
     let none = M314App.composition(state: M314State.watchingLocally, realRecordings: true)
     defer { none.capture.stop() }
@@ -195,5 +201,27 @@ extension M314 {
     // A changed notice withdraws the uploader-backed import at once.
     cloud.app.onboarding.reconsentNeeded()
     #expect(cloud.app.recordings?.isOffered == false)
+  }
+
+  @Test("IMPORT: the offer rule: on this Mac only after screen 2, through the uploader never while a new notice waits")
+  @MainActor func offerRuleCases() {
+    var fresh = M314State.fresh
+    #expect(!ImportOffer.isOffered(choice: .onDevice, hasOnDeviceSink: true, uploadsAvailable: false, state: fresh))
+    fresh.screen = .permissions
+    #expect(!ImportOffer.isOffered(choice: .onDevice, hasOnDeviceSink: true, uploadsAvailable: false, state: fresh))
+    #expect(ImportOffer.isOffered(choice: .onDevice, hasOnDeviceSink: true, uploadsAvailable: false,
+                                  state: M314State.watchingLocally))
+    #expect(!ImportOffer.isOffered(choice: .onDevice, hasOnDeviceSink: false, uploadsAvailable: false,
+                                   state: M314State.watchingLocally))
+    var done = M314State.fresh
+    done.completed = true
+    #expect(ImportOffer.isOffered(choice: .onDevice, hasOnDeviceSink: true, uploadsAvailable: false, state: done))
+    // The launch path: consent still on record, but a new notice is pending (LaunchFacts' reconsent case).
+    var pending = M314State.sending
+    pending.reconsentPending = true
+    #expect(pending.sending)
+    #expect(!ImportOffer.isOffered(choice: .uploader, hasOnDeviceSink: false, uploadsAvailable: true, state: pending))
+    #expect(ImportOffer.isOffered(choice: .uploader, hasOnDeviceSink: false, uploadsAvailable: true, state: M314State.sending))
+    #expect(!ImportOffer.isOffered(choice: .uploader, hasOnDeviceSink: false, uploadsAvailable: false, state: M314State.sending))
   }
 }

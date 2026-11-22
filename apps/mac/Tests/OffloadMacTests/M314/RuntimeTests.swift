@@ -240,11 +240,26 @@ extension M314 {
   @MainActor func tickSyncsNeverWatchFirst() async throws {
     let never = NeverWatchStore()
     let capture = CaptureRuntime(home: M314Fixture.tempHome(), neverWatch: never, secrets: MemorySecretStore(), ticks: false)
+    capture.start()
+    defer { capture.stop() }
+    // Added after start: only the tick can write it.
     never.add([Exclusion(kind: .host, value: "bank.example")])
-    // Not started: nothing to tick, but the list is still written first.
-    #expect(await capture.tickOnce() == false)
-    #expect(try ExclusionsFile.read(capture.exclusionsFile).contains(ExclusionRule(kind: .host, value: "bank.example")))
+    let seen = M314Seen()
+    let file = capture.exclusionsFile
+    // Stands in for the observer's tick (no live sources run): records what the observer would read.
+    capture.observerTick = { _ in seen.rules = (try? ExclusionsFile.read(file)) ?? [] }
+    #expect(await capture.tickOnce())
+    #expect(seen.rules.contains(ExclusionRule(kind: .host, value: "bank.example")))
+    // Not started: nothing ticks and nothing is written (no file before consent).
+    let idle = CaptureRuntime(home: M314Fixture.tempHome(), neverWatch: never, secrets: MemorySecretStore(), ticks: false)
+    #expect(await idle.tickOnce() == false)
+    #expect(!FileManager.default.fileExists(atPath: idle.exclusionsFile.path))
   }
+}
+
+/// What a stand-in observer tick saw.
+@MainActor final class M314Seen {
+  var rules: [ExclusionRule] = []
 }
 
 /// A Keychain that throws on every call (locked, or access denied).
