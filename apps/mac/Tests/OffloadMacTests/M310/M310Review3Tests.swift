@@ -71,12 +71,12 @@ extension M310 {
     let root = M310Files.folder()
     defer { M310Files.remove(root) }
     let ui = M305UI()
-    let made = try Self.onDevice(root: root, ui: ui)
     let dir = root.appendingPathComponent("Recordings", isDirectory: true)
     let firstEnd = M305Clock.now.addingTimeInterval(-3600)
     M305Files.put(dir, "a.mov", bytes: 256, modified: firstEnd)                          // 10:59:00 to 11:00:00
     M305Files.put(dir, "b.mov", bytes: 256, modified: firstEnd.addingTimeInterval(90))  // 11:00:30 to 11:01:30
     ui.store.folder = dir
+    let made = try Self.onDevice(root: root, ui: ui)
     made.model.offerCheck = { true }
     let started = await made.model.startImport()
     #expect(started)

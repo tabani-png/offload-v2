@@ -44,8 +44,9 @@ extension M310 {
     let root = M310Files.folder()
     defer { M310Files.remove(root) }
     let ui = M305UI()
-    let made = try Self.onDevice(root: root, ui: ui)
+    // The folder chosen last time is read when the model is made (m3-05), so it is kept before OnDeviceRecordings.make.
     ui.store.folder = Self.recordingsFolder(root)
+    let made = try Self.onDevice(root: root, ui: ui)
     made.model.offerCheck = { true }
     let started = await made.model.startImport()
     #expect(started)

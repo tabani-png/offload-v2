@@ -55,8 +55,9 @@ extension M310 {
     let root = M310Files.folder()
     defer { M310Files.remove(root) }
     let ui = M305UI()
-    let made = try Self.onDevice(root: root, ui: ui)
+    // The folder chosen last time is read when the model is made (m3-05), so it is kept before OnDeviceRecordings.make.
     ui.store.folder = Self.recordingsFolder(root)
+    let made = try Self.onDevice(root: root, ui: ui)
     let model = made.model
     model.offerCheck = { true }
     let started = await model.startImport()
@@ -115,8 +116,9 @@ extension M310 {
     let root = M310Files.folder()
     defer { M310Files.remove(root) }
     let ui = M305UI()
-    let made = try Self.onDevice(root: root, ui: ui)
+    // The folder chosen last time is read when the model is made (m3-05), so it is kept before OnDeviceRecordings.make.
     ui.store.folder = Self.recordingsFolder(root)
+    let made = try Self.onDevice(root: root, ui: ui)
     let kit = M310AppKit(state: M310AppKit.doneLocal)
     let app = kit.app(recordings: made.model, onDevice: made)
     app.wireRecordingsOffer()

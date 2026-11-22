@@ -186,7 +186,9 @@ extension M310 {
     #expect(Set(asked.all.map { URL(fileURLWithPath: $0).path }).isSubset(of: allowed))
     #expect(made.folderCandidates.candidates.isEmpty)
     // No folder is checked for the suggestion either: it is where macOS saves screen recordings.
-    #expect(made.model.folder?.standardizedFileURL == home.appendingPathComponent("Documents/Captures").standardizedFileURL)
+    // A folder URL (trailing slash); Documents/Captures does not exist, so the expected URL says it is a directory.
+    #expect(made.model.folder?.standardizedFileURL
+            == home.appendingPathComponent("Documents/Captures", isDirectory: true).standardizedFileURL)
     made.folderCandidates.refresh()
     #expect(made.folderCandidates.candidates.map(\.kind) == [.desktop, .movies])
   }
