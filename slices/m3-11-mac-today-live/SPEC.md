@@ -33,7 +33,7 @@ Scope changes). `human_gated: true`: the owner checks it against his own importe
 
 ## Contract
 - **No new dependency, no Package.swift change.** Only files under `TodayLive/` plus one additive edit to
-  `OffloadMacApp/OffloadApp.swift` (the menu bar line).
+  `OffloadMac/App/OffloadApp.swift` (the menu bar line; the app lived in `OffloadMacApp/` before m3-10's rebase).
 - **`TodayLive/`**:
   - `TodayLiveScreen(app:)` (the m3-10 entry point, same initialiser) draws `TodayLiveView` over
     `TodayLiveModel`.
@@ -54,7 +54,7 @@ Scope changes). `human_gated: true`: the owner checks it against his own importe
   - `TodayMenuSummary.line(snapshot:day:)` → "today · 3 h 10 m · mostly Xcode" (local) or from the cloud day record;
     nil when nothing was counted today, and the menu shows no line.
   - `TodayCopy`: every string of the screen.
-- **Hook** (`OffloadMacApp/OffloadApp.swift`, additive): `MenuBarOpener` shows the summary line above m3-04's
+- **Hook** (`OffloadMac/App/OffloadApp.swift`, additive): `MenuBarOpener` shows the summary line above m3-04's
   menu content when it is not nil.
 - **Data, `.local`** (m3-10 `InsightsSnapshot`, `LocalAnswerStore`):
   - Shown day: today when anything was counted today, else the latest day with data (imports are of past days);
@@ -138,10 +138,31 @@ Scope changes). `human_gated: true`: the owner checks it against his own importe
   `leave_alone`. The keys hint lists the numbers there are ("1 / 2 / 3 / 4 to pick · ↵ to build").
 - **Cloud days**: `previousDay`/`nextDay` step one calendar day, never past today; a 404 shows "Nothing recorded for
   this day yet." The week record's 404 leaves the repeats empty; any other error fails the screen with one sentence.
-- **Importing**: `.importing(file:of:)` while m3-05's phase is reading; `of == 0` while local insights are counting
-  ("counting on this Mac · Today updates when it's done"). Whatever was already counted stays below the line.
+- **Importing**: `.importing(file:of:)` while m3-05's phase is reading; `of == 0` while local insights recount the
+  days of an import that just finished, or while they count with nothing shown yet ("counting on this Mac · Today
+  updates when it's done"). Live capture's minute-by-minute recount of today shows no line (review 1). Whatever was
+  already counted stays below the line.
 - **Menu bar line**: `TodayMenuLine(app:)` (a view in `TodayLive/`) draws the model's `menuLine`; `OffloadApp.swift`
-  gains that one line above m3-04's menu content.
+  gains that one line above m3-04's menu content. `refreshMenuLine()` keeps it true without Today open, at most once a
+  minute: in `.cloud` it reads today's day record (at launch, when the menu shows the line, and with Today's own reads;
+  a failed read clears the line, as the screen shows nothing rather than old numbers); in `.local` it recounts today
+  only while live capture runs.
+- **How it was counted** (review 1): the headline, the subtitle items, each "What you did" duration, each repeat's
+  count, each kind's minutes and the card's count open to "how: …" on a click (and carry it as a tooltip and an
+  accessibility hint); an option's saving shows its arithmetic under the option once it is picked. A cloud repeat's
+  how line has the instances' and the minutes' arithmetic.
+- **Keys** (review 1): the fix card takes focus by default when Today appears, when it is clicked and when an option is
+  picked; a key that reaches the card's handler means focus is on the card or inside it.
+- **Colours**: text on the chrome uses `chromeMute` or brighter, never `chromeFaint` (decoration only). Cloud "Time by
+  kind" gives each of the brain's `WORK_KINDS` one colour (code blue, docs cyan, email amber, meeting purple, browse
+  green, chat and sheet two more; unknown kinds and `other` take Other's), so a kind keeps its colour from day to day.
+
+### Review 1 (2026-11-22, logs/m3-11-mac-today-live.review1.md)
+Red tests first (`M311Review1Tests.swift`), then: (1, major) no text in `chromeFaint`; (2) the card takes focus so the
+keys work, Test plan step 7; (3) the card's count, option savings and cloud repeat counts open to how they were
+counted; (4) no counting line for live capture's recount; (5) the menu line reads today itself in `.cloud` and is
+cleared on a failed read; (6) tests for both answer failures, OK, build with Leave it alone picked, a stale cloud read
+and the capture tick; (7) one colour per kind of work; (8) this SPEC's paths and `BASE` bullets.
 
 ## Red tests (write these first, run them, see them fail)
 Folder `apps/mac/Tests/OffloadMacTests/M311/`, Swift Testing, every test `@Test("TAG: ...")` inside
@@ -187,6 +208,9 @@ The day grid in `.cloud` mode (needs `GET /v1/today`, m5-05's API half); "how it
    opens the Recordings screen. Start an import: the importing line shows, and Today fills in when it is done.
 5. The menu bar item shows "today · … · mostly …" on a day with data and no line on a day without.
 6. Turn on Reduce Motion: the grid appears at once.
+7. In `.cloud` (or with the card on screen in `.local`): press 1, 2, 3 to pick an option and Return to press the
+   primary button; click the card first if focus is elsewhere. Click the card's title: the line says how its count
+   was counted.
 
 ## Scope changes
 - m3-10's 2026-11-22 rebase moved the app from `OffloadMacApp/OffloadApp.swift` to
@@ -201,13 +225,13 @@ The day grid in `.cloud` mode (needs `GET /v1/today`, m5-05's API half); "how it
   after the screen appears) and copy follow the owner-approved mockup's `Daily` component (`source.canvas.tsx` lines
   479 to 626); the data path is m3-10's. Nothing needs a NOTICE line.
 - `BASE` is m3-10's last commit on this stack (`d3d6651`), taken while m3-10 is still `in_progress` (its review 3 is
-  done); this slice's commits are the only ones counted by the scope check (subject prefix).
+  done); this slice's commits are the only ones counted by the scope check (subject prefix), so m3-10's placeholder
+  commit in `TodayLive/` is not counted against this slice's `owns`.
 - ROADMAP puts Today's Mac screen in m5-05 (M5) with its API; the owner asked for it in the test build now. This
   slice is the Mac screen only, `milestone: M3` with the wave; m5-05 keeps `GET /v1/today` and the evidence route.
 - Divergences from the mockup, honest by design: in `.local` the grid rows are apps, not kinds of work, and session
   names are app and host names (no model names work on the Mac, ADR 0003 and ADR 0005); the card has no options
   because options come from the fix designer in the cloud; in `.cloud` the grid is replaced by "Time by kind" until
   `GET /v1/today` exists.
-- `apps/mac/Sources/OffloadMacApp/**` is shared (m3-04, m3-05, m3-09, m3-10 edit it); this slice adds one view line.
-- `BASE` is set to the commit this slice starts from, after m3-10 is `done`, so m3-10's placeholder commit in
-  `TodayLive/` is not counted against this slice's `owns`.
+- `apps/mac/Sources/OffloadMac/App/OffloadApp.swift` is shared (m3-04, m3-05, m3-09, m3-10 edit it); this slice adds
+  one view line.
