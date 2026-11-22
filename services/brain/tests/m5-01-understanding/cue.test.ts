@@ -75,3 +75,11 @@ test("CUE: a period-joined name in OCR text never becomes a span's or a task's h
   expect(w.tasks.map((t) => t.host)).toEqual(w.tasks.map(() => ""));
   expect(JSON.stringify(w)).not.toMatch(/smith/i);
 });
+
+test("CUE: a host-shaped OCR token needs a real top-level domain and must be lowercase as read", () => {
+  for (const t of ["Inbox\nfrom j.r.smith regarding", "Notes e.g.invoices due", "Reply i.e.tomorrow works", "Report v2.final.draft", "Weekly Report.com summary"]) {
+    expect(cueOf(t)).toEqual({});
+  }
+  expect(cueOf("crm.dealbook.example Pipeline")).toEqual({ host: "crm.dealbook.example" });
+  expect(cueOf("mail.google.com Inbox")).toEqual({ host: "mail.google.com" });
+});
