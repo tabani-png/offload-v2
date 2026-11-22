@@ -31,6 +31,46 @@ afterAll(async () => {
 });
 
 describe("p45a docker provider", () => {
+  test("SANDBOX: the image is provisioned on the host before the first container: inspected, pulled once if missing (never by docker run), a failed pull is an infra error (CI 1)", async () => {
+    let present = false;
+    const { p, calls } = fake((argv) => {
+      if (argv[1] === "image") return { exit: present ? 0 : 1, stdout: present ? "sha256:" + "e".repeat(64) : "" };
+      if (argv[1] === "pull") {
+        present = true;
+        return { exit: 0 };
+      }
+      return { exit: 0 };
+    });
+    const [a, b] = await Promise.all([p.create(SPEC), p.create(SPEC)]);
+    const inspect = ["/usr/bin/docker", "image", "inspect", "--format", "{{.Id}}", SPEC.image];
+    expect(calls.map((c) => c.argv)).toEqual([inspect, ["/usr/bin/docker", "pull", "--quiet", SPEC.image], inspect]);
+    // once per image per provider; every sandbox container still runs with --pull never
+    await p.create(SPEC);
+    expect(calls).toHaveLength(3);
+    await p.exec(a, { argv: ["bun", "/check/harness.ts"], cwd: "/check", timeout_ms: 1000, harness: true });
+    const run = calls.find((c) => c.argv[1] === "run")!.argv;
+    expect(run[run.indexOf("--pull") + 1]).toBe("never");
+    await p.destroy(a);
+    await p.destroy(b);
+
+    // a pull that fails is Offload's side failing (ADR 0031): an infra error, no sandbox folder made; a later create tries again
+    let pulls = 0;
+    const down = fake((argv) => (argv[1] === "image" ? { exit: 1 } : argv[1] === "pull" ? (pulls++, { exit: 1 }) : { exit: 0 }));
+    expect(await down.p.create(SPEC).catch((e) => e)).toBeInstanceOf(SandboxInfraError);
+    expect(down.p.known()).toHaveLength(0);
+    expect(await down.p.create(SPEC).catch((e) => e)).toBeInstanceOf(SandboxInfraError);
+    expect(pulls).toBe(2);
+
+    // an air-gapped host can forbid the pull: a missing image is then an infra error naming no registry call
+    const calls2: string[][] = [];
+    const offline = new DockerProvider({ executor: async (argv) => (calls2.push(argv), { exit: argv[1] === "image" ? 1 : 0, stdout: "", stderr: "", timed_out: false }), docker: "docker", pull_missing_image: false });
+    made.push(offline);
+    const e = await offline.create(SPEC).catch((x) => x);
+    expect(e).toBeInstanceOf(SandboxInfraError);
+    expect((e as Error).message).toContain("not on this host");
+    expect(calls2.some((c) => c[1] === "pull")).toBe(false);
+  });
+
   test("SANDBOX: harness: true is refused unless the exec is exactly the trusted harness in /check: a caller's word never gets root (review 5 finding 5)", async () => {
     const { p, calls } = fake();
     const sb = await p.create(SPEC);
@@ -52,7 +92,8 @@ describe("p45a docker provider", () => {
     const sb = await p.create(SPEC);
     const dirs = p.paths(sb);
     await p.exec(sb, { argv: ["bun", "/check/harness.ts"], cwd: "/check", stdin: "nonce\n", env: { OFFLOAD_WS: "/work", OFFLOAD_CHECK_DIR: "/check" }, timeout_ms: 1000, harness: true });
-    const a = calls[0]!.argv;
+    const run = calls.find((c) => c.argv[1] === "run")!;
+    const a = run.argv;
     const name = a[a.indexOf("--name") + 1]!;
     const uid = process.getuid!();
     const gid = process.getgid!();
@@ -93,7 +134,7 @@ describe("p45a docker provider", () => {
       "/check/harness.ts",
     ]);
     expect(name).toMatch(/^offload-sbx_[0-9a-f]+-\d+$/);
-    expect(calls[0]!.stdin).toBe("nonce\n");
+    expect(run.stdin).toBe("nonce\n");
     expect(a.join(" ")).not.toContain("nonce");
   });
 
@@ -145,7 +186,7 @@ describe("p45a docker provider", () => {
     expect(p.isolates_tool).toBe(false);
     const sb = await p.create(SPEC);
     await p.exec(sb, { argv: ["bun", "/check/harness.ts"], cwd: "/check", timeout_ms: 10 });
-    const a = calls[0]!.join(" ");
+    const a = calls.find((c) => c[1] === "run")!.join(" ");
     expect(a).toContain("--user 65534:65534");
     expect(a).not.toContain("--cap-add");
     expect(a).not.toContain("OFFLOAD_CHECK_UID");
