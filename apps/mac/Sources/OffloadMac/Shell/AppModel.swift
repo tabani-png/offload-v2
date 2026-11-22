@@ -21,6 +21,14 @@ public final class AppModel: ObservableObject {
   /// What this launch started (m3-14). Set once in init.
   public private(set) var launchPlan = LaunchPlan(startUpdater: true, startCapture: false, startUploader: false,
                                                   importSink: .onDevice)
+  /// m3-10: the navigation shell (the sidebar's selection and the hand-off to Build progress).
+  public let navigation: NavigationModel
+  /// m3-10: backend mode and the brain and builds clients (none in `.local`).
+  public let backends: Backends
+  /// m3-10: local insights, counted on this Mac, for Today, Weekly review and Recordings.
+  public let insights: InsightsModel
+  /// m3-10: the on-device recordings import (the folders found, the local sink); nil when it could not be set up.
+  public let onDeviceRecordings: OnDeviceRecordings?
 
   private var frontmostObserver: NSObjectProtocol?
   private var backgroundChecks: Task<Void, Never>?
@@ -31,7 +39,9 @@ public final class AppModel: ObservableObject {
   /// m3-04 inject fake services and keep the default.
   public init(options: LaunchOptions, bundlePath: String, bufferReadable: Bool, store: OnboardingStore,
               services: OnboardingServices, probe: PermissionProbe, events: LocalEventSource, sampleWeek: SampleWeekFlag,
-              currentNoticeVersion: String? = nil, uploadsAvailable: Bool = true) {
+              currentNoticeVersion: String? = nil, uploadsAvailable: Bool = true,
+              navigation: NavigationModel? = nil, backends: Backends = .local,
+              insights: InsightsModel? = nil, onDeviceRecordings: OnDeviceRecordings? = nil) {
     let onboarding = OnboardingModel(store: store, services: services)
     self.onboarding = onboarding
     self.permissions = PermissionsModel(probe: probe, screenRecordingConfirmed: onboarding.state.screenRecordingConfirmed,
@@ -39,6 +49,10 @@ public final class AppModel: ObservableObject {
     self.events = events
     self.sampleWeek = sampleWeek
     self.neverWatch = services.neverWatch
+    self.navigation = navigation ?? NavigationModel()
+    self.backends = backends
+    self.insights = insights ?? InsightsModel.empty()
+    self.onDeviceRecordings = onDeviceRecordings
     let route = LaunchRoute.decide(options: options, state: onboarding.state, bundlePath: bundlePath,
                                    bufferReadable: bufferReadable, currentNoticeVersion: currentNoticeVersion)
     self.route = route
@@ -93,7 +107,7 @@ public final class AppModel: ObservableObject {
 
   // The live app is built by the one composition root, `AppComposition.live()` (m3-14): it injects the capture and
   // upload runtimes, the shared Never watch store and the recordings model, then starts the frontmost-app tracking
-  // and the background permission checks below.
+  // and the background permission checks below. m3-10's local analysis is plugged in there, not by a second `live()`.
 
   /// Screen 11 and Settings, Recordings (m3-05).
   public var recordings: RecordingsImportModel? { onboarding.services.recordings }
@@ -113,6 +127,8 @@ public final class AppModel: ObservableObject {
   public func dontWatch(_ exclusion: Exclusion) async {
     await onboarding.perform(.neverWatch(add: [exclusion]))
     objectWillChange.send()
+    // m3-10: the counted days drop the app at once, without a new import.
+    insights.exclusionsChanged()
   }
 
   /// The app in front other than Offload.

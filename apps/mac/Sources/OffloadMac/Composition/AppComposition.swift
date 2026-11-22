@@ -239,7 +239,24 @@ public struct CompositionSeams {
   /// Sign-in, consent, profile and connections are still the local stand-ins (their backends land later), so the test
   /// build runs in Local mode and sends nothing.
   public static func live(arguments: [String] = ProcessInfo.processInfo.arguments,
-                          seams: CompositionSeams = CompositionSeams()) -> AppComposition {
+                          seams given: CompositionSeams? = nil) -> AppComposition {
+    // m3-10: the screens' flag (member token) and the local analysis, plugged in through the analysis hook.
+    // The import masks with PR #13's TextMasker (inputs.importMasker), not m3-10's interim masker.
+    let backends = Backends.make(mode: BackendMode.resolve(defaults: .standard, tokens: NoMemberToken()))
+    let seams = given ?? CompositionSeams(analysis: { inputs in
+      let local = LocalAnalysis.live(neverWatch: inputs.neverWatch, events: inputs.events, mode: backends.mode,
+                                     masker: inputs.importMasker)
+      return AnalysisPlug(
+        recordings: local.onDevice?.model, onDeviceImport: local.onDevice != nil,
+        makeApp: { parts in
+          AppModel(options: parts.options, bundlePath: parts.bundlePath, bufferReadable: parts.bufferReadable,
+                   store: parts.store, services: parts.services, probe: parts.probe, events: parts.events,
+                   sampleWeek: parts.sampleWeek, currentNoticeVersion: parts.currentNoticeVersion,
+                   uploadsAvailable: parts.uploadsAvailable, backends: backends, insights: local.insights,
+                   onDeviceRecordings: local.onDevice)
+        },
+        afterLaunch: { app in app.startLocalAnalysis(rules: local.rules) })
+    })
     let secrets = KeychainSecretStore()
     let store = StoreContext(home: StoreLayout.defaultHome(), secrets: secrets)
     let env = CompositionEnvironment(

@@ -346,16 +346,20 @@ week of capture.
   (`days/DATE/log.jsonl`, rows with app, window and URL become masked focus observations).
 - Settings, Recordings (and "Recordings…" in the menu bar item) shows the same folder and Import, and each import
   space as "Recordings from Desktop · Nov 5 to 11 · 1,284 moments read" with **Remove imported data**. Like screen
-  11, the menu entry and Import show only while the person is signed in and sending; the folder is read when the
-  screen appears, never at launch.
+  11, the menu entry and Import show only when the import is offered (below); the folder is read when the screen
+  appears, never at launch. After setup the main window's sidebar has a **Recordings** screen with the same view, the
+  default folders found on the Mac (`~/screenwatch`, where screen recordings are saved, Desktop, Movies) with **Use
+  this folder**, and "counted on this Mac".
 - A recording has no window title or URL, so the person's host and title exclusions, banking sites and private
   windows are matched against the text on each frame; a frame that shows one gets no text and no keyframe. An app
   name is read off the menu bar only when it is followed by menu titles and the masker leaves it unchanged; otherwise
   the app is "Screen". Never watch apps match a recording by the names the app is shown by (looked up when each
   import starts, localized too), so an app chosen on screen 9 is skipped in a recording that shows its menu bar.
   Menu bars are read in English, German, French and Spanish.
-- This build has no on-device text reading yet (it comes with capture, m3-02), so Import says so and reads nothing;
-  the folder summary is real.
+- In `.local` backend mode (the test build) the import runs fully on this Mac (m3-10): Vision reads the frames, the
+  interim masker masks the text, and the masked observations are kept on this Mac only, without the text itself.
+  The progress panel ends "done · 1,284 moments read · 9 things you repeat" once local insights have counted the
+  import's days.
 - The import space is analysed as of its last day, so last month's recordings still show their week. "Remove
   imported data" calls `POST /v1/me/forget` with `scope: "import"`.
 - Through the uploader, only offered after screen 5 was accepted. In Local mode it is hidden, except once on-device
