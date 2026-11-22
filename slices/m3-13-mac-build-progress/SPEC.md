@@ -41,7 +41,7 @@ cloud backend is configured.
     this Mac (`build_id`, the opportunity or repeat name, `fix_id`, `started_at`), newest first. There is no list
     route in the API (see Scope changes).
   - `BuildProgressModel` (@MainActor): `builds: [BuildRow]`, `selected`, `detail: BuildDetail?`, `plan: PlanState?`
-    (the OK, build step), `install: InstallState`, `refresh()`, `okBuild()`, `readDefinition()`, `install()`,
+    (the OK, build step), `installState: InstallState`, `refresh()`, `okBuild()`, `readDefinition()`, `install()`,
     `cancel()`, `replaySample()`; owns the poll task.
   - `BuildDetail` (pure, Equatable), built by `BuildDetail.make(build:fix:outcome:now:)`: `title` ("Building · PR
     pre-read tool"), `headline`, `meter` ("6m 12s · $0.84 of $4.00"), `steps: [StepRow]` (5 rows), `attempts:
@@ -194,5 +194,8 @@ sheet?" (m5-06); any change to m3-10's folders.
   UTC `Z` form and are shown in the person's time zone.
 - **Mockup divergence**: real builds show one row per attempt with frozen and held-out results; the 8 named workers
   with a box per check are in the sample only, because the API reports `check_groups` per attempt, not single checks.
+- **`install` renamed `installState`**: the model's property and its `install()` method cannot share a name in Swift
+  (a redeclaration), so the property is `installState`; the red tests were written against the SPEC's name and were
+  changed with this note.
 - `BASE` is set after m3-10 is `done`, so m3-10's placeholder commit in `BuildProgress/` is not counted against this
   slice's `owns`.

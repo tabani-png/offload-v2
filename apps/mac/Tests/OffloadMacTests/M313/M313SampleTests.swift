@@ -115,8 +115,8 @@ extension M313 {
     #expect(model.installLine == "Installing needs the cloud.")
     await model.readDefinition()
     await model.install()
-    #expect(model.install.definition == nil)
-    #expect(model.install.installed == nil)
+    #expect(model.installState.definition == nil)
+    #expect(model.installState.installed == nil)
     #expect(model.installLine == "Installing needs the cloud.")
   }
 

@@ -340,7 +340,7 @@ extension M313 {
     #expect(client.count("deploy") == 0)
     client.script("definition", .value(M313F.definition))
     await model.readDefinition()
-    #expect(model.install.definition?.words == ["When a pull request opens", "Reads the pull request, never writes to it",
+    #expect(model.installState.definition?.words == ["When a pull request opens", "Reads the pull request, never writes to it",
                                                 "Posts a summary card on this Mac"])
     #expect(model.canInstall)
   }
@@ -383,7 +383,7 @@ extension M313 {
     await model.readDefinition()
     await model.install()
     #expect(model.installLine == "Installed · version 1")
-    #expect(model.install.installed == Deployed(routineID: "rt_1", version: 1))
+    #expect(model.installState.installed == Deployed(routineID: "rt_1", version: 1))
     #expect(store.records().first?.routineID == "rt_1")
     #expect(store.records().first?.installedAt == M313F.date("2026-11-22T12:00:00Z"))
     #expect(client.calls.contains("outcomes 2026-11"))
@@ -403,9 +403,9 @@ extension M313 {
     client.fallback("outcomes", .value([FixOutcome]()))
     await model.readDefinition()
     await model.install()
-    #expect(model.install.message == "It changed since you read it. Read it again.")
+    #expect(model.installState.message == "It changed since you read it. Read it again.")
     #expect(model.installLine == "It changed since you read it. Read it again.")
-    #expect(model.install.definition == M313F.changedDefinition)
+    #expect(model.installState.definition == M313F.changedDefinition)
     #expect(client.count("deploy") == 1)
     #expect(client.calls.suffix(2) == ["build \(M313F.buildID)", "definition \(M313F.buildID)"])
     await model.install()
@@ -456,7 +456,7 @@ extension M313 {
     await model.install()
     #expect(transport.requests.count == 2)
     #expect(model.installLine == "Installing needs this Mac to be enrolled.")
-    #expect(model.install.installed == nil)
+    #expect(model.installState.installed == nil)
   }
 
   // MARK: POLL
