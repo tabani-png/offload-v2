@@ -372,9 +372,12 @@ struct PlanPanelView: View {
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!model.canOKBuild)
             .opacity(ActionLook.opacity(enabled: model.canOKBuild))
-          Button(BuildCopy.notNow) { model.dismissPlan() }
-            .buttonStyle(SecondaryButtonStyle())
         }
+      }
+      // In every phase but starting, so a plan no longer wanted can be dropped (review3.md finding 4).
+      if model.canDismissPlan {
+        Button(BuildCopy.notNow) { model.dismissPlan() }
+          .buttonStyle(SecondaryButtonStyle())
       }
       if let message = plan.message {
         Text(message).textStyle(Tokens.TypeScale.callout).foregroundStyle(Theme.ink)

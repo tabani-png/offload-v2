@@ -340,6 +340,8 @@ public final class BuildProgressModel: ObservableObject {
     guard !isLocal, store.record(id) != nil else { return }
     if selected != id { installState = InstallState() }
     selected = id
+    // A build never read yet (its first read failed) is read now (review3.md finding 2).
+    if cache[id] == nil, !gone.contains(id) { await rereadBuild(id) }
     await loadSelected()
     restartPolling()
   }
@@ -537,7 +539,7 @@ public final class BuildProgressModel: ObservableObject {
       return
     }
     switch p.phase {
-    case .stopped, .tooLong:
+    case .stopped:
       plans.clear()
     default:
       plans.save(KeptPlan(opportunityID: p.opportunityID, optionID: p.optionID, fixID: p.fixID, title: p.title,
@@ -550,6 +552,9 @@ public final class BuildProgressModel: ObservableObject {
   public func planStep() async -> Double? {
     guard isActive, !isLocal, let client, let current = plan, planIsWaiting else { return nil }
     if now().timeIntervalSince(current.startedAt) >= Self.planLimitSeconds {
+      // The poll stops; the plan is kept, and the next visit reads the opportunity again (review3.md finding 1).
+      // Waiting on a connection keeps saying which app to connect.
+      if case .needsConnection = current.phase { return nil }
       plan?.phase = .tooLong
       plan?.line = BuildCopy.stillDesigning
       return nil
@@ -613,6 +618,17 @@ public final class BuildProgressModel: ObservableObject {
       p.phase = .designing
       p.line = BuildCopy.designing
       plan = p
+    // A kept plan is applied again on later visits: a suggestion set aside or built since is not offered for
+    // building again (review3.md finding 3).
+    case .notNow, .never, .leftAlone:
+      plan = p
+      stopPlan(BuildCopy.setAside)
+    case .building, .readyToShip, .shipped:
+      plan = p
+      stopPlan(BuildCopy.alreadyBuilt)
+    case .buildFailed:
+      plan = p
+      stopPlan(BuildCopy.lastBuildFailed)
     default:
       plan = p
       await readFix()
@@ -692,7 +708,15 @@ public final class BuildProgressModel: ObservableObject {
   }
 
   /// Leaves the plan without building.
+  /// Not now is offered in every phase but starting (review3.md finding 4).
+  public var canDismissPlan: Bool {
+    guard let phase = plan?.phase else { return false }
+    if case .starting = phase { return false }
+    return true
+  }
+
   public func dismissPlan() {
+    guard canDismissPlan else { return }
     plan = nil
     planTask?.cancel()
     planTask = nil

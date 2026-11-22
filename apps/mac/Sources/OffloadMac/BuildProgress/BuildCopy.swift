@@ -113,6 +113,9 @@ public enum BuildCopy {
   public static let planChanged = "The plan changed. Read it again."
   public static let alreadyRunning = "A build of this plan is already running."
   public static let noFixYet = "This suggestion has no fix to build yet."
+  public static let setAside = "This suggestion was set aside, so nothing is built."
+  public static let alreadyBuilt = "This suggestion is already being built or was built."
+  public static let lastBuildFailed = "Its last build didn't pass. Nothing was installed."
   public static let starting = "Starting the build…"
   /// "build cap $4.00".
   public static func buildCap(_ cap: String) -> String { "build cap \(cap)" }
@@ -241,7 +244,7 @@ public enum BuildCopy {
       heldOutLabel, notRun, install, seeWhatChanged, whatItWillDo, cancelBuild, removeFromList, okBuild, notNow,
       installNeedsCloud, installNeedsEnrollment, buildNeedsEnrollment, installChanged, definitionMissing, readFirst,
       measuredAfter, notMeasured, measuredFromM4, planTitle, answering, designing, stillDesigning, planChanged,
-      alreadyRunning, noFixYet, starting, noBuilds, offline, gone, checking, opportunityNeedsCloud,
+      alreadyRunning, noFixYet, setAside, alreadyBuilt, lastBuildFailed, starting, noBuilds, offline, gone, checking, opportunityNeedsCloud,
     ]
     let built: [String] = [
       fingerprint("7c41e2"), attemptsPassing(2, of: 3), failedFixing(1), otherStage("recovered", state: "failed"),
