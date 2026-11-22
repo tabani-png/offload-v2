@@ -12,7 +12,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="p45b-measured-saving"
-BASE="724dbd3"                                # commit this slice stacks on (required once status is in_progress)
+BASE="d32ac0d"                                # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="packages/hours-saved/tests/p45b-measured-saving"   # one or more folders, space separated
 NEEDS_POSTGRES=0                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 # -------------------------------------------------------------------------
