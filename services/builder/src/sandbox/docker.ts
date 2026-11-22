@@ -6,7 +6,9 @@
 //   - the ONE exception is the trusted check harness (`exec({ harness: true })`, set only by shards.ts and the advisory
 //     run in attempt.ts) on a provider with the user split: it starts as root (PID 1) with only CHOWN, SETGID and
 //     SETUID, to run the check and the built tool as two other users (harness.ts).
-// A sandbox is two private host folders plus labels; every exec is a fresh `docker run --rm` over them.
+// A sandbox is two private host folders plus labels and a sandbox.json record; every exec is a fresh `docker run --rm`
+// over them. destroy() empties /work from a cleanup container as each owner of files there (no network, no capability,
+// only /work mounted), then removes the folders; what it cannot remove stays recorded on disk and in list(tag).
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -17,6 +19,8 @@ import { checkEnv, MOUNT_PATH, safeRelPath, SandboxInfraError, SandboxSpecError,
 export type Executor = (argv: string[], o: { stdin?: string; timeout_ms: number }) => Promise<ExecResult>;
 
 const MAX_OUTPUT = 256 * 1024;
+/** The record in each sandbox's host folder (id, tag, image), removed last by destroy. */
+const RECORD = "sandbox.json";
 /** The check runs as the host user that wrote /check (its files are 0400); the tool as another one. */
 function splitEnv(): string[] {
   const uid = process.getuid?.() ?? 0;
@@ -89,8 +93,56 @@ export class DockerProvider implements SandboxProvider {
     // The container user (65534) writes in /work; the host parent stays private (0700), so no other host user can.
     chmodSync(work, 0o777);
     const sandbox: Sandbox = { id: `sbx_${sha256Hex(root).slice(0, 16)}`, tag: spec.tag };
+    // The on-disk record: list(tag) and destroy() find the sandbox from it after a restart, or after a removal that
+    // failed, so a host folder is never forgotten (review round 5).
+    writeFileSync(join(root, RECORD), JSON.stringify({ id: sandbox.id, tag: spec.tag, image: spec.image }), { mode: 0o600 });
     this.boxes.set(sandbox.id, { sandbox, spec, root, work, check, runs: 0 });
     return sandbox;
+  }
+
+  /** Sandboxes recorded on disk under this provider's root (also those another process created). */
+  private onDisk(): Array<{ id: string; tag: string; image: string; root: string }> {
+    const out: Array<{ id: string; tag: string; image: string; root: string }> = [];
+    let names: string[] = [];
+    try {
+      names = readdirSync(this.root).filter((n) => n.startsWith("offload-sbx-"));
+    } catch {
+      return out;
+    }
+    for (const n of names) {
+      try {
+        const r = JSON.parse(readFileSync(join(this.root, n, RECORD), "utf8")) as { id?: unknown; tag?: unknown; image?: unknown };
+        if (typeof r.id === "string" && /^sbx_[0-9a-f]{16}$/.test(r.id) && typeof r.tag === "string" && typeof r.image === "string") out.push({ id: r.id, tag: r.tag, image: r.image, root: join(this.root, n) });
+      } catch {
+        // not a sandbox folder of this provider
+      }
+    }
+    return out;
+  }
+
+  /** The uids, other than the builder's, that own anything in a folder (a worker's or a tool's files). */
+  private foreignOwners(dir: string): Set<number> {
+    const me = process.getuid?.() ?? -1;
+    const found = new Set<number>();
+    const walk = (d: string) => {
+      let names: string[] = [];
+      try {
+        names = readdirSync(d);
+      } catch {
+        return;
+      }
+      for (const n of names) {
+        try {
+          const st = lstatSync(join(d, n));
+          if (st.uid !== me) found.add(st.uid);
+          if (st.isDirectory()) walk(join(d, n));
+        } catch {
+          // gone, or unreadable: its owner was recorded from its parent's listing
+        }
+      }
+    };
+    walk(dir);
+    return found;
   }
 
   private box(s: Sandbox): Box {
@@ -230,29 +282,62 @@ export class DockerProvider implements SandboxProvider {
   }
 
   async destroy(s: Sandbox): Promise<void> {
-    const b = this.boxes.get(s.id);
     try {
       const ps = await this.executor([this.docker, "ps", "-aq", "--filter", `label=offload.sandbox=${s.id}`], { timeout_ms: 30_000 });
       const ids = ps.stdout.split("\n").map((x) => x.trim()).filter((x) => /^[0-9a-f]{6,64}$/.test(x));
       if (ids.length > 0) await this.executor([this.docker, "rm", "-f", ...ids], { timeout_ms: 30_000 });
     } catch {
       // the reaper finds it by its label later (ADR 0031)
-    } finally {
-      if (b !== undefined) {
-        // Forget it whatever happens; a folder that cannot be removed (a file a check made unremovable) is left to the
-        // reaper (ADR 0031, m2-08), never thrown at the build that is ending.
-        this.boxes.delete(s.id);
-        try {
-          rmSync(b.root, { recursive: true, force: true });
-        } catch {
-          // left for the reaper
-        }
+    }
+    const b = this.boxes.get(s.id);
+    const rec = b !== undefined ? { root: b.root, image: b.spec.image } : this.onDisk().find((x) => x.id === s.id);
+    if (rec === undefined) return;
+    const work = join(rec.root, "work");
+    // Files a sandbox user made (a worker's tests/, a tool's output) belong to that uid on the host bind mount, and the
+    // builder cannot unlink them. Empty /work from inside a container as each such owner first: no network, no
+    // capability, read-only root, only /work mounted.
+    for (const uid of this.foreignOwners(work)) {
+      try {
+        await this.executor(this.cleanupArgv(s.id, work, rec.image, uid), { timeout_ms: 60_000 });
+      } catch {
+        // removal below fails and the record stays for the next destroy or the reaper
       }
+    }
+    try {
+      rmSync(work, { recursive: true, force: true });
+      rmSync(join(rec.root, "check"), { recursive: true, force: true });
+      rmSync(rec.root, { recursive: true, force: true });
+      this.boxes.delete(s.id);
+    } catch {
+      // Never thrown at the ending build. sandbox.json is removed last, so the folder stays in list(tag) (from disk)
+      // for the next destroy or the reaper (ADR 0031, m2-08).
     }
   }
 
+  /** The cleanup container's argv: `find /work -mindepth 1 -delete` as one owner of files in /work. */
+  cleanupArgv(id: string, work: string, image: string, uid: number): string[] {
+    return [
+      this.docker, "run", "--rm",
+      "--name", `offload-${id}-clean-${uid}`,
+      "--label", `offload.sandbox=${id}`,
+      "--network", "none",
+      "--pull", "never",
+      "--read-only",
+      "--cap-drop", "ALL",
+      "--security-opt", "no-new-privileges",
+      "--pids-limit", "256",
+      "--user", `${uid}:${uid}`,
+      "--mount", `type=bind,source=${work},target=${MOUNT_PATH.work}`,
+      "--entrypoint", "find",
+      image,
+      MOUNT_PATH.work, "-mindepth", "1", "-delete",
+    ];
+  }
+
+
   async list(tag: string): Promise<string[]> {
     const ids = new Set([...this.boxes.values()].filter((b) => b.spec.tag === tag).map((b) => b.sandbox.id));
+    for (const r of this.onDisk()) if (r.tag === tag) ids.add(r.id);
     try {
       const r = await this.executor([this.docker, "ps", "-a", "--filter", `label=offload.tag=${tag}`, "--format", '{{.Label "offload.sandbox"}}'], { timeout_ms: 30_000 });
       for (const x of r.stdout.split("\n").map((l) => l.trim())) if (/^sbx_[0-9a-f]{16}$/.test(x)) ids.add(x);
