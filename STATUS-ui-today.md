@@ -21,3 +21,4 @@ One line per slice step: slice | decision | tests | reviewer verdict.
 - 2026-11-22 13:16 today | CI green on e183e7dcb3d7a917ac8c2dda98493104a703e6d2 | runs: mac-artifact=success, ci=success
 - 2026-11-22 13:38 today-api | CI green on 158e89e0b9f9e2f7f51361a6a779a8d0a912e1cd | runs: ci=success, mac-artifact=success
 - 2026-11-22 13:38 m3-11-mac-today-live | extra review to round 3 | reviewer: VERDICT: PASS
+- 2026-11-22 13:44 today-more | CI green on 55324afa540da3c16e2da9814c76ee419ec41838 | runs: mac-artifact=success, ci=success
