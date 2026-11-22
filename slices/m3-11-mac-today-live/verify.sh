@@ -9,7 +9,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m3-11-mac-today-live"
-BASE="d3d66519c8809874b1b68dbb796f41e28a2c8105"   # the commit this slice started from (m3-10's last commit on the stack; m3-10 is still in review)
+BASE="e80962af0248e97373f166071c3fce8360db35af"   # the commit this slice started from (m3-10's last commit on the rebased stack; m3-10 is still in review)
 PKG="apps/mac"
 TEST_DIR="apps/mac/Tests/OffloadMacTests/M311"
 SUITE="OffloadMacTests.M311"
