@@ -40,3 +40,4 @@ One line per slice step: slice | decision | tests | reviewer verdict.
   Not yet seen green: these four tests run the real importer through the model for the first time in the next run.
   `durable: workflow "sleeper" failed (Error)` is again the expected log of a passing `core` test; `core` passed.
 - 2026-11-22 12:20 analysis | CI green on 8212c38ef699e99c83b1557d36b645fa555bcd09 | runs: mac-artifact=success, ci=success
+- 2026-11-22 12:33 m3-10-mac-recordings-analysis | wave2 review to round 4 | reviewer: VERDICT: PASS
