@@ -143,6 +143,10 @@ test("ESTIMATE: every figure's arithmetic reproduces its value", () => {
   const agent = rules.propose(records)!.options.find((o) => o.kind === "agent_workflow")!;
   expect(agent.figures.setup_hours.arithmetic).toBe("base 3 + 1 x 3 steps + 1 x 1 browser steps = 7 h");
   expect(agent.figures.confidence.arithmetic).toBe("agent_workflow 0.6 x instances 1 x days 1 x browser step 0.85 = 0.51");
+  // A step with no connector in a cloud kind costs 0.5 h and x 0.9 (review 1 finding 1).
+  const device = rules.propose(ev({ systems: [GMAIL, EXCEL], minutes: 120 }))!.options.find((o) => o.kind === "agent_workflow")!;
+  expect(device.figures.setup_hours.arithmetic).toBe("base 3 + 1 x 2 steps + 0.5 x 1 device steps = 5.5 h");
+  expect(device.figures.confidence.arithmetic).toBe("agent_workflow 0.6 x instances 1 x days 1 x device step 0.9 = 0.54");
 });
 
 test("ESTIMATE: an option that saves nothing is dropped and no option left gives no proposal", () => {
@@ -212,6 +216,11 @@ test("RANK: the fix rules' estimates are ranked and an empty profile keeps their
   const evidence = [copy, { ...triage, task_key: "k_000000000002" }, { ...records, task_key: "k_000000000003" }, ev({ task_key: "k_000000000004", systems: [VSCODE], minutes: 300, instances: 10 })];
   const estimates = evidence.map((e) => rules.propose(e)).filter((p): p is FixProposal => p !== null).map((p) => p.estimate);
   expect(estimates.map((e) => e.taskKey)).toEqual(["k_000000000001", "k_000000000002", "k_000000000003"]);
+  // The drain boost's work kind: mail before sheets before docs before the web (review 1 finding 1).
+  expect(rules.propose(ev({ systems: [GMAIL, EXCEL], minutes: 120 }))!.estimate.workKind).toBe("email");
+  expect(rules.propose(ev({ systems: [EXCEL, GDOCS], minutes: 120 }))!.estimate.workKind).toBe("sheet");
+  expect(rules.propose(ev({ systems: [GDOCS, LEDGERLY], minutes: 120 }))!.estimate.workKind).toBe("docs");
+  expect(rules.propose(copy)!.estimate.workKind).toBe("browse");
   const ranked = rankOpportunities({ isoWeek: "2026-W45", week, recent: [week], estimates, drains: [], goals: [], taskVectors: new Map(), answers: [] });
   const value = (e: (typeof estimates)[number]) => (e.weeklyHoursSaved * e.ruleConfidence) / Math.max(1, e.setupHours / e.weeklyHoursSaved);
   const order = [...estimates].sort((a, b) => value(b) - value(a)).map((e) => e.taskKey);

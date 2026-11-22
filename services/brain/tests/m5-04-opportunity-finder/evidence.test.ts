@@ -67,3 +67,27 @@ test("EVIDENCE: one instance a day at the same hour is a daily cadence; the same
   // Two instances on one day: not a daily cadence.
   expect(out[2]!.cadence).toBeNull();
 });
+
+test("EVIDENCE: start times over 2 h apart, different weekdays, two in one week or an instance 9 weeks back give no cadence (review 1 finding 1)", () => {
+  const xl = ["com.microsoft.Excel"];
+  const keys = ["k_000000000011", "k_000000000012", "k_000000000013", "k_000000000014", "k_000000000015"];
+  const week = weekWith(W45.w, W45.from, W45.to, keys.map((k) => ({ task_key: k, name: k, minutes: 30, instances: 3, median: 10 })));
+  const episodes = [
+    // Daily, but 09:00, 12:30 and 09:10: a 3.5 h band.
+    ep("ep_a1", keys[0]!, "2026-11-02T09:00:00Z", 10, xl, []), ep("ep_a2", keys[0]!, "2026-11-03T12:30:00Z", 10, xl, []), ep("ep_a3", keys[0]!, "2026-11-04T09:10:00Z", 10, xl, []),
+    // One a week, but Thursday then Friday.
+    ep("ep_b1", keys[1]!, "2026-10-29T16:00:00Z", 10, xl, []), ep("ep_b2", keys[1]!, "2026-11-06T16:00:00Z", 10, xl, []),
+    // Fridays, but 09:00 then 16:00.
+    ep("ep_c1", keys[2]!, "2026-10-30T09:00:00Z", 10, xl, []), ep("ep_c2", keys[2]!, "2026-11-06T16:00:00Z", 10, xl, []),
+    // Fridays at 16:00, but twice in one week.
+    ep("ep_d1", keys[3]!, "2026-10-23T16:00:00Z", 10, xl, []), ep("ep_d2", keys[3]!, "2026-10-30T16:00:00Z", 10, xl, []),
+    ep("ep_d3", keys[3]!, "2026-10-30T16:30:00Z", 10, xl, []), ep("ep_d4", keys[3]!, "2026-11-06T16:10:00Z", 10, xl, []),
+    // Fridays at 16:00, but the other one is 9 weeks back (outside the 8 weeks).
+    ep("ep_e1", keys[4]!, "2026-09-11T16:00:00Z", 10, xl, []), ep("ep_e2", keys[4]!, "2026-11-06T16:00:00Z", 10, xl, []),
+  ];
+  const out = buildTaskEvidence({ week, episodes, timezone: "UTC" });
+  expect(out.map((e) => e.cadence)).toEqual([null, null, null, null, null]);
+  // Control: the same Friday pair inside the 8 weeks is weekly.
+  const inside = buildTaskEvidence({ week, episodes: [ep("ep_f1", keys[4]!, "2026-10-30T16:00:00Z", 10, xl, []), ep("ep_f2", keys[4]!, "2026-11-06T16:00:00Z", 10, xl, [])], timezone: "UTC" });
+  expect(inside[4]!.cadence).toEqual({ kind: "weekly", weekday: 4, hour: 16 });
+});

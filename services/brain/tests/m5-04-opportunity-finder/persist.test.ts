@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { fixRules, type FixRules } from "../../src/opportunities/rules.ts";
 import { runMemberUpdate } from "../../src/store/job.ts";
-import { getOpportunityView, listOpportunityViews } from "../../src/store/repository.ts";
+import { getOpportunityView, listOpportunityViews, listWeekEpisodes } from "../../src/store/repository.ts";
 import { fixtureWeek, mondayNoonAfter, MONDAYS, SEED, WEEKS } from "../fixtures/window.ts";
 import { dump, HAS_DB, testDb, type TestDb } from "./db.ts";
 
@@ -24,6 +24,7 @@ const week = fixtureWeek(MONDAYS[0], { seed: SEED });
 const now = mondayNoonAfter(MONDAYS[0]);
 const update = (rules: FixRules, ctx = db.A1) => db.run(ctx, (tx) => runMemberUpdate(tx, { window: week.window, now, workspaceId: db.workspace, fixRules: rules }));
 const views = (ctx = db.A1) => db.run(ctx, (tx) => listOpportunityViews(tx, { isoWeek: WEEKS[0] }));
+const latestViews = () => db.run(db.A1, (tx) => listOpportunityViews(tx));
 
 t("PERSIST: the update job with the fix rules stores ranked opportunities, their options and episode hosts", async () => {
   const r = await update(fixRules());
@@ -50,6 +51,20 @@ t("PERSIST: the update job with the fix rules stores ranked opportunities, their
   expect(rows["fixes"]!.length).toBe(vs.reduce((n, v) => n + v.options.length, 0));
   const hosts = await db.sql.unsafe(`SELECT DISTINCT hosts FROM ${db.schema}.episodes WHERE member_id = $1 AND name = 'Outreach emails' AND kind = 'task_instance'`, [db.A1.memberId]);
   expect([...hosts].map((h) => (h as { hosts: string[] }).hosts)).toEqual([["mail.google.com"]]);
+
+  // An episode row left behind by a re-analysed day (not in day_records.episode_ids) is not read (review 1 finding 1).
+  const days = (await db.sql.unsafe(`SELECT day::text AS day FROM ${db.schema}.day_records WHERE member_id = $1 ORDER BY day`, [db.A1.memberId])).map((r: any) => r.day as string);
+  await db.sql.unsafe(
+    `INSERT INTO ${db.schema}.episodes (tenant_id, member_id, id, kind, day, started_at, ended_at, minutes, apps, hosts, task_key, name, evidence)
+     VALUES ($1, $2, 'ep_stale', 'task_instance', $3::date, $4, $4, 5, '{com.google.Chrome}', '{stale.example}', $5, 'Outreach emails', '{}')`,
+    [db.A1.tenantId, db.A1.memberId, days[0], `${days[0]}T10:00:00Z`, outreach.task_key],
+  );
+  const read = await db.run(db.A1, (tx) => listWeekEpisodes(tx, days[0]!, days[days.length - 1]!));
+  expect(read.length).toBeGreaterThan(0);
+  expect(read.map((e) => e.id)).not.toContain("ep_stale");
+  await update(fixRules());
+  const again = (await views()).find((v) => v.title === "Outreach emails")!;
+  expect(again.options.flatMap((o) => o.steps.map((s) => s.system))).not.toContain("stale.example");
 });
 
 t("PERSIST: a re-run leaves identical rows and a task leaving the top 5 loses its open opportunity and options", async () => {
@@ -59,6 +74,12 @@ t("PERSIST: a re-run leaves identical rows and a task leaving the top 5 loses it
   await update(rules);
   expect(await dump(db, db.A1.memberId, TABLES)).toEqual(first);
   const outreach = (await views()).find((v) => v.title === "Outreach emails")!;
+  // Two options before; one after a re-run that proposes one: option 2's row is gone (review 1 finding 1).
+  expect(outreach.options).toHaveLength(2);
+  const one: FixRules = { propose: (e) => { const p = rules.propose(e); return p === null ? null : { ...p, options: p.options.slice(0, 1) }; } };
+  await update(one);
+  const fixCount = await db.sql.unsafe(`SELECT count(*)::int AS n FROM ${db.schema}.fixes WHERE opportunity_id = $1`, [outreach.id]);
+  expect(fixCount[0].n).toBe(1);
   const without: FixRules = { propose: (e) => (e.name === "Outreach emails" ? null : rules.propose(e)) };
   expect((await update(without)).ranked).toBe(2);
   expect((await views()).map((v) => v.title)).not.toContain("Outreach emails");
@@ -93,4 +114,19 @@ t("PERSIST: options of a chosen opportunity are not touched and members read onl
   const mine = await db.run(db.A1, (tx) => getOpportunityView(tx, chosen.id));
   expect(mine?.options.length).toBe(chosen.options.length);
   expect(await db.run(db.A2, async (tx) => ((await tx.unsafe("SELECT count(*)::int AS n FROM fixes")) as Array<{ n: number }>)[0]!.n)).toBe(0);
+});
+
+t("PERSIST: without a week the latest week with an opportunity is read, and a state filter applies within it (review 1 finding 5)", async () => {
+  const rules = fixRules();
+  await update(rules);
+  const next = fixtureWeek(MONDAYS[1], { seed: SEED + 1 });
+  await db.run(db.A1, (tx) => runMemberUpdate(tx, { window: next.window, now: mondayNoonAfter(MONDAYS[1]), workspaceId: db.workspace, fixRules: rules }));
+  const latest = await latestViews();
+  expect(latest.length).toBeGreaterThan(0);
+  expect(new Set(latest.map((v) => v.iso_week))).toEqual(new Set([WEEKS[1]]));
+  const older = await db.run(db.A1, (tx) => listOpportunityViews(tx, { isoWeek: WEEKS[0] }));
+  expect(new Set(older.map((v) => v.iso_week))).toEqual(new Set([WEEKS[0]]));
+  await db.sql.unsafe(`UPDATE ${db.schema}.opportunities SET state = 'not_now' WHERE id = $1`, [latest[0]!.id]);
+  const open = await db.run(db.A1, (tx) => listOpportunityViews(tx, { state: "open" }));
+  expect(open.map((v) => v.id)).toEqual(latest.slice(1).map((v) => v.id));
 });

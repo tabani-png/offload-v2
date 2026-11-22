@@ -66,3 +66,13 @@ t("FINDER: figures of options resolve through figure_index", async () => {
     expect(at?.record_key).toBe(`${v!.iso_week}/${v!.task_key}`);
   }
 });
+
+t("FINDER: without a workspace the fix rules are withheld and no opportunity is stored (review 1 finding 1)", async () => {
+  const a = db.fx.a;
+  await insertCapture(db, a, a.owner, a.devices.owner, invoiceImport(daysOfOneWeek(), { perDay: 2, noise: false, menuBar: true }), todayUtc());
+  const capture = { ...db.deps.capture, workspaceOf: async () => null };
+  const r = await runUnderstanding({ ...db.deps, capture, fixRules: fixRules() }, await emitIngested(db, a, a.owner, a.devices.owner));
+  expect(r.status).toBe("updated");
+  expect(await db.deps.runBrain(ctxOf(a.owner), (tx) => listOpportunityViews(tx))).toEqual([]);
+  expect((await db.sql.unsafe(`SELECT count(*)::int AS n FROM ${db.schema}.day_records WHERE member_id = $1`, [a.owner]))[0].n).toBeGreaterThan(0);
+});
