@@ -343,9 +343,9 @@ Built in slice [m5-12-n8n-export](../../slices/m5-12-n8n-export/SPEC.md). n8n fa
 
 #### 9.1 What it is
 - An **export target**, not an execution backend. `exportN8n(resolved, artifact, receipt, fixtures, catalog)` in
-  `packages/n8n-export` (core, MIT) is pure and returns a bundle: the main workflow, its error workflow, a credential
-  map (placeholder name, n8n credential type, the Offload connection it stands for, in words) and the export card.
-  Same inputs, byte-identical bundle.
+  `packages/n8n-export` (core, MIT) is pure and returns a bundle (the main workflow, its error workflow, a credential
+  map of placeholder name, n8n credential type and the Offload connection it stands for, in words, and the pinned n8n
+  version), its `export_hash` and the export card. Same inputs, byte-identical bundle.
 - `export_hash = sha256(JCS(bundle))` over the two workflows, the credential map and the pinned n8n version, computed
   with the main workflow's `settings.errorWorkflow` set to the fixed placeholder `offload:error-workflow`. That field
   is the only value ever filled after approval (section 9.5). The card is generated from the bundle by code and is
@@ -440,7 +440,12 @@ residual risk is recorded in OQ-32 and push ships off. n8n run by Offload is not
   - `routine_versions.backend` and `rolled_back_from`;
   - breaker reason `read_shape_changed`;
   - the rollback route;
-  - the stability record in `GET /v1/routines/{id}`.
+  - the stability record in `GET /v1/routines/{id}`;
+  - the lint of the workflow design rules and `WORKFLOW_DESIGN_RULES`.
+
+  The n8n export's contract changes land in slice [m5-12-n8n-export](../../slices/m5-12-n8n-export/SPEC.md): the
+  bundle and `export_hash`, the `n8n_instance` connection, deploy approvals with target `n8n`, `n8n_pushes`, the
+  `n8n_push` setting, `GET /v1/builds/{id}/n8n-export` and `POST /v1/builds/{id}/n8n-push`.
 - **Three earlier decisions change.**
   - [ADR 0027](0027-fixture-capture-and-connector-content.md): the default number of captured instances goes from 6
     to 8, and some are held out.

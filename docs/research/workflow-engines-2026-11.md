@@ -394,7 +394,7 @@ backend and several integration sources.
 | Source | License or terms | How Offload may use it | Rung ([ADR 0033](../adr/0033-pinned-connector-resolution-and-launch-catalog.md)) |
 |---|---|---|---|
 | First-party and vetted remote MCP servers | per server | As today | 1 |
-| A customer's own n8n workflows exposed through the MCP Server Trigger | the customer's own SUL use; "Triggering or executing pre-built workflows via API or webhooks is fine" | An MCP connection the customer adds. Only workflows the customer built; Offload never writes them ([OQ-30](../OPEN_QUESTIONS.md#oq-30-n8n-in-offload)) | 1 |
+| A customer's own n8n workflows exposed through the MCP Server Trigger | the customer's own SUL use; "Triggering or executing pre-built workflows via API or webhooks is fine" | An MCP connection the customer adds, always `opaque_workflow`. Offload writes n8n workflows only as an n8n export the customer imports or approves a push of ([OQ-30](../OPEN_QUESTIONS.md#oq-30-n8n-in-offload)); it cannot see later edits | 1 |
 | Activepieces pieces as MCP servers | MIT pieces; the MCP server runs in the customer's Activepieces | An MCP connection the customer adds | 1 |
 | Composio toolkits | proprietary service, MIT/ISC SDK | As today, REST from the broker, allowlists, retention disclosed | 2 |
 | Activepieces pieces as source code | MIT, with `NOTICE` | Ported, a piece at a time, into allowlisted direct-API adapters run by the broker. Never executed as third-party code inside the broker. Spike S8 | 3 |
