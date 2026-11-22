@@ -168,4 +168,31 @@ describe.skipIf(!HAS_DB)("p43b storage rules", () => {
       expect({ t, n: n[0].n }).toEqual({ t, n: 0 });
     }
   });
+
+  test("STORE: a stored weekly sentence survives a rebuild only while its numbers are still in the record", async () => {
+    const id = randomUUID();
+    const m = { tenantId: db.A1.tenantId, memberId: id, principalId: id, tenantRole: "owner" };
+    const now = mondayNoonAfter(MONDAYS[0]);
+    const run = (seed: number) => db.run(m, (tx) => runMemberUpdate(tx, { window: fixtureWeek(MONDAYS[0], { seed }).window, now, workspaceId: db.workspaceA, estimateFor }));
+    const week = () => db.run(m, (tx) => getWeekRecord(tx, "2026-W42")).then((w) => w!);
+    await run(SEED);
+    const total = (await week()).hours.total.value;
+    const sentence = `A steady week: ${total} h of active time.`;
+    await db.run(m, (tx) => setWeekNarrative(tx, "2026-W42", sentence));
+    await run(SEED);
+    expect((await week()).narrative).toBe(sentence);
+    await run(SEED + 5);
+    const rebuilt = await week();
+    expect(rebuilt.hours.total.value).not.toBe(total);
+    expect(rebuilt.narrative).toBeNull();
+  });
+
+  test("STORE: a job rerun keeps an opportunity's state", async () => {
+    const opp = (await db.run(db.A1, (tx) => listOpportunities(tx, "2026-W45"))).find((o) => o.state === "open" && o.score > 0)!;
+    await db.sql.unsafe(`UPDATE ${db.schema}.opportunities SET state = 'building' WHERE id = $1`, [opp.id]);
+    const fx = fixtureWeek(MONDAYS[3], { seed: SEED + 3 });
+    await db.run(db.A1, (tx) => runMemberUpdate(tx, { window: fx.window, now: mondayNoonAfter(MONDAYS[3]), workspaceId: db.workspaceA, estimateFor }));
+    const after = (await db.run(db.A1, (tx) => listOpportunities(tx, "2026-W45"))).find((o) => o.id === opp.id)!;
+    expect(after.state).toBe("building");
+  });
 });
