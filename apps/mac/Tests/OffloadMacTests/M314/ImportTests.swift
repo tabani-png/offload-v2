@@ -168,4 +168,32 @@ extension M314 {
     #expect(fakes.ledger.entries.count == 1)
     #expect(!queue.staged.isEmpty)
   }
+
+  @Test("IMPORT: the import is offered by where it goes: on this Mac once an on-device sink exists, through the uploader only while sending")
+  @MainActor func importOffer() {
+    // This build: no on-device sink, Local mode: not offered (and the menu says the import is coming).
+    let none = M314App.composition(state: M314State.watchingLocally, realRecordings: true)
+    defer { none.capture.stop() }
+    #expect(none.app.recordings?.isOffered == false)
+    // m3-10 plugs in OCR and a local sink: offered in Local mode, nothing leaves the Mac (owner goal 2026-11-22;
+    // ONBOARDING section 8 divergence recorded in the SPEC).
+    let seams = CompositionSeams(textRecognizer: M314Recognizer(), onDeviceImportSink: M314LocalSink())
+    let local = M314App.composition(state: M314State.watchingLocally, seams: seams, realRecordings: true)
+    defer { local.capture.stop() }
+    #expect(local.app.recordings?.isOffered == true)
+    #expect(local.app.recordings?.canImport == true)
+    #expect(local.modeLines == [ModeLines.local])
+    // An enrolled Mac that is sending: through the uploader, offered while sending.
+    let cloud = M314App.composition(backend: M314Fixture.cloud, state: M314State.sending, currentNoticeVersion: "1",
+                                    seams: seams, realRecordings: true)
+    defer {
+      cloud.capture.stop()
+      cloud.uploads?.pause()
+    }
+    #expect(cloud.importChoice == .uploader)
+    #expect(cloud.app.recordings?.isOffered == true)
+    // A changed notice withdraws the uploader-backed import at once.
+    cloud.app.onboarding.reconsentNeeded()
+    #expect(cloud.app.recordings?.isOffered == false)
+  }
 }

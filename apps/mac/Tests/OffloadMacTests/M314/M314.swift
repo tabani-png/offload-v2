@@ -137,7 +137,8 @@ final class M314LocalSink: ImportSink, @unchecked Sendable {
     backend: BackendMode = .local, state: OnboardingState? = nil, currentNoticeVersion: String? = nil,
     bufferReadable: Bool = true, probe: FakePermissionProbe = FakePermissionProbe(),
     seams: CompositionSeams = CompositionSeams(), home: URL = M314Fixture.tempHome(),
-    secrets: MemorySecretStore = MemorySecretStore(), wiring: M314Wiring = M314Wiring()
+    secrets: MemorySecretStore = MemorySecretStore(), wiring: M314Wiring = M314Wiring(),
+    realRecordings: Bool = false
   ) -> AppComposition {
     let env = CompositionEnvironment(
       backend: backend, store: StoreContext(home: home, secrets: secrets), onboardingStore: InMemoryOnboardingStore(state: state),
@@ -152,7 +153,12 @@ final class M314LocalSink: ImportSink, @unchecked Sendable {
         wiring.sink = sink
         wiring.neverWatch = neverWatch
         wiring.recordingsBuilt += 1
-        return nil
+        guard realRecordings else { return nil }
+        // m3-05's model over fakes (no picker, panel or AVFoundation).
+        return RecordingsImportModel(
+          store: MemoryRecordingsFolderStore(), picker: FakeFolderPicker(), panel: FakeImportPanel(), importer: importer,
+          sink: sink, ledger: MemoryRecordingLedger(), durations: { _ in nil }, suggestedFolder: M314Fixture.tempHome(),
+          protected: [], neverWatch: neverWatch)
       },
       updates: { capture in
         wiring.lifecycleForUpdates = capture

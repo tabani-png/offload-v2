@@ -3,7 +3,7 @@ import Foundation
 import Testing
 import OffloadContracts
 import OffloadStore
-import OffloadUploader
+@testable import OffloadUploader
 
 // The import half of the egress guard (ADR 0035) on PR #13's real Uploader, over a scripted transport and an encrypted
 // store in a temp folder (review 1, finding 1). This file does not import OffloadMac: there `Uploader` is m3-04's
@@ -76,10 +76,12 @@ final class ImportServer: HTTPTransport, @unchecked Sendable {
 final class CountingTokens: TokenProvider, @unchecked Sendable {
   private let lock = NSLock()
   private var forced = 0
+  let value: String
+  init(token: String = "tok") { value = token }
   var refreshes: Int { lock.withLock { forced } }
   func token(forceRefresh: Bool) async throws -> String {
     lock.withLock { if forceRefresh { forced += 1 } }
-    return "tok"
+    return value
   }
 }
 
@@ -94,20 +96,24 @@ final class ImportRig: @unchecked Sendable {
   let home = TestHome()
   let time = ManualTime(Date(timeIntervalSince1970: 1_794_582_000))
   let server: ImportServer
-  let tokens = CountingTokens()
+  /// Audience `device`: ingest batches.
+  let tokens = CountingTokens(token: "device-tok")
+  /// Audience `member`: `/v1/imports` and `/v1/me/forget` (API.md section 1, Auth).
+  let memberTokens = CountingTokens(token: "member-tok")
   let signer = SoftwareDeviceSigner()
   let ids = OffloadContracts.ULIDGenerator()
   let egress = EgressGuard(apiBase: M314Uploads.apiBase)
   let outbox: ImportOutbox
   let uploader: Uploader
 
-  init(server: ImportServer = ImportServer()) {
+  init(server: ImportServer = ImportServer(), withMemberTokens: Bool = true) {
     self.server = server
     outbox = ImportOutbox(layout: home.layout, keys: home.keys)
     uploader = Uploader(
       config: UploaderConfig(apiBase: M314Uploads.apiBase, deviceID: M314Uploads.deviceID), transport: server,
       signer: signer, tokens: tokens, store: home.dayStore(), state: UploadStateStore(layout: home.layout, keys: home.keys),
-      ledger: EgressLedger(layout: home.layout, keys: home.keys, days: home.days), time: time, importOutbox: outbox)
+      ledger: EgressLedger(layout: home.layout, keys: home.keys, days: home.days), time: time, importOutbox: outbox,
+      memberTokens: withMemberTokens ? memberTokens : nil)
   }
 
   var ledger: [EgressRecord] {
@@ -156,7 +162,10 @@ extension M314 {
 
     let requests = rig.server.requests
     #expect(requests.map(\.url.absoluteString) == ["https://api.offload.example/v1/imports", "https://api.offload.example/v1/me/forget"])
-    #expect(requests.allSatisfy { $0.method == "POST" && $0.headers["Authorization"] == "Bearer tok" })
+    // Member routes take a member-audience token; ingest keeps the device one.
+    #expect(requests.allSatisfy { $0.method == "POST" && $0.headers["Authorization"] == "Bearer member-tok" })
+    // The signed body is its own JCS form (API.md section 1, Signatures).
+    for r in requests { #expect(try JCS.canonicalize(json: r.body ?? Data()) == r.body) }
     let openBody = Data(#"{"source_kind":"videos"}"#.utf8)
     let forgetBody = Data("{\"import_id\":\"\(M314Uploads.importID)\",\"scope\":\"import\"}".utf8)
     #expect(requests.compactMap(\.body) == [openBody, forgetBody])
@@ -179,7 +188,8 @@ extension M314 {
     let rig = ImportRig()
     rig.server.script("/v1/imports", [401])
     _ = try await rig.uploader.openImport(sourceKind: "screenshots")
-    #expect(rig.tokens.refreshes == 1)
+    #expect(rig.memberTokens.refreshes == 1)
+    #expect(rig.tokens.refreshes == 0)
     #expect(rig.server.requests.count == 2)
 
     let refused = ImportRig()
@@ -221,6 +231,7 @@ extension M314 {
     let report = await rig.uploader.flush()
     #expect(!report.failed)
     #expect(report.sentObjects == 4)
+    #expect(rig.server.batchRequests.allSatisfy { $0.headers["Authorization"] == "Bearer device-tok" })
     #expect(Set(rig.sentIDs) == Set(objects.map(\.id) + [live.id]))
     let seqs = rig.server.batchRequests.compactMap { r -> Int? in
       ((try? JSONSerialization.jsonObject(with: r.body ?? Data())) as? [String: Any])?["seq"] as? Int
@@ -264,5 +275,68 @@ extension M314 {
     #expect(try secrets.read(account: "device-key-se") == nil)
     _ = try DeviceKey.loadOrCreate(secrets: secrets, preferSecureEnclave: false)
     #expect(DeviceKey.isStored(secrets: secrets))
+  }
+
+  @Test("UPLOAD: without a member token the import calls refuse and send nothing")
+  func noMemberToken() async throws {
+    let rig = ImportRig(withMemberTokens: false)
+    await #expect(throws: ImportUploadError.noMemberToken) { try await rig.uploader.openImport(sourceKind: "videos") }
+    await #expect(throws: ImportUploadError.noMemberToken) { try await rig.uploader.forgetImport(id: M314Uploads.importID) }
+    #expect(rig.server.requests.isEmpty)
+    #expect(rig.ledger.isEmpty)
+  }
+
+  @Test("UPLOAD: a device session asks the challenge for the audience it was made for")
+  func sessionAudience() async throws {
+    for audience in ["device", "member"] {
+      let server = ChallengeServer()
+      let signer = SoftwareDeviceSigner()
+      let session = audience == "device"
+        ? DeviceSession(apiBase: M314Uploads.apiBase, deviceID: M314Uploads.deviceID, signer: signer, transport: server,
+                        time: ManualTime(Date(timeIntervalSince1970: 1_794_582_000)))
+        : DeviceSession(apiBase: M314Uploads.apiBase, deviceID: M314Uploads.deviceID, signer: signer, transport: server,
+                        time: ManualTime(Date(timeIntervalSince1970: 1_794_582_000)), audience: .member)
+      #expect(try await session.token(forceRefresh: false) == "t-1")
+      let challenge = try #require(server.requests.first { $0.url.path == "/v1/devices/challenge" })
+      let json = try JSONSerialization.jsonObject(with: challenge.body ?? Data()) as? [String: String]
+      #expect(json?["audience"] == audience)
+    }
+  }
+
+  @Test("UPLOAD: a detector hit in a staged import object stops that flush, like a live one, and the next flush carries on without it")
+  func importDetectorHitStopsTheFlush() async throws {
+    let rig = ImportRig()
+    let clean = rig.importObjects()
+    let hit = rig.importObjects(text: "card 4111 1111 1111 1111")[1]
+    try rig.outbox.stage(clean, checkedBy: rig.egress)
+    // Staged before this build's detectors knew the pattern: written past the staging check.
+    try rig.outbox.stageUnchecked([hit])
+    let first = await rig.uploader.flush()
+    #expect(first.failed)
+    #expect(first.blocked == 1)
+    #expect(rig.server.batchRequests.isEmpty)
+    #expect(try rig.outbox.staged().map(\.id) == clean.map(\.id))
+    let second = await rig.uploader.flush()
+    #expect(!second.failed)
+    #expect(Set(rig.sentIDs) == Set(clean.map(\.id)))
+    #expect(!rig.sentIDs.contains(hit.id))
+  }
+}
+
+/// Answers the device challenge and token routes; records requests.
+final class ChallengeServer: HTTPTransport, @unchecked Sendable {
+  private let lock = NSLock()
+  private var log: [HTTPRequest] = []
+  var requests: [HTTPRequest] { lock.withLock { log } }
+  func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+    lock.withLock { log.append(request) }
+    switch request.url.path {
+    case "/v1/devices/challenge":
+      return HTTPResponse(status: 200, headers: [:], body: Data(#"{"nonce":"n-1"}"#.utf8))
+    case "/v1/devices/token":
+      return HTTPResponse(status: 200, headers: [:], body: Data(#"{"token":"t-1","expires_at":"2026-11-13T15:15:00.000Z"}"#.utf8))
+    default:
+      return HTTPResponse(status: 404, headers: [:], body: Data())
+    }
   }
 }

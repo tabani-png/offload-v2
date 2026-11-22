@@ -178,24 +178,43 @@ extension M314 {
 
   @Test("LAUNCH: Local mode and the missing recordings import are said in the menu, never hidden")
   @MainActor func modeIsLabelled() {
-    #expect(ModeLines.lines(backend: .local, importReady: false) == [ModeLines.local, ModeLines.importNotReady])
-    #expect(ModeLines.lines(backend: .local, importReady: true) == [ModeLines.local])
-    #expect(ModeLines.lines(backend: M314Fixture.cloud, importReady: false) == [ModeLines.importNotReady])
-    #expect(ModeLines.lines(backend: M314Fixture.cloud, importReady: true) == [])
+    // GLOSSARY "Local mode": signed out, or signed in without upload consent, so nothing is uploaded.
+    #expect(ModeLines.lines(local: true, importerReady: false, importOffered: false)
+            == [ModeLines.local, ModeLines.importComing])
+    #expect(ModeLines.lines(local: true, importerReady: true, importOffered: true) == [ModeLines.local])
+    #expect(ModeLines.lines(local: false, importerReady: true, importOffered: false) == [ModeLines.importAfterSending])
+    #expect(ModeLines.lines(local: false, importerReady: true, importOffered: true) == [])
     #expect(ModeLines.local == "Local mode: nothing leaves this Mac")
-    for line in [ModeLines.local, ModeLines.importNotReady] {
+    // PRODUCT copy rules: an unbuilt feature carries a "coming" label; no em dashes, no dry-run terms.
+    #expect(ModeLines.importComing.lowercased().contains("coming"))
+    for line in [ModeLines.local, ModeLines.importComing, ModeLines.importAfterSending] {
       #expect(!line.contains("\u{2014}") && !line.lowercased().contains("dry"))
     }
-    // This build (no on-device text reading yet): the composition shows both lines.
+    // This build (no on-device text reading yet): both lines.
     let c = M314App.composition(state: M314State.watchingLocally)
     defer { c.capture.stop() }
-    #expect(c.modeLines == [ModeLines.local, ModeLines.importNotReady])
-    let ready = M314App.composition(state: M314State.watchingLocally,
-                                    seams: CompositionSeams(textRecognizer: M314Recognizer(), onDeviceImportSink: M314LocalSink()))
-    defer { ready.capture.stop() }
-    #expect(ready.modeLines == [ModeLines.local])
+    #expect(c.modeLines == [ModeLines.local, ModeLines.importComing])
+    // An enrolled Mac before "Start sending" is still Local mode.
+    var enrolled = M314State.sending
+    enrolled.uploadConsent = false
+    let e = M314App.composition(backend: M314Fixture.cloud, state: enrolled, currentNoticeVersion: "1")
+    defer { e.capture.stop() }
+    #expect(e.modeLines.first == ModeLines.local)
   }
-}
+
+  @Test("LAUNCH: the menu lines follow the live state, not the launch")
+  @MainActor func modeLinesFollowState() async {
+    let c = M314App.composition(backend: M314Fixture.cloud, state: M314State.sending, currentNoticeVersion: "1",
+                                seams: CompositionSeams(textRecognizer: M314Recognizer()), realRecordings: true)
+    defer {
+      c.capture.stop()
+      c.uploads?.pause()
+    }
+    #expect(c.modeLines == [])
+    // Row 11.11: a new notice pauses uploads; the menu says Local mode and why the import is not offered.
+    c.app.onboarding.reconsentNeeded()
+    #expect(c.modeLines == [ModeLines.local, ModeLines.importAfterSending])
+  }
 
 /// An in-memory Keychain that counts reads and writes.
 final class CountingSecrets: SecretStore, @unchecked Sendable {

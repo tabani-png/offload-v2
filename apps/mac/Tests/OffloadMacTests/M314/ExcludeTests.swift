@@ -37,6 +37,9 @@ extension M314 {
     let store = NeverWatchStore()
     let sync = ExclusionsFile(file: file, source: store)
     #expect(try sync.sync())
+    // A plain copy of the Never watch list: owner-only, like the sealed store's files (SECURITY_PRIVACY section 6).
+    let mode = try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int
+    #expect(mode == 0o600)
     let first = try ExclusionsFile.read(file)
     #expect(first == ExclusionBridge.rules(from: store.currentExclusions()))
     #expect(!(try sync.sync()))

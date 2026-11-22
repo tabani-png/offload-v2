@@ -2,7 +2,9 @@ import Foundation
 import Testing
 @testable import OffloadMac
 import OffloadContracts
+import OffloadObserver
 import OffloadStore
+import OffloadUploader
 
 // The capture and upload runtimes and how the composition root hands them out (SPEC: "CaptureRuntime",
 // "UploadRuntime", Design note).
@@ -174,4 +176,80 @@ extension M314 {
     #expect(c.capture.context.bufferReadable())
     #expect(c.capture.context.dayStore.storedDays().isEmpty)
   }
+
+  @Test("UPLOAD: the upload runtime's own uploader opens imports with a member token and sends staged objects from the shared outbox")
+  @MainActor func runtimeUploaderEndToEnd() async throws {
+    let secrets = MemorySecretStore()
+    // An enrolled Mac: its device key is already stored (no Secure Enclave in tests).
+    _ = try DeviceKey.loadOrCreate(secrets: secrets, preferSecureEnclave: false)
+    let server = ImportServer()
+    let network = UploadRuntime.Network(transport: server, session: { _, _, _, _, audience in
+      StaticTokenProvider(token: "\(audience.rawValue)-tok")
+    })
+    let uploads = UploadRuntime(apiBase: M314Uploads.apiBase, deviceID: M314Uploads.deviceID,
+                                context: StoreContext(home: M314Fixture.tempHome(), secrets: secrets), turns: false,
+                                network: network)
+    uploads.start()
+    defer { uploads.pause() }
+    let id = try await uploads.openImport(sourceKind: "videos")
+    #expect(id == M314Uploads.importID)
+    let objects = M314.importObjects(id)
+    try uploads.stageImport(objects)
+    let report = await (try uploads.uploader()).flush()
+    #expect(report.sentObjects == objects.count)
+    let opens = server.requests.filter { $0.url.path == "/v1/imports" }
+    #expect(opens.map { $0.headers["Authorization"] } == ["Bearer member-tok"])
+    let batches = server.batchRequests
+    #expect(!batches.isEmpty && batches.allSatisfy { $0.headers["Authorization"] == "Bearer device-tok" })
+    let sent = batches.flatMap { r -> [String] in
+      let json = (try? JSONSerialization.jsonObject(with: r.body ?? Data())) as? [String: Any] ?? [:]
+      return (json["objects"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String }
+    }
+    #expect(sent == objects.map(\.id))
+    #expect(try uploads.outbox.staged().isEmpty)
+    #expect(uploads.outbox === uploads.context.importOutbox)
+  }
+
+  @Test("CAPTURE: the buffer check never writes to the Keychain, and a Keychain error is not read as an unreadable buffer")
+  @MainActor func bufferCheckReadsOnly() throws {
+    let home = M314Fixture.tempHome()
+    let context = StoreContext(home: home, secrets: MemorySecretStore())
+    try context.layout.ensureDirectories()
+    let at = M314Fixture.t0
+    try context.dayStore.append(.focus(ObservationFocus(id: M314Fixture.id(at), ts: Timestamp.format(at),
+                                                        appBundleId: "com.apple.Notes", appName: "Notes")))
+    // Restored without the Keychain: unreadable, and no new master key was written by asking.
+    let restored = CountingSecrets()
+    #expect(!StoreContext(home: home, secrets: restored).bufferReadable())
+    #expect(restored.writes == 0)
+    // A locked or denied Keychain: not "unreadable", so "Start fresh" never deletes a good buffer.
+    #expect(StoreContext(home: home, secrets: FailingSecrets()).bufferReadable())
+  }
+
+  @Test("CAPTURE: Start fresh also forgets which recordings were read, so they can be imported again")
+  @MainActor func startFreshForgetsTheImportLedger() throws {
+    let context = StoreContext(home: M314Fixture.tempHome(), secrets: MemorySecretStore())
+    try context.layout.ensureDirectories()
+    try Data("{}".utf8).write(to: context.importLedgerFile)
+    try context.discard()
+    #expect(!FileManager.default.fileExists(atPath: context.importLedgerFile.path))
+  }
+
+  @Test("CAPTURE: one tick writes the Never watch list before the observer runs")
+  @MainActor func tickSyncsNeverWatchFirst() async throws {
+    let never = NeverWatchStore()
+    let capture = CaptureRuntime(home: M314Fixture.tempHome(), neverWatch: never, secrets: MemorySecretStore(), ticks: false)
+    never.add([Exclusion(kind: .host, value: "bank.example")])
+    // Not started: nothing to tick, but the list is still written first.
+    #expect(await capture.tickOnce() == false)
+    #expect(try ExclusionsFile.read(capture.exclusionsFile).contains(ExclusionRule(kind: .host, value: "bank.example")))
+  }
+}
+
+/// A Keychain that throws on every call (locked, or access denied).
+final class FailingSecrets: SecretStore, @unchecked Sendable {
+  struct Denied: Error {}
+  func read(account: String) throws -> Data? { throw Denied() }
+  func write(_ data: Data, account: String) throws { throw Denied() }
+  func delete(account: String) throws { throw Denied() }
 }
