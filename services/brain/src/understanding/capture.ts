@@ -1,9 +1,16 @@
-// The capture side of understanding: pending events, reads of observations and texts, delivery marks.
+// The capture side of understanding: pending observations.ingested events, reads of observations and observation
+// texts, and the consumer's delivery marks in outbox_deliveries (consumer `workflow:understanding`).
+// Every read runs inside withTenant (packages/db, ADR 0013): tenant RLS always, and the member wall for the capture
+// tables, which are read as the event's member. Rows hold masked C1 data; nothing here logs or returns text except
+// the texts handed to the window builder.
+import { withTenant, type TenantContext } from "@offload/db";
 import type { CaptureObservation, CaptureText } from "./types.ts";
 
 export const UNDERSTANDING_CONSUMER = "workflow:understanding";
+/** Durable workflows run as this principal with role `service` (DATA_MODEL section 3). */
+const PRINCIPAL = "durable";
 
-/** An `observations.ingested` outbox event (API.md section 7). Payload as m3-01 writes it. */
+/** An `observations.ingested` outbox event (API.md section 7). Payload as m3-01 writes it; ids and counts only. */
 export interface IngestedEvent {
   tenantId: string;
   eventId: string;
@@ -21,8 +28,9 @@ export interface CaptureStore {
   pendingEvents(tenantId: string, limit: number): Promise<IngestedEvent[]>;
   getEvent(tenantId: string, eventId: string): Promise<IngestedEvent | null>;
   isDelivered(tenantId: string, eventId: string): Promise<boolean>;
-  /** Records one attempt; `error` null marks the event delivered. */
+  /** Records one attempt; `error` (a code, never text) null marks the event delivered. */
   recordAttempt(tenantId: string, eventId: string, error: string | null): Promise<void>;
+  /** The member exists in this tenant and has not departed. */
   memberExists(m: MemberRef): Promise<boolean>;
   /** The member's first workspace (opportunities need one). */
   workspaceOf(m: MemberRef): Promise<string | null>;
@@ -32,9 +40,86 @@ export interface CaptureStore {
   read(m: MemberRef, from: number, to: number): Promise<{ observations: CaptureObservation[]; texts: CaptureText[] }>;
 }
 
-type WithTenantPool = Parameters<typeof import("@offload/db").withTenant>[0];
+type WithTenantPool = Parameters<typeof withTenant>[0];
+type Row = Record<string, any>;
 
-export function pgCaptureStore(_pool: WithTenantPool): CaptureStore {
-  const no = () => Promise.reject(new Error("not implemented"));
-  return { pendingEvents: no, getEvent: no, isDelivered: no, recordAttempt: no, memberExists: no, workspaceOf: no, tsRangeOfDays: no, read: no };
+const ms = (v: unknown): number => (v instanceof Date ? v.getTime() : new Date(String(v)).getTime());
+const service = (tenantId: string): TenantContext => ({ tenantId, principalId: PRINCIPAL, memberId: null, tenantRole: "service" });
+const asMember = (m: MemberRef): TenantContext => ({ tenantId: m.tenantId, principalId: PRINCIPAL, memberId: m.memberId, tenantRole: "service" });
+
+const eventOf = (tenantId: string, r: Row): IngestedEvent => ({
+  tenantId, eventId: r["id"], createdAt: ms(r["created_at"]), payload: (r["payload"] ?? {}) as IngestedEvent["payload"],
+});
+
+export function pgCaptureStore(pool: WithTenantPool): CaptureStore {
+  return {
+    pendingEvents: (tenantId, limit) =>
+      withTenant(pool, service(tenantId), async (tx) =>
+        (await tx.query(
+          `select e.id, e.payload, e.created_at from events_outbox e
+            where e.type = 'observations.ingested'
+              and not exists (select 1 from outbox_deliveries d where d.tenant_id = e.tenant_id and d.event_id = e.id
+                              and d.consumer = $1 and d.delivered_at is not null)
+            order by e.created_at, e.id limit $2`,
+          [UNDERSTANDING_CONSUMER, Math.max(1, Math.min(limit, 1000))],
+        )).rows.map((r) => eventOf(tenantId, r)),
+      ),
+    getEvent: (tenantId, eventId) =>
+      withTenant(pool, service(tenantId), async (tx) => {
+        const r = (await tx.query("select id, payload, created_at from events_outbox where id = $1 and type = 'observations.ingested'", [eventId])).rows[0];
+        return r === undefined ? null : eventOf(tenantId, r);
+      }),
+    isDelivered: (tenantId, eventId) =>
+      withTenant(pool, service(tenantId), async (tx) =>
+        (await tx.query("select 1 from outbox_deliveries where event_id = $1 and consumer = $2 and delivered_at is not null", [eventId, UNDERSTANDING_CONSUMER])).rows.length > 0,
+      ),
+    recordAttempt: (tenantId, eventId, error) =>
+      withTenant(pool, service(tenantId), async (tx) => {
+        await tx.query(
+          `insert into outbox_deliveries (tenant_id, event_id, consumer, attempts, delivered_at, last_error_code)
+           values ($1, $2, $3, 1, case when $4::text is null then now() end, $4::text)
+           on conflict (tenant_id, event_id, consumer) do update
+             set attempts = outbox_deliveries.attempts + 1,
+                 delivered_at = coalesce(outbox_deliveries.delivered_at, excluded.delivered_at),
+                 last_error_code = excluded.last_error_code`,
+          [tenantId, eventId, UNDERSTANDING_CONSUMER, error],
+        );
+      }),
+    memberExists: (m) =>
+      withTenant(pool, asMember(m), async (tx) => (await tx.query("select 1 from members where id = $1 and state <> 'departed'", [m.memberId])).rows.length > 0),
+    workspaceOf: (m) =>
+      withTenant(pool, asMember(m), async (tx) => {
+        const r = (await tx.query("select workspace_id from workspace_members where member_id = $1 order by workspace_id limit 1", [m.memberId])).rows[0];
+        return r === undefined ? null : String(r["workspace_id"]);
+      }),
+    tsRangeOfDays: (m, fromDay, toDay) =>
+      withTenant(pool, asMember(m), async (tx) => {
+        const r = (await tx.query("select min(ts) as mn, max(ts) as mx from observations where member_id = $1 and day between $2::date and $3::date", [m.memberId, fromDay, toDay])).rows[0];
+        return r === undefined || r["mn"] === null ? null : { min: ms(r["mn"]), max: ms(r["mx"]) };
+      }),
+    read: (m, from, to) =>
+      withTenant(pool, asMember(m), async (tx) => {
+        const range = [m.memberId, new Date(from).toISOString(), new Date(to).toISOString()];
+        const obs = (await tx.query(
+          `select device_id, object_id, ts, kind, app_bundle_id, app_name, title, host, doc, keys, clicks, source, import_id
+             from observations where member_id = $1 and ts >= $2::timestamptz and ts < $3::timestamptz order by ts, object_id`,
+          range,
+        )).rows;
+        const texts = (await tx.query(
+          `select device_id, object_id, ts, text, text_source, app_bundle_id
+             from observation_texts where member_id = $1 and ts >= $2::timestamptz and ts < $3::timestamptz order by ts, object_id`,
+          range,
+        )).rows;
+        return {
+          observations: obs.map((r): CaptureObservation => ({
+            device_id: String(r["device_id"]), object_id: r["object_id"], ts: ms(r["ts"]), kind: r["kind"], app_bundle_id: r["app_bundle_id"],
+            app_name: r["app_name"], title: r["title"], host: r["host"], doc: r["doc"], keys: r["keys"], clicks: r["clicks"], source: r["source"],
+            import_id: r["import_id"] === null ? null : String(r["import_id"]),
+          })),
+          texts: texts.map((r): CaptureText => ({
+            device_id: String(r["device_id"]), object_id: r["object_id"], ts: ms(r["ts"]), text: r["text"], text_source: r["text_source"], app_bundle_id: r["app_bundle_id"],
+          })),
+        };
+      }),
+  };
 }
