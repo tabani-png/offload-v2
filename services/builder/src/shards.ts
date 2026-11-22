@@ -6,7 +6,8 @@
 import { randomBytes } from "node:crypto";
 import type { CheckSet } from "./checks.ts";
 import { checkFolder, parseProof, type Proof } from "./harness.ts";
-import { safeRelPath, SandboxInfraError, type SandboxFile, type SandboxProvider, type SandboxSpec } from "./sandbox/provider.ts";
+import { HARNESS_ARGV, safeRelPath, SandboxInfraError, type SandboxFile, type SandboxProvider, type SandboxSpec } from "./sandbox/provider.ts";
+export { HARNESS_ARGV };
 
 export type ShardName = "frozen" | "held_out";
 export interface Shard {
@@ -34,8 +35,7 @@ const enc = new TextEncoder();
 const OUTPUT_TAIL = 4000;
 export const newNonce = () => randomBytes(24).toString("base64url");
 
-/** The harness command and environment, the same in every sandbox. */
-export const HARNESS_ARGV = ["bun", "/check/harness.ts"];
+/** The harness environment, the same in every sandbox (the command is HARNESS_ARGV, sandbox/provider.ts). */
 export const HARNESS_ENV = { OFFLOAD_WS: "/work", OFFLOAD_CHECK_DIR: "/check", OFFLOAD_CHECK_FILE: "accept.test.ts" };
 
 export async function runShards(o: {
@@ -63,7 +63,7 @@ export async function runShards(o: {
         await o.provider.putFiles(sb, "check", checkFolder(s.check.content).map((f) => ({ path: f.path, bytes: enc.encode(f.text), mode: f.mode })));
         const before = await o.provider.snapshot(sb, "work");
         const n = nonce();
-        const r = await o.provider.exec(sb, { argv: HARNESS_ARGV, cwd: "/check", stdin: `${n}\n`, env: { ...HARNESS_ENV }, timeout_ms: o.timeout_ms, harness: true });
+        const r = await o.provider.exec(sb, { argv: [...HARNESS_ARGV], cwd: "/check", stdin: `${n}\n`, env: { ...HARNESS_ENV }, timeout_ms: o.timeout_ms, harness: true });
         const after = await o.provider.snapshot(sb, "work");
         const proof = parseProof(r.stdout, n);
         const output = `${r.stdout}${r.stderr}`.slice(-OUTPUT_TAIL);

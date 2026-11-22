@@ -40,6 +40,9 @@ export interface ExecResult {
   timed_out: boolean;
 }
 
+/** The trusted check harness command: the only argv (with cwd /check) that `harness: true` may run. */
+export const HARNESS_ARGV: readonly string[] = Object.freeze(["bun", "/check/harness.ts"]);
+
 export interface ExecOptions {
   argv: string[];
   cwd: "/work" | "/check";

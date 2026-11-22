@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { DockerProvider, spawnExecutor, type Executor } from "../../src/sandbox/docker.ts";
 import { HARNESS_TS } from "../../src/harness.ts";
 import { cloudProvider, sandboxProviderFromEnv } from "../../src/sandbox/cloud.ts";
-import { SandboxInfraError, type SandboxSpec } from "../../src/sandbox/provider.ts";
+import { HARNESS_ARGV, SandboxInfraError, SandboxSpecError, type SandboxSpec } from "../../src/sandbox/provider.ts";
 import { runShards } from "../../src/shards.ts";
 import { checkSet, file, text } from "./setup.ts";
 
@@ -31,6 +31,22 @@ afterAll(async () => {
 });
 
 describe("p45a docker provider", () => {
+  test("SANDBOX: harness: true is refused unless the exec is exactly the trusted harness in /check: a caller's word never gets root (review 5 finding 5)", async () => {
+    const { p, calls } = fake();
+    const sb = await p.create(SPEC);
+    for (const o of [
+      { argv: ["sh", "-c", "id"], cwd: "/check" as const },
+      { argv: ["bun", "/check/harness.ts", "--extra"], cwd: "/check" as const },
+      { argv: ["bun", "/work/harness.ts"], cwd: "/check" as const },
+      { argv: ["bun", "/check/harness.ts"], cwd: "/work" as const },
+    ]) {
+      const e = await p.exec(sb, { ...o, timeout_ms: 1000, harness: true }).catch((x) => x);
+      expect([o.argv.join(" "), o.cwd, e instanceof SandboxSpecError]).toEqual([o.argv.join(" "), o.cwd, true]);
+    }
+    expect(calls).toHaveLength(0);
+    expect(HARNESS_ARGV).toEqual(["bun", "/check/harness.ts"]);
+  });
+
   test("SANDBOX: the docker argv is exact: no network, read-only root, all caps dropped, non-root, the check folder read-only", async () => {
     const { p, calls } = fake();
     const sb = await p.create(SPEC);
