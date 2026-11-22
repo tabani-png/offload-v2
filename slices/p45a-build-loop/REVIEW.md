@@ -807,3 +807,86 @@ p45b: otherwise sound, as in rounds 1 and 2.
 findings 3 and 4 with an owner. Findings 6 to 11 are optional. The owner actions in finding 5 stay open.
 
 VERDICT: CHANGES
+
+### Author response (round 3)
+
+Commits `2ab0747..bd8552a`; behaviour changes had a red test committed first.
+
+**Counts after them:**
+- p45a slice suite: **134 tests (133 pass, 1 skip `LIVE:`)**, up from 116.
+- p45b: **17** (unchanged).
+- Full suite: **201 tests across 34 files, 200 pass, 1 skip**.
+- Both `verify.sh` PASS; `scripts/verify-all.sh` green.
+- On a machine without passwordless `sudo`, the two privileged tests below are skipped as well (3 skips).
+
+Every mutation below was run on a copy in `/tmp`, never in the repo.
+
+1. **MAJOR, fixed by option (a): close it.**
+   - **How verification runs now** (Docker, `privilege_split` on by default):
+     - **Harness:** starts as root, PID 1, with `--cap-drop ALL` plus only `CHOWN`, `SETGID` and `SETUID`.
+     - **Check:** `bun test` runs as the host user that owns `/check`. The check, guard and bunfig are `0400`; the
+       harness and spawn client are `0444`.
+     - **Spawn broker:** a Unix socket that only the check's user may connect to (`0600`, in a root-owned `0711`
+       folder).
+     - **Routing:** the guard sends the check's `Bun.spawn`/`Bun.spawnSync` to the broker through `spawn-client.ts`,
+       which runs with cwd `/`, so it never reads the artifact's bunfig, tsconfig or `.env`.
+     - **Tool:** runs as another user, in `/work`, with the check's group and a clean environment. Temp folders the
+       check makes are widened to `0770` so check and tool can still share files. The guard reads `node:fs` through
+       `require`: an ES-module import there would stop the patch from reaching the check's named imports, as I found.
+     - **Proof:** it carries `split`. A provider that isolates the tool (`isolates_tool`) refuses a pass without
+       `split: true`.
+     - **Check rules:** checks may not use `child_process`, `Bun.$`, `bun:ffi`, workers, `cluster` or
+       `process.dlopen/binding`, which would start the tool as the check's user.
+     - The tool can no longer read the held-out check, the check's `/proc` entries or the harness's nonce. That also
+       closes DESIGN.md's earlier "same uid, nonce through ptrace" gap.
+   - **New tests:**
+     - control: without the split, a tool that reads the check passes a held-out check it never solved;
+     - a provider that isolates the tool refuses an unsplit pass;
+     - **privileged, real users through `sudo`** (skipped without it; GitHub's hosted runners have it): the same cheat
+       **fails** under the split, and an honest check that shares a temp folder with the tool **passes**;
+     - the exact Docker argv in split mode, and `privilege_split: false` for development;
+     - check file modes;
+     - refused process APIs;
+     - the `LIVE:` Docker test gains the cheat case.
+   - **Test changes that are not weakenings:**
+     - the emulated guard tests now use `privilege_split: false`, because their emulator cannot be root;
+     - three folder-layout assertions gained `spawn-client.ts` and the file modes.
+   - **The privileged cheat test fails with each of these removed:**
+     - the tool run as the check's user;
+     - the guard's routing;
+     - the check made world-readable.
+
+     Not requiring the split fails the strict-provider test.
+   - (`afba3ea`, red `2ab0747`)
+2. **MINOR, fixed (tests).**
+   - The four required:
+     - the teeth gate stops when a check did not run;
+     - the tamper check before the first try;
+     - a stale recovery between two tries is billed as infra (`runAttempt`'s `BuildEnded` path);
+     - a claim must name exactly the bound keys.
+   - The optional ones too: the proof-line filter in feedback, the artifact size limit, the docker CLI's PATH/HOME-only
+     environment, and the harness's `--no-install`.
+   - Each of the eight fails one test with its guard removed. (`1482fdb`)
+3. **MINOR, recorded.** Sandbox-time billing (ADR 0030) is in SPEC "Out of scope" and DESIGN.md section 7, owner
+   m2-08 with the sandbox price config. `worker_attempts.wall_seconds` is now written for it. (`bd8552a`)
+4. **MINOR, fixed.**
+   - `worker_attempts` gains `proof jsonb` and `wall_seconds`, both written.
+   - `model`, `replay_pass`, `verifier_verdict`, `repaired` and `diff_lines` are added as nullable columns for
+     m2-07/m2-08.
+   - The per-shard proof is kept: status, exit, tests, completed, swept, split, never the nonce.
+   - New tests: a Postgres column check against DATA_MODEL and a round trip, plus the loop recording proofs and wall
+     time. (`464f101`, red `d128e08`)
+5. **Owner actions, unchanged:** the `LIVE:` Docker run (it now also covers the cheat), the `LOCAL:` tests for m5-03,
+   and the winner order.
+6. **NIT, fixed.** The stale "used once a worker ran" wording is gone from `loop.ts`, `store.ts` and the test name.
+   DESIGN.md section 1 no longer names `src/budget.ts`. (`3ad5f65`)
+7. **NIT, fixed.** `http.test.ts` now carries the name `GATE: a wrong brief hash is refused as forbidden (403
+   hash_mismatch) before any check is written or any worker runs…`. (`3ad5f65`)
+8. **NIT, fixed.** API.md and the SPEC both list `deployed`, `started_at` and `ended_at`, as `buildView` returns.
+   (`3ad5f65`)
+9. **NIT, fixed.** When no fan-out worker fits the cap, the build ends `capped` with the first worker's reason. New
+   `BUDGET:` test. (`77f5a27`, red `fb91670`)
+10. **NIT, recorded, not changed.** Claiming before the compare-and-set would change what a wrong-token start does to a
+    queued build (today `failed`, per the `GATE:` test). Only the in-process runner starts builds. DESIGN.md section 7
+    asks the W1-C durable adapter to claim before, or together with, the compare-and-set. (`bd8552a`)
+11. **NIT, fixed.** The p45b thresholds are integer tenths derived from `ON_TRACK` and `PARTIAL`. (`8f5a285`)
