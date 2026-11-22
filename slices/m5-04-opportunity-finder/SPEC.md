@@ -11,7 +11,7 @@ size: M
 parallel_group: M5-B
 owns: [services/brain/src/opportunities/**, services/brain/sql/0002_fixes.sql, services/brain/tests/m5-04-opportunity-finder/**]
 verify: bash slices/m5-04-opportunity-finder/verify.sh
-min_tests: 27
+min_tests: 31
 paths_in_scope: [services/brain/src/opportunities/**, services/brain/src/store/job.ts, services/brain/src/store/repository.ts, services/brain/src/store/migrate.ts, services/brain/sql/0002_fixes.sql, services/brain/src/records/day-record.ts, services/brain/src/records/kinds.ts, services/brain/src/understanding/job.ts, services/brain/src/index.ts, services/brain/tests/m5-04-opportunity-finder/**, docs/API.md, docs/ARCHITECTURE.md, docs/DATA_MODEL.md, docs/GLOSSARY.md, docs/ROADMAP.md, slices/m5-04-opportunity-finder/**]
 paths_out_of_scope: [ee/**, apps/**, packages/**, services/api/**, services/runtime/**, services/broker/**, services/builder/**, services/brain/src/models/**, services/brain/sql/0001_user_model.sql, services/brain/tests/p43a-user-model-core/**, services/brain/tests/p43b-user-model-store-api/**, services/brain/tests/m5-01-understanding/**, docs/adr/**, .github/**, slices/m5-04-opportunity-finder/STATUS.md]
 red_tests: [EVIDENCE, CONNECTOR, RULE, ESTIMATE, OPTIONS, RANK, PERSIST, FINDER]
@@ -50,8 +50,8 @@ m2-05, on hold), and no model is called.
 - Exported from `@offload/brain`, for m5-05, m1-06 and e2e-01:
   - `fixRules(opts?: { catalog?: TenantCatalog }) → FixRules` with `propose(evidence: TaskEvidence) → FixProposal | null`.
   - `TaskEvidence { task_key, name, iso_week, minutes, instances, median_minutes, days, systems: System[], cadence:
-    Cadence | null, episode_ids }`; `System { id (host, or bundle id of a desktop app), surface: "web" | "desktop",
-    work_kind, app_bundle_id }`; `Cadence { kind: "daily" | "weekly", weekday, hour }`.
+    Cadence | null, episode_ids }`; `System { id (bare host for `web`, bundle id for `desktop`), surface: "web" |
+    "desktop", work_kind }` (no separate `app_bundle_id`: the id holds it, review 2 finding 6); `Cadence { kind: "daily" | "weekly", weekday, hour }`.
   - `buildTaskEvidence(input: { week, episodes, timezone }) → TaskEvidence[]` (pure).
   - `FIX_RULES` (the rule table), `FIX_KIND_TABLE` (share, review minutes, setup, confidence per fix kind).
   - `resolveConnector(system, catalog?) → { provider, label, adapter: "mcp" | "composio" | "openapi" | "browser" |
@@ -59,12 +59,17 @@ m2-05, on hold), and no model is called.
   - `FixOption { option_no, kind, rule, recommended, title, detail, steps, figures: { weekly_hours_saved, setup_hours,
     payback_weeks, confidence } }`, `FixProposal { task_key, rule, leave_alone_first, options, estimate: FixEstimate }`.
   - `FixEstimate` gains `option?: FixOption`. The stand-in `estimateFor` path stores one option built from the bare
-    estimate (`bareOption`, `rule: "estimate"`, no steps), so every ranked finder opportunity has an option row.
+    estimate (`bareOption`, `rule: "estimate"`, no steps). An estimate `fixes` cannot store (`leave_alone`, an unknown
+    kind, no saving) gives no option, and a re-ranked opportunity then keeps none (review 2 finding 2).
   - `runMemberUpdate` input gains `fixRules?: FixRules`; `UnderstandingDeps` gains `fixRules?` (passed through, withheld
     without a workspace, as `estimateFor`). `estimateFor` wins when both are given.
   - Repository: `saveOpportunities(tx, { ..., options? })` stores each ranked opportunity's options;
     `listOpportunityViews(tx, { isoWeek?, state? })` and `getOpportunityView(tx, id)` return the API `Opportunity`
-    shape with `options[]`; `listWeekEpisodes(tx, from, to)` reads episodes through `day_records.episode_ids`.
+    shape: `{ id, source, task_key, title, description, iso_week, rank, state, not_now_until, goal_id, goal: { id,
+    text } | null, score, factors, leave_alone_first, options[] }`, each option `{ id, option_no, kind, rule,
+    recommended, title, detail, steps, figures, estimate, chosen_at }` with `estimate` = `figures.weekly_hours_saved`.
+    These carry every field the Mac's `Opportunity` and `FixOption` decoders read (`BuildsModels.swift` on `main`)
+    except `missing_connections`, which nothing produces before `needs_connection` exists (review 2 finding 1); `listWeekEpisodes(tx, from, to)` reads episodes through `day_records.episode_ids`.
 - API.md `Opportunity` and `FixOption` shapes are written down (the routes are m5-05's). `listOpportunityViews`
   without `isoWeek` answers the latest week with opportunities.
 - `fixes` is added to `MEMBER_ISOLATED_TABLES` (store/migrate.ts), so p43b's RLS and privacy tests cover it.
@@ -170,6 +175,10 @@ requires it).
 | OPTIONS | OPTIONS: the recommended option saves at least 0.5 h a week (review 1 finding 3) |
 | PERSIST | PERSIST: without a week the latest week with an opportunity is read, and a state filter applies within it (review 1 finding 5) |
 | FINDER | FINDER: without a workspace the fix rules are withheld and no opportunity is stored (review 1 finding 1) |
+| PERSIST | PERSIST: each option carries its saving as estimate, and an opportunity its description and goal, in the shapes the Mac decodes (review 2 finding 1) |
+| PERSIST | PERSIST: a re-ranked opportunity whose estimate gives no option keeps no stale option (review 2 finding 2) |
+| PERSIST | PERSIST: an open opportunity with a picked option is kept when it leaves the top 5 (review 2 finding 3) |
+| PERSIST | PERSIST: an option holding an email address or a URL is refused and nothing is stored (review 2 finding 4) |
 
 Review 1 also added assertions to existing tests: device-step cost (ESTIMATE), work-kind priority (RANK), a re-run from
 2 options to 1 and a stale episode outside `day_records.episode_ids` (PERSIST), no connector product in option text
@@ -211,6 +220,10 @@ into `offload serve` (m1-06), `remove_step` and `small_app` rules, track record 
     reachable input and no test can exercise it.
   - Finding 7: the explicit delete of a leaving opportunity's options is removed (the `ON DELETE CASCADE` does it,
     PERSIST checks), and so is the `recommended = false` pre-clear (only option 1 is ever recommended).
+- Review 2 (red tests first in b137c7f): the opportunity view gains `description`, `goal { id, text }` and per option
+  `estimate`, the fields the Mac's Today decoders on `main` read (common.md: no parallel contract); an open
+  opportunity with a picked option is no longer deleted when it leaves the top 5 (it stays, unranked, like its
+  options); an estimate that gives no option clears the earlier run's options instead of leaving them attached.
 - The stand-in `estimateFor` path (p43b tests) also stores one option, built from the bare estimate, so every ranked
   finder opportunity has at least one option row.
 
@@ -230,7 +243,9 @@ into `offload serve` (m1-06), `remove_step` and `small_app` rules, track record 
 - [x] after review 1: `verify.sh` PASS (27 slice tests, 677 in the full suite); `verify-all` green with
   `SLICE_UPSTREAM=$(git merge-base HEAD origin/chain/m5-01-understanding)` (two earlier runs each had one timeout in
   untouched packages under load: contracts round-trip 11.5 s, durable cron 25 s; the rerun was green)
-- [ ] review 2, then `status: done`
+- [x] review 2 (CHANGES): findings 1, 2, 3 fixed with red tests first (b137c7f, then 7f174e6); finding 4 tests
+  (eef0db8; both reverted guards now fail a test); findings 5, 6, 7 recorded below and in API.md
+- [ ] review 3, then `status: done`
 
 Known limits (for the next slices):
 - Steps are listed in system id order, not in the workflow's order: episodes keep the set of apps and hosts, not
@@ -242,3 +257,14 @@ Known limits (for the next slices):
 - The launch catalog is ADR 0033's list as data; every entry is "unverified" until spike S5 / m2-02 flips it. The
   proposal does not filter on verification (the fix designer must, before pinning).
 - Only the latest week of a run is ranked (unchanged from p43b).
+- For m5-05 and the Mac owner (review 2 finding 5): the Mac's Today card ignores `leave_alone_first`. It always puts
+  "Leave it alone" last and preselects the recommended option, else option 1, so when no option saves 0.5 h a week it
+  preselects option 1. Showing "leave it alone" first needs a Mac change (not this chain's files) or a field the card
+  decodes; until then `leave_alone_first` is information only.
+- For m5-05: the view has no `missing_connections` (the Mac defaults it to `[]`); the answer route maps `option_id` to
+  `fixes.id`.
+- On the chain's own invoice fixture (desktop Mail, `app.ledgerly.example`, desktop Excel; review 2 finding 7) no step
+  has a connector, so the cloud kinds are gated out and browser automation is excluded (not every step is web): the
+  proposal is one option, a script. e2e-01 should assert "at least one proposed fix", not 2 or 3 options. A fixture
+  using web Gmail (`mail.google.com`) gets an agent workflow and an integration as well. ROADMAP M5's "2 or 3 options"
+  holds for workflows with a connected app, not for this one.
