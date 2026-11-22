@@ -27,3 +27,15 @@ One line per slice step: slice | decision | tests | reviewer verdict.
   Not yet seen green: region-isolation (SIL) diagnostics run only once a file type-checks, so the next run is the
   first to check those three files fully. `durable: workflow "sleeper"`/`"waiter-msg" failed (Error)` are again the
   expected logs of passing `core` tests; `core` passed.
+- 2026-11-22 CI run 3 (run 45047413968, `mac`): everything compiled; 365 of 370 tests passed. Five m3-10 tests failed
+  at runtime, all test setup in m3-10's own tests (fixed, bbcce9b; no source change, no expectation changed):
+  - Four WIRING tests (M310WiringTests.swift:63 and :124, M310Review2Tests.swift:51, M310Review3Tests.swift:82):
+    `startImport()` returned false, so nothing was imported (hence the empty snapshot at M310Review2Tests.swift:56).
+    The tests set `ui.store.folder` after `OnDeviceRecordings.make`, but `RecordingsImportModel` reads the chosen
+    folder once, when it is made (m3-05's rule, as M305's tests do it); the model kept the suggested `~/Desktop`,
+    which does not exist, so the scan refused it. The tests now keep the folder first, then make the model.
+  - FOLDERS (M310Review1Tests.swift:189): the suggestion `~/Documents/Captures` is a folder URL (trailing slash) and the
+    expected URL was built without `isDirectory`, for a path that does not exist. The expected URL is now a folder
+    URL; the comparison is unchanged.
+  Not yet seen green: these four tests run the real importer through the model for the first time in the next run.
+  `durable: workflow "sleeper" failed (Error)` is again the expected log of a passing `core` test; `core` passed.
