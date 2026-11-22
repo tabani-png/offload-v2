@@ -54,7 +54,8 @@ public enum BuildCopy {
   public static let headlineFixing = "One check failed. Fixing it."
   public static let headlineReady = "It's built and every check passed."
   public static let headlineFailed = "It didn't pass. Nothing was installed."
-  public static let headlineCapped = "It reached the $4.00 cap. Nothing was installed."
+  /// "It reached the $4.00 cap. Nothing was installed." with the build's own cap (review4.md finding 8).
+  public static func headlineCapped(_ cap: String) -> String { "It reached the \(cap) cap. Nothing was installed." }
   public static let headlineTampered = "A worker changed the checks. The build was stopped."
   public static let headlineCancelled = "Cancelled. Nothing was installed."
   public static let headlineInfraFailed = "The build service had a problem. This is not billed to your cap."
@@ -102,7 +103,8 @@ public enum BuildCopy {
     "saved \(measured) h/wk measured · \(estimated) h estimated"
   }
   public static let notMeasured = "not measured"
-  public static let measuredFromM4 = "measured after install, from M4"
+  /// The outcomes route is not built yet (review4.md finding 7: no milestone names in copy).
+  public static let measuredLater = "measured after install, once Offload measures outcomes"
 
   // MARK: Plan (OK, build)
 
@@ -114,7 +116,11 @@ public enum BuildCopy {
   public static let alreadyRunning = "A build of this plan is already running."
   public static let noFixYet = "This suggestion has no fix to build yet."
   public static let setAside = "This suggestion was set aside, so nothing is built."
-  public static let alreadyBuilt = "This suggestion is already being built or was built."
+  /// A build this Mac did not record (the API has no list route) cannot be listed (review4.md finding 4).
+  public static let alreadyBuilt = "This suggestion is already being built or was built. A build this Mac didn't record isn't listed here."
+  public static let designStopped = "Designing this fix stopped and needs you. Nothing is built until then."
+  public static let setAsideDone = "Set aside. Offload asks about it again in 4 weeks."
+  public static let close = "Close"
   public static let lastBuildFailed = "Its last build didn't pass. Nothing was installed."
   public static let starting = "Starting the build…"
   /// "build cap $4.00".
@@ -240,11 +246,11 @@ public enum BuildCopy {
       planLocked, planLockedDetail, checksFrozen, checksFrozenDetail, workersTesting, workersWaiting, matches,
       matchesDetail, heldOutPassed, heldOutFailed, readyToShip, readyToShipDetail, installedDetail, sampleRowName,
       sampleRowLine, replay, unnamed, headlineQueued, headlineBuilding, headlineVerifying, headlineFixing, headlineReady,
-      headlineFailed, headlineCapped, headlineTampered, headlineCancelled, headlineInfraFailed, workersTitle, frozenLabel,
+      headlineFailed, headlineCapped("$4.00"), headlineTampered, headlineCancelled, headlineInfraFailed, workersTitle, frozenLabel,
       heldOutLabel, notRun, install, seeWhatChanged, whatItWillDo, cancelBuild, removeFromList, okBuild, notNow,
       installNeedsCloud, installNeedsEnrollment, buildNeedsEnrollment, installChanged, definitionMissing, readFirst,
-      measuredAfter, notMeasured, measuredFromM4, planTitle, answering, designing, stillDesigning, planChanged,
-      alreadyRunning, noFixYet, setAside, alreadyBuilt, lastBuildFailed, starting, noBuilds, offline, gone, checking, opportunityNeedsCloud,
+      measuredAfter, notMeasured, measuredLater, planTitle, answering, designing, stillDesigning, planChanged,
+      alreadyRunning, noFixYet, setAside, alreadyBuilt, designStopped, setAsideDone, close, lastBuildFailed, starting, noBuilds, offline, gone, checking, opportunityNeedsCloud,
     ]
     let built: [String] = [
       fingerprint("7c41e2"), attemptsPassing(2, of: 3), failedFixing(1), otherStage("recovered", state: "failed"),
@@ -273,7 +279,7 @@ public enum BuildCopy {
   public static var captions: [String] {
     [
       planLockedDetail, checksFrozenDetail, workersWaiting, matchesDetail, heldOutPassed, heldOutFailed,
-      readyToShipDetail, installedDetail, sampleRowLine, notRun, measuredAfter, notMeasured, measuredFromM4, checking,
+      readyToShipDetail, installedDetail, sampleRowLine, notRun, measuredAfter, notMeasured, measuredLater, checking,
       planLockedDetail + " · " + fingerprint("7c41e2"), attemptsPassing(2, of: 3), failedFixing(1),
       otherStage("recovered", state: "failed"), testsWritten(47, fingerprint: "7c41e2"), checksPassing(30, of: 47),
       meter(elapsed: "6m 12s", spent: "$0.84", cap: "$4.00"), workerName(1),

@@ -106,7 +106,8 @@ public enum StatusDot: Equatable, Sendable {
 }
 
 public enum HeadlineMap {
-  public static func headline(_ state: BuildState) -> String {
+  /// `capUSD` is the build's own cap, as the meter shows it; the build loop's cap is $4.00.
+  public static func headline(_ state: BuildState, capUSD: Double = FixHashes.defaultCapUSD) -> String {
     switch state {
     case .queued: return BuildCopy.headlineQueued
     case .building: return BuildCopy.headlineBuilding
@@ -114,7 +115,7 @@ public enum HeadlineMap {
     case .fanningOut, .repairing: return BuildCopy.headlineFixing
     case .ready: return BuildCopy.headlineReady
     case .failed: return BuildCopy.headlineFailed
-    case .capped: return BuildCopy.headlineCapped
+    case .capped: return BuildCopy.headlineCapped(Money.usd(capUSD))
     case .tampered: return BuildCopy.headlineTampered
     case .cancelled: return BuildCopy.headlineCancelled
     case .infraFailed: return BuildCopy.headlineInfraFailed
@@ -370,7 +371,7 @@ public struct SavingLine: Equatable, Sendable {
     }
     switch outcome {
     case .notLoaded: return nil
-    case .routeMissing: return SavingLine(text: BuildCopy.measuredFromM4)
+    case .routeMissing: return SavingLine(text: BuildCopy.measuredLater)
     case .missing: return SavingLine(text: BuildCopy.notMeasured)
     case .found(let o):
       switch o.flag {
@@ -441,7 +442,7 @@ public struct BuildDetail: Equatable, Sendable {
     let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
     return BuildDetail(
       title: BuildCopy.title(trimmed.isEmpty ? BuildCopy.unnamed : trimmed),
-      headline: HeadlineMap.headline(build.state),
+      headline: HeadlineMap.headline(build.state, capUSD: build.capUSD),
       headlineNote: HeadlineMap.note(build),
       dot: HeadlineMap.dot(build),
       meter: BudgetMeter(build: build, now: now),
