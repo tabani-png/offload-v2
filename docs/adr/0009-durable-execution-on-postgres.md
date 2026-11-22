@@ -1,6 +1,6 @@
 # 0009. Durable execution on Postgres (DBOS Transact behind a port)
 
-Status: accepted, revised 2026-11-14; spike result pending (m1-01) · Date: 2026-11-14
+Status: accepted, revised 2026-11-14; spike passed on option 1 (DBOS on Bun) 2026-11-14 · Date: 2026-11-14
 
 ## Context
 Builds and routine runs are long, multi-step and must survive restarts without repeating side effects. Criterion from
@@ -37,12 +37,39 @@ the owner's brief: **self-host with only Postgres**. DBOS is documented for Node
 - The spike writes its outcome into this ADR under "Spike result".
 
 ## Spike result
-Pending: slice `m1-01-durable-spike`.
+Slice `m1-01-durable-spike`, run 2026-11-14.
+
+- **Chosen: option 1, DBOS Transact on Bun, for every module.** Options 2 and 3 were not needed and were not tried.
+- Versions: `@dbos-inc/dbos-sdk` 5.5.0, `pg` 8.23.1, Bun 1.4.4, Postgres 17.11. Real Postgres, no PGlite.
+- What the tests show on Bun: a two-step workflow run in a child `Bun.spawn` process is killed with SIGKILL after step
+  1's checkpoint row exists in `durable.operation_outputs`; the restarted child recovers the pending workflow, step 1
+  does not run again and step 2 runs once. Cancel stops a sleeping workflow before its next step. `purgeTenant` removes
+  every workflow, step and message row of one tenant and leaves the other tenant's rows.
+- State lives in schema `durable` (`systemDatabaseSchemaName`), inside the one application database, not DBOS's default
+  separate `<app>_dbos_sys` database. When `migratorUrl` is given, `DBOS.migrate` runs as `offload_migrator`, which
+  owns the schema, and the runtime role gets grants; the runtime then starts with `runMigrations: false`.
+- Port details the spike settled:
+  - `DurableRuntime.create({ databaseUrl, migratorUrl?, clock?, workflows })` takes the workflow bodies by name. DBOS
+    is a process-wide singleton, so one runtime per process; `shutdown()` deregisters so tests can create another.
+  - **Schedules use our own tick loop, not DBOS's scheduler**, because DBOS schedules read the real clock and the
+    port must run under a fake one. A tick starts workflow `name` with the deterministic id `sched:<name>:<minute ms>`
+    and input `{ tenant_id: "system", scheduled_for }`, so a tick never starts twice across restarts or processes (at most once: ticks due while every process was down
+    are not replayed). Schedules are held in memory: the caller declares them on every boot. A clock jump replays at most 1440 minutes.
+  - Error text from steps and workflow bodies is reduced to the step or workflow name before DBOS stores it, and object
+    keys are checked like values, so no content reaches `durable` through errors or keys.
+  - `purgeTenant` lists then deletes; callers must stop new starts for the tenant first.
+  - Step outputs go through `assertIdsOnly` as well as inputs and messages; a step that returns text fails the
+    workflow instead of writing the text into `durable`.
+  - `sleep` is DBOS's durable sleep on real time. `recv` takes a timeout up to `MAX_RECV_MS` (900 000 ms).
+  - `withTenant` here is the minimal helper that m1-03 replaces.
+- Not covered by the spike, to measure later: throughput, queues with concurrency limits (first builder slice), and
+  DBOS application-version pinning across deploys (workflows end at human waits, so old versions drain quickly).
 
 ## Consequences
 - No Temporal cluster, no Redis. Backups cover workflow state.
 - Throughput is bounded by Postgres. Fine for a tenant of one and small teams; measure before Enterprise scale.
-- Option 2 means two runtimes in one repo; the port keeps callers unchanged.
+- Option 2 would have meant two runtimes in one repo; it was not needed. The port still keeps callers unchanged if DBOS
+  ever has to be swapped.
 
 ## Alternatives considered
 | Option | License | Self-host needs | Why not |
@@ -64,3 +91,5 @@ Owner brief ("self-host with only Postgres"); dbos-inc/dbos-transact-ts reposito
 - 2026-11-14: spike moved to its own first slice with a written outcome; fallback order DBOS-Bun → DBOS-Node for
   builder/runtime → graphile-worker; workflows end at human waits; ids-only durable state with purge; port signature
   and kill method spelled out ([design review C (2026-11-14)](../SOURCES.md#design-review-c), P1(4), [design review A (2026-11-14)](../SOURCES.md#design-review-a), #34, #118).
+- 2026-11-14: spike result written by m1-01-durable-spike: DBOS on Bun passes, option 1 chosen; schedules use our own
+  tick loop for fake-clock tests.

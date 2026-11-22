@@ -105,10 +105,10 @@ Offload Cloud provider from M8 ([OQ-06](OPEN_QUESTIONS.md#oq-06-identity-provide
 | Method and path | Request | Response |
 |---|---|---|
 | `GET /auth/login?return_to=` | `return_to` must be a same-origin path starting with `/` (no scheme, no `//`), else 400 `invalid_request` | 302 to the OIDC provider |
-| `GET /auth/callback` | OIDC code | 302 to `return_to` or `/`, sets session cookie; first login creates a personal tenant |
-| `POST /auth/magic-link` · `GET /auth/magic-link/callback` | `{ email }` · token | 204 · 302, sets session (self-host) |
-| `POST /auth/logout` | | 204 |
-| `GET /v1/me` | | `{ member, tenant, workspaces[], tenant_role, features[], upload_consent, csrf_token? }` (`csrf_token` for web sessions only). `upload_consent`: `{ notice_id: "what-leaves-your-mac", current_version, consented_version \| null, needed: bool }`; `needed` is true when there is no consent for `current_version` |
+| `GET /auth/callback` | OIDC code and state | 302 to `return_to` or `/`, sets session cookie; first login creates a personal tenant. 400 `invalid_request` when no login is in progress or the state differs; 401 `unauthenticated` when the provider or the ID token refuses |
+| `POST /auth/magic-link` · `GET /auth/magic-link/callback?token=&email=` | `{ email, return_to? }` · token (32 random bytes, sha256 stored, single use, 15 min) and the email it was sent to | 204 (always, known email or not) · 302 to `return_to`, sets session (self-host). 401 `unauthenticated` for an unknown or used link, 401 `token_expired` after 15 minutes |
+| `POST /auth/logout` | `X-CSRF-Token` when the session is live (else 403 `forbidden`) | 204; revokes the session and clears the cookie |
+| `GET /v1/me` | session or member token | `{ member, tenant, workspaces[], tenant_role, features[], upload_consent, csrf_token? }` (`csrf_token` for web sessions only, on the first call of the session; `upload_consent` from M3, m3-01). `upload_consent`: `{ notice_id: "what-leaves-your-mac", current_version, consented_version \| null, needed: bool }`; `needed` is true when there is no consent for `current_version` |
 | `POST /v1/me/consents` (M3) | `{ notice_id: "what-leaves-your-mac", notice_version, device_id }`; session or member token; `notice_version` must equal the current version, else 409 `stale_notice` | 201 `Consent`. Audited as `privacy.consent_given`. Upload consent for this member ([ONBOARDING screen 5](ONBOARDING.md#6-screens-4-and-5-sign-in-and-what-leaves-your-mac)) |
 | `DELETE /v1/me/consents/what-leaves-your-mac` (M3) | session or member token | 204; sets `withdrawn_at`, audited as `privacy.consent_withdrawn`; uploads stop (Local mode) |
 | `POST /v1/me/tokens` (M8) | `{ name, scopes[] }` | `{ id, token }` (shown once) |
@@ -126,6 +126,26 @@ Offload Cloud provider from M8 ([OQ-06](OPEN_QUESTIONS.md#oq-06-identity-provide
 | `/scim/v2/Users`, `/scim/v2/Groups` (**ee**, M9) | SCIM 2.0 | SCIM 2.0 |
 | `GET/PUT /v1/sso/config` (**ee**, M9) | `{ saml_metadata_url, enforced, domains[] }` | `SsoConfig` |
 
+**Implementation (m1-04).** Shapes are in `packages/contracts/src/auth` (`MeResponseSchema`, `MagicLinkRequestSchema`,
+`DeviceEnrollRequestSchema`, `DeviceChallengeRequestSchema`, `DeviceTokenRequestSchema`, `DeviceSchema`).
+- Config names: `OFFLOAD_PUBLIC_BASE_URL` (an https origin), `OFFLOAD_OIDC_ISSUER`, `OFFLOAD_OIDC_CLIENT_ID`,
+  `OFFLOAD_OIDC_CLIENT_SECRET_REF`, `OFFLOAD_DEVICE_TOKEN_SIGNING_KEY_REF` (ES256 P-256 PKCS#8 PEM). A `_REF` is
+  `file:<absolute path>` or `env:<NAME>`; the value is resolved at start and never logged. Without
+  `OFFLOAD_OIDC_ISSUER`, `/auth/login` and `/auth/callback` are 404; without a mailer, the magic link routes are 404.
+- OIDC: authorization code with PKCE S256 and a nonce; the state, nonce, verifier and `return_to` ride in a 10-minute
+  `__Host-offload_login` cookie (httpOnly, Secure, SameSite=Lax), cleared at the callback. The ID token must verify
+  against the provider's JWKS, carry the nonce and a verified email. `members.idp_subject` is `oidc|<issuer>|<sub>`,
+  or `magic|<email_hash>` for magic links.
+- Session token, csrf token, enrollment code, nonce and magic link token are each 32 random bytes, base64url (43
+  characters); only their sha256 is stored (the nonce is stored as issued, it is not a secret). Idle and absolute
+  expiry answer 401 `token_expired`; a session or member token that is unknown, revoked or for a frozen or departed
+  member answers 401 `unauthenticated`. A mutation on a session without the right `X-CSRF-Token` is 403 `forbidden`.
+- Bodies are JSON only (`Content-Type: application/json`, else 400 `invalid_request`) and at most 16 KB (413
+  `too_large`). `POST /v1/devices/enroll` and `/challenge` take no `Idempotency-Key`: the code is single use and a
+  nonce is meant to be fresh.
+- Audit: `member.logged_in` (`{ method: "oidc" | "magic_link", session_id }`), `device.enrolled`
+  (`{ key_storage, jwk_thumbprint }`), `device.revoked` (`{ via: "session" | "member_token" }`). Ids only.
+
 ### Devices (core)
 
 Enrollment is loopback PKCE (S256). The Mac opens the browser at `/v1/devices/authorize`; the member is logged in by
@@ -133,11 +153,11 @@ session; the server stores a single-use code (10 min) in `device_enrollment_code
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /v1/devices/authorize?code_challenge=&code_challenge_method=S256&redirect_uri=&state=` | session required; `redirect_uri` must be `http://127.0.0.1:<port>/callback`, else 400 `invalid_request` | 302 to `redirect_uri` with `code` and `state` |
-| `POST /v1/devices/enroll` | `{ code, code_verifier, redirect_uri, public_jwk, name, key_storage }` (`redirect_uri` must equal the stored one) | `{ device_id }`; 400 `invalid_request` on a wrong verifier, non-P-256 key or redirect mismatch |
-| `POST /v1/devices/challenge` | `{ device_id, audience: "device" \| "member" }` | `{ nonce, expires_at }` (2 min; the token gets this audience) |
+| `GET /v1/devices/authorize?code_challenge=&code_challenge_method=S256&redirect_uri=&state=` | session required (without one, 302 to `/auth/login?return_to=` this URL); a code is issued only for a navigation with `Sec-Fetch-Site: none` (the Mac opening the browser) or `same-origin`, anything else gets a 200 HTML page (no framing) asking to confirm with a same-origin link; `redirect_uri` must be `http://127.0.0.1:<port>/callback` with port 1024..65535, else 400 `invalid_request` | 302 to `redirect_uri` with `code` and `state` |
+| `POST /v1/devices/enroll` | `{ code, code_verifier, redirect_uri, public_jwk, name, key_storage }` (`redirect_uri` must equal the stored one) | `{ device_id }`; 400 `invalid_request` on an unknown, used or expired code, a wrong verifier, a key that is not a P-256 public JWK, or a redirect mismatch. No session: the code is the proof |
+| `POST /v1/devices/challenge` | `{ device_id, audience: "device" \| "member" }` | `{ nonce, expires_at }` (2 min; the token gets this audience); 401 `unauthenticated` for an unknown or revoked device; 429 `rate_limited` (`Retry-After: 120`) when the device already holds 20 open nonces |
 | `POST /v1/devices/token` | `{ device_id, nonce, signature }` | `{ token, expires_at }` (15 min); 401 `unauthenticated` for a bad signature or revoked device; 401 `token_expired` for an expired nonce; 409 `nonce_used` |
-| `GET /v1/devices` · `DELETE /v1/devices/{id}` | | `Device[]` · 204 (revocation is immediate) |
+| `GET /v1/devices` · `DELETE /v1/devices/{id}` | session or member token; owner and admin see and revoke every device of the tenant, others their own | `Device[]` (`{ id, member_id, name, key_storage, enrolled_at, revoked_at }`) · 204, also for an already revoked device; 404 for another member's device. Revocation is immediate: tokens already minted fail on their next use |
 | `GET /v1/devices/{id}/pseudonym-key-wrap` · `PUT /v1/devices/{id}/pseudonym-key-wrap` (M3, m3-01) | device token (`aud=device`, own device only); PUT body `{ wrapped_key, wrapped_by_device_id \| null, method: "device" \| "recovery_code", recovery_wrap? }` (`recovery_wrap` only from the first device) | GET: this device's `{ wrapped_key, wrapped_by_device_id, method }`, or `{ recovery_wrap }` for a new device with no wrap yet; another device's id is 404 · PUT: 204. Ciphertext only ([ADR 0028](adr/0028-stable-keyed-pseudonyms.md)) |
 | `GET /v1/devices/pending-key-wraps` (M3, m3-06) | device token; lists enrolled devices of the tenant that still need the key | `{ devices: [{ device_id, public_jwk }] }` |
 
