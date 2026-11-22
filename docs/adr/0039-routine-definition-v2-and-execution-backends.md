@@ -1,7 +1,9 @@
 # 0039. Fixes as versioned routine definitions on pluggable execution backends
 
-Status: proposed (review pending); the n8n parts wait on [OQ-30](../OPEN_QUESTIONS.md#oq-30-n8n-in-offload), span
-tokenisation waits on [OQ-31](../OPEN_QUESTIONS.md#oq-31-masked-text-fields-in-build-sandboxes) · Date: 2026-11-22 ·
+Status: proposed (review pending). [OQ-30](../OPEN_QUESTIONS.md#oq-30-n8n-in-offload) was decided by the owner on
+2026-11-22 (sections 3.4, 7 and 9); pushing to a user's n8n is built but switched off until
+[OQ-32](../OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n); span tokenisation waits on
+[OQ-31](../OPEN_QUESTIONS.md#oq-31-masked-text-fields-in-build-sandboxes) · Date: 2026-11-22 ·
 Extends [ADR 0026](0026-routine-artifact-contract.md) (`routine.json` v2), [ADR 0027](0027-fixture-capture-and-connector-content.md)
 (held-out instances, read shapes) and [ADR 0033](0033-pinned-connector-resolution-and-launch-catalog.md) (tool choice)
 
@@ -9,6 +11,15 @@ Extends [ADR 0026](0026-routine-artifact-contract.md) (`routine.json` v2), [ADR 
 The owner asked, verbatim: "it should give well designed workflows maybe even through like n8n to automate things
 ... we need stable workflows that are built and it needs to research the best tools to make those but n8n may allow
 that to happen faster".
+
+**The owner's decision on n8n** ([OQ-30](../OPEN_QUESTIONS.md#oq-30-n8n-in-offload), 2026-11-22), verbatim:
+"Build worflow automation as an expert n8n engineer". It means three things here:
+1. the fix designer and every routine definition follow expert n8n practice, written as eight testable workflow
+   design rules (section 3.4);
+2. Offload can export a verified fix as import-ready n8n workflow JSON for the user's own n8n, and push it there
+   through that instance's public API when the user connects it (section 9);
+3. Offload's own engine stays the default runtime; n8n run by Offload for users stays gated on n8n's written
+   license confirmation ([OQ-32](../OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n)).
 
 **What exists.**
 - A fix is a routine artifact: `routine.json` plus pure transforms ([ADR 0026](0026-routine-artifact-contract.md)).
@@ -56,7 +67,8 @@ artifact: the routine definition is the backend-neutral IR. The ask's "dry-run" 
   - per step: `retry: { max_attempts, interval_ms, backoff_rate }`, `timeout_ms`,
     `on_error: "fail_run" | "skip_item"`;
   - per commit step: `dedupe: { key, window_days }`. `key` is a template over `{{ item.* }}` fields only, for example
-    `{{ item.vendor_ref }}:{{ item.invoice_number }}`;
+    `{{ item.vendor_ref }}:{{ item.invoice_number }}`. Optional in the schema so v1 upgrades parse, but required by
+    design rule WF5 (section 3.4) for anything built or deployed;
   - in `limits`: `max_skipped_items` (default 5, at most `max_items_per_run`);
   - in the **resolved** definition only (filled at deploy like the pins): `backend` (`"native"`) and, per `read`
     step, `read_shape` (section 4).
@@ -123,10 +135,11 @@ artifact: the routine definition is the backend-neutral IR. The ask's "dry-run" 
 | 3 | Fixture capture | fix designer, gate mode `read` | visible instances, held-out instances, read shapes | section 4 |
 | 4 | Brief and scaffold | Opus writes the brief; **code** writes the skeleton `routine.json` from it | `brief_hash`; scaffold | section 3.2 |
 | 5 | Build | Sonnet worker in a sandbox fills args, transforms, prompts and output schemas | artifact | [ADR 0012](0012-builder-policy-one-worker-held-out-fan-out.md) |
-| 6 | Static validation | code | issue list; any issue fails the attempt like a check failure | section 3.3 |
+| 6 | Static validation and design-rule lint | code | issue list; any issue fails the attempt like a check failure | sections 3.3 and 3.4 |
 | 7 | Verification | fresh sandbox | frozen checks; replay of visible instances; held-out check over the held-out instances | [ADR 0029](0029-build-verdicts.md) |
 | 8 | Verifier, receipt | Opus; code signs | `receipt_hash` | [ADR 0012](0012-builder-policy-one-worker-held-out-fan-out.md) |
-| 9 | Deploy approval | user | binds `artifact_sha256`, `receipt_hash`, `definition_hash` (with `backend`, retry policies, dedupe keys and read shapes inside) | [ADR 0032](0032-deploy-approval-binds-definition.md) |
+| 9 | Deploy approval | user | binds `artifact_sha256`, `receipt_hash`, `definition_hash` (with `backend`, retry policies, dedupe keys and read shapes inside) | [ADR 0032](0032-deploy-approval-binds-definition.md); WF8 |
+| 9a | n8n export (optional, instead of or besides step 10) | code; the user downloads it, or approves a push that also binds `export_hash` | n8n workflow JSON for the user's own n8n | section 9 |
 | 10 | Run | native backend | items through the gate and the broker | section 5 |
 | 11 | Watch | code | drift, stability record | section 6 |
 | 12 | Change | user | rollback or repair | section 6 |
@@ -180,7 +193,32 @@ Code, before any replay. Each issue carries a code and a JSON pointer, never a c
 - `model_number`: a model output schema has a number field, which the router would refuse anyway
   ([ADR 0003](0003-numbers-come-from-code.md), m5-03);
 - `limits_above_brief`;
-- `backend_not_allowed`.
+- `backend_not_allowed`;
+- the design-rule codes of section 3.4.
+
+#### 3.4 Workflow design rules
+The owner's "as an expert n8n engineer", as rules code can check. They apply to the native routine definition and to
+the n8n export (section 9) alike. Each rule has an id and issue codes. `lintRoutine(resolved, artifact, receipt?)`
+(in `packages/execution-backend`) checks WF1 to WF7 inside static validation and WF8 at deploy;
+`lintN8nExport(bundle, catalog)` (in `packages/n8n-export`) checks the same rules on an export. An issue is
+`{ code, rule, pointer }` with no connector value. Any issue refuses the definition or the export; there is no
+override.
+
+| Rule | Native routine definition | n8n export | Issue codes |
+|---|---|---|---|
+| **WF1 Explicit trigger** (`wf.trigger`) | Exactly one trigger: `schedule` (cron and an IANA time zone, never a default zone), `manual`, `webhook` or `event` | Exactly one trigger node (Schedule Trigger with a cron expression, Manual Trigger or Webhook) and `settings.timezone` set to the trigger's zone; n8n otherwise falls back to the instance zone, `America/New York` by default. The error workflow has exactly one Error Trigger | `trigger_invalid` |
+| **WF2 Small, single-purpose steps** (`wf.single_purpose`) | Each step has one class, at most one capability and one `connection_ref`. A transform module exports one function and has at most 150 non-blank lines. At most 20 steps. Step ids are unique `snake_case` | One node per step, plus only the helper nodes section 9.2 names. Node names are unique and come from the step ids; each node's `notes` holds that step's sentence from the definition in words | `step_not_single_purpose`, `transform_too_large`, `too_many_steps` |
+| **WF3 Error workflow and error branches** (`wf.error_path`) | Every step's `on_error` is explicit in the resolved definition. The element-level error branch is `skip_item` with a code; the run-level error path is the runtime's (a failed run commits nothing, the breaker counts it, the member sees it). The IR stays linear: no error routes (section 1) | `settings.errorWorkflow` names the companion error workflow in the same export (Error Trigger, then one notification node). A `skip_item` step's node has `onError: "continueErrorOutput"` with its error output wired to the skipped-items node; every other node has `onError: "stopWorkflow"`. No node uses `continueRegularOutput` or the deprecated `continueOnFail` | `error_path_missing` |
+| **WF4 Per-step retries and timeouts** (`wf.retry_timeout`) | Every `read`, `draft` and `model` step has an explicit `retry` and `timeout_ms` inside the class rules; commit steps have `timeout_ms` and no `retry` (section 1) | Those nodes set `retryOnFail: true`, `maxTries` and `waitBetweenTries` from the retry policy; commit nodes set `retryOnFail: false`. HTTP Request nodes set their Timeout option (milliseconds) from `timeout_ms`; `settings.executionTimeout` bounds the run. n8n waits a fixed time between tries, so `backoff_rate` is not carried over and the export card says so | `retry_missing`, `retry_not_allowed`, `timeout_missing` |
+| **WF5 Idempotent writes** (`wf.idempotent`) | Every commit step has a `dedupe` key, written by the scaffold from the brief's `item_identity`. A brief without `item_identity` for a commit step is refused | A Remove Duplicates node ("Remove Items Processed in Previous Executions", scope Workflow, value the rendered dedupe key) directly before each commit node | `dedupe_missing` |
+| **WF6 Credentials by reference only** (`wf.credential_ref`) | Steps name a `connection_ref` only. No secret-shaped value (the canary detector of [ADR 0035](0035-mac-egress-guard-and-ledger.md)) and no literal value under a credential-like key (`authorization`, `api_key`, `token`, `password`, `secret`, `cookie`) in args, templates, transforms or prompts | Each node's `credentials` gives a credential type and a placeholder name from the export's credential map, never an `id` or a value. No literal Authorization header, query key or body field. n8n warns that exported JSON can carry credential names and ids and cURL-imported auth headers; an Offload export carries none | `credential_inline` |
+| **WF7 Pinned-data test runs** (`wf.pinned_test`) | Every `read` and `model` step has recorded outputs for the visible instances, and replay passes (stage 7) | `pinData` holds the tokenised visible-instance outputs of the trigger, every read node and every model node, keyed by node name, and the export's pinned-data test passes (section 9.3) | `pinned_test_missing`, `pinned_test_failed` |
+| **WF8 Held-out acceptance before activation** (`wf.heldout_gate`) | Deploy is refused unless the receipt records a passing held-out check and, when instances were held out, passing held-out instances ([ADR 0029](0029-build-verdicts.md)) | An export is made only from such a receipt, and the held-out instances must also pass the export's pinned-data test. The file is never published on import; a push publishes only when its approval says so | `heldout_not_passed` |
+
+Two n8n limits are stated, not hidden. n8n records a dedupe key when the item passes Remove Duplicates, before the
+commit, so a commit that then fails is not offered again automatically; the error workflow reports it. That errs the
+same way as `unknown` (no double commit). And n8n keeps 10,000 keys by default, not a time window, so `window_days`
+is not carried over. The export card says both in words.
 
 ### 4. Fixtures: held-out instances, read shapes, text fields
 - **Capture 8 instances by default** (was 6, [ADR 0027](0027-fixture-capture-and-connector-content.md)); the minimum
@@ -263,18 +301,26 @@ Code, before any replay. Each issue carries a code and a JSON pointer, never a c
   it does not pause. The existing breakers still pause.
 
 ### 7. n8n, Activepieces and other engines
-- **Offload does not host or ship n8n**, and n8n is not an execution backend.
-- **Now, no license question**: a user may add their own n8n workflows (n8n's MCP Server Trigger) or their own
-  Activepieces pieces (Activepieces' MCP server) as an MCP connection. These are rung 1 and `opaque_workflow`, and
-  Offload never writes the workflow behind them. This matches n8n's "Triggering or executing pre-built workflows via
-  API or webhooks is fine".
-- **Later, only if the owner chooses and n8n confirms in writing**: export a verified routine definition as n8n
-  workflow JSON for the user's own instance, as a hand-off outside Offload's gate
-  ([OQ-30](../OPEN_QUESTIONS.md#oq-30-n8n-in-offload)). Not built and not specced.
+- **Offload's own engine is the default runtime.** n8n is never an execution backend: it holds credentials and makes
+  the commit call itself, so it cannot pass conformance rules 1 to 3.
+- **Offload does not host or ship n8n.** "Offload builds and runs it inside n8n for you" is **gated**: nothing is
+  built until n8n confirms in writing what agreement it needs
+  ([OQ-32](../OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n)), and even then it would be an export
+  target run by Offload, outside the gate, which needs a new ADR.
+- **Export to the user's own n8n** (decided, [OQ-30](../OPEN_QUESTIONS.md#oq-30-n8n-in-offload)): section 9. An
+  **export target**, not a backend.
+- **Connect the user's own n8n workflows as tools**, unchanged: a user may add their own n8n workflows (n8n's MCP
+  Server Trigger) or their own Activepieces pieces (Activepieces' MCP server) as an MCP connection. These are rung 1
+  and `opaque_workflow`. This matches n8n's "Triggering or executing pre-built workflows via API or webhooks is fine".
+  An n8n workflow Offload exported and the user later connects back as a tool is still `opaque_workflow`: Offload
+  cannot see whether the user changed it.
 - **Activepieces pieces as code** (MIT, outside its `ee` folders) may be ported one at a time into allowlisted
   direct-API adapters run by the broker, with `NOTICE` entries. Third-party piece code never runs inside the broker
   as is. Spike **S8** ports one piece (QuickBooks or Xero) and writes the effort and the license check into this ADR.
-- **n8n node source is never copied** (Sustainable Use License, [AGENTS.md](../../AGENTS.md#license-boundary-and-notices)).
+- **n8n code is never copied or shipped**: not node source, not the Workflow SDK, not the MCP server (Sustainable Use
+  License, [AGENTS.md](../../AGENTS.md#license-boundary-and-notices)). The export writes n8n's documented JSON
+  format with Offload's own code. Node type names, `typeVersion`s and parameter keys in the node catalog are
+  interface facts taken from n8n's public docs and checked against a live instance, not code.
 
 ### 8. What is core and what is `ee/`
 Safety and the single-player loop are core ([OPEN_CORE.md](../OPEN_CORE.md#2-feature-split)).
@@ -287,7 +333,95 @@ Safety and the single-player loop are core ([OPEN_CORE.md](../OPEN_CORE.md#2-fea
 | Sharing a verified routine definition with other members or workspaces as a starting brief, re-pinned to their connections and re-verified on their fixtures | `ee/packages/teams` (Pro, `teams`) |
 | N-of-M deploy and rollback approvals; Cedar policies that restrict backends, adapters or rungs per workspace | `ee/packages/governance` (Enterprise) |
 | Deploy, rollback and drift events streamed to a SIEM | `ee/packages/audit-export` (Enterprise) |
-| Any adapter for a third-party engine that needs a vendor agreement | `ee/`, only with that agreement; none planned |
+| The n8n export, its node catalog, lint and pinned-data test, and push to the user's own n8n (section 9) | core (single-player; [OQ-30](../OPEN_QUESTIONS.md#oq-30-n8n-in-offload)) |
+| Restricting or forcing n8n export and push per workspace | `ee/packages/governance` (Enterprise) |
+| Any adapter for a third-party engine that needs a vendor agreement, including n8n run by Offload | `ee/`, only with that agreement and a new ADR; gated on [OQ-32](../OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n) |
+
+### 9. The n8n export
+Built in slice [m5-12-n8n-export](../../slices/m5-12-n8n-export/SPEC.md). n8n facts below were checked on
+2026-11-22 in n8n's public docs ([research section 3.1](../research/workflow-engines-2026-11.md#31-n8n)).
+
+#### 9.1 What it is
+- An **export target**, not an execution backend. `exportN8n(resolved, artifact, receipt, fixtures, catalog)` in
+  `packages/n8n-export` (core, MIT) is pure and returns a bundle: the main workflow, its error workflow, a credential
+  map (placeholder name, n8n credential type, the Offload connection it stands for, in words) and the export card.
+  Same inputs, byte-identical bundle.
+- `export_hash = sha256(JCS(bundle))`, computed with the main workflow's `settings.errorWorkflow` set to the fixed
+  placeholder `offload:error-workflow`. That field is the only value ever filled after approval (section 9.5).
+- Made only from a build whose receipt passes WF8. The routine definition stays the source; the export is derived
+  and never edited by a model.
+- A run in the user's n8n is **outside Offload's gate, item journal, broker, approvals, breakers and hours-saved
+  measurement**. The export card says so in words before download or push, for example: "This runs in your n8n, not
+  in Offload. Offload will not ask before each batch and will not count the time it saves."
+
+#### 9.2 Mapping
+| Routine definition | n8n |
+|---|---|
+| `schedule` trigger | Schedule Trigger with the cron expression; `settings.timezone` (WF1) |
+| `manual`, `webhook` trigger | Manual Trigger, Webhook |
+| `read` step | the catalog node for that capability (for example Gmail, Google Calendar, Google Drive, Google Sheets), or HTTP Request with a predefined credential type, which n8n recommends "when it's available" |
+| `foreach` | n8n runs a node once per input item; an array field is split by the catalog's split node |
+| `transform` step | Code node, JavaScript, "Run Once for All Items", with the transform module inlined in a fixed wrapper that maps `json` items in and out. n8n's docs say Code nodes "can't access the file system or make HTTP requests", which keeps transforms pure |
+| `model` step | the catalog's model-call node using the user's own model credential in their n8n, then a Code node that checks the output against the step's output schema (helper node). Text goes from the user's n8n to the user's model provider unmasked, not through Offload's router; the card says so |
+| `commit` step | Remove Duplicates (helper node, WF5), then the catalog node, `retryOnFail: false` |
+| `skip_item` | error output to one skipped-items node (helper node, WF3) |
+| failed run | the error workflow: Error Trigger, then one notification node (WF3) |
+
+A step with `runs_on: mac`, a browser connector, an `opaque_workflow` connection or a capability with no catalog
+node cannot be exported: `export_unsupported` with the step id. Nothing partial is exported.
+
+#### 9.3 Validation
+- **Schema.** No published JSON Schema for n8n workflow files was found (2026-11-22). Offload keeps a zod schema,
+  `N8nWorkflowFile`, of the subset it emits, written from the public API's create-workflow schema: required `name`,
+  `nodes`, `connections`, `settings`; node fields such as `type`, `typeVersion`, `parameters`, `credentials`,
+  `retryOnFail`, `maxTries`, `waitBetweenTries`, `onError`, `notes`; `additionalProperties: false`. Fields the API
+  marks read-only (`id`, `active`, `tags`, `meta` and others) are never emitted.
+- **Pinned node catalog.** `packages/n8n-export/catalog/n8n-<version>.json`, pinned to one n8n release named when the
+  slice starts. Per entry: `type`, `typeVersion`, the parameter keys the export may set, credential types, number of
+  outputs, the doc URL and the date checked. n8n keeps a node's version inside a saved workflow ("If a user builds
+  and saves a workflow using version 1, n8n continues to use version 1 in that workflow"), so a pinned
+  `typeVersion` is what the user gets. A node, version or parameter key outside the catalog is
+  `n8n_node_not_pinned`.
+- **Lint.** WF1 to WF8 (section 3.4).
+- **Pinned-data test.** n8n saves pinned data "instead of fetching fresh data" and it "isn't available for production
+  workflow executions", so `pinData` is for test runs in the user's editor only. Offload's own evaluator runs the
+  bundle over pinned data: nodes with `pinData` return it; Code nodes run in the transform isolate; Remove Duplicates
+  keeps its state across runs of a case; commit nodes are captured, never called. Their inputs must equal the
+  expected items by `item_hash`. This is Offload's reading of n8n's semantics for the subset it emits; a `LIVE:`
+  test creates each acceptance case on a real n8n of the pinned version through its API, reads it back and deletes
+  it, and skips without one. Only that test and a run in n8n's editor show that n8n agrees.
+
+#### 9.4 Download
+`GET /v1/builds/{id}/n8n-export` returns the bundle and the card for a build whose receipt passes WF8. A file the
+member downloads is not an external action. Its import note tells the member to map each credential placeholder and to
+select the error workflow in the workflow's settings.
+
+#### 9.5 Push to the user's own n8n (optional)
+- **Connect.** The member adds "Your n8n": a base URL (https only; on Offload Cloud, no private, loopback or
+  link-local address) and an API key they create in n8n. The key is a credential kept by the broker
+  ([ADR 0034](0034-credential-broker-and-key-providers.md)) for connection provider `n8n_instance`; the broker sends
+  it only to that host, as the `X-N8N-API-KEY` header. From n8n 2.14.0 keys can be scoped on every plan; the connect
+  screen asks for workflow scopes only.
+- **Approve.** A deploy approval ([ADR 0032](0032-deploy-approval-binds-definition.md)) with target `n8n` binds
+  `artifact_sha256`, `receipt_hash`, `definition_hash`, `export_hash`, the connection id and `publish` (true or
+  false), shown in words first.
+- **Send.** The broker re-checks the approval and that the bodies hash to `export_hash` (with the placeholder),
+  then: `POST /api/v1/workflows` for the error workflow; `POST /api/v1/workflows` for the main workflow with
+  `settings.errorWorkflow` set to the id n8n returned; then, only if `publish`, `POST /api/v1/workflows/{id}/publish`
+  (n8n marks `/activate` deprecated). Each call writes an item journal row first and ends `sent`,
+  `failed_before_send` or `unknown`; `unknown` is never sent again, since a second create would make a second
+  workflow. Audit `n8n.export_pushed`.
+- **One system at a time.** A push is refused while a routine from the same brief is active on the native backend
+  (`409 native_active`), because the two systems' dedupe keys cannot see each other.
+- **Switch.** Push is behind the setting `n8n_push`, off by default until
+  [OQ-32](../OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n) is answered.
+
+#### 9.6 License position
+The export file: Offload runs no n8n; the user runs their own n8n under their own license for their own business,
+which the Sustainable Use License allows. The push is closer to the words the FAQ uses for what is not allowed, so its
+residual risk is recorded in OQ-32 and push ships off. n8n run by Offload is not built. Details and quotes:
+[research section 3.1](../research/workflow-engines-2026-11.md#31-n8n) and
+[section 7](../research/workflow-engines-2026-11.md#7-license-risks-stated-plainly).
 
 ## Consequences
 - **Stability comes from Offload's own code on the engine it already runs.** No new runtime component, nothing new to
@@ -316,6 +450,13 @@ Safety and the single-player loop are core ([OPEN_CORE.md](../OPEN_CORE.md#2-fea
 - **A tool behind an MCP endpoint that fronts a workflow cannot graduate.** Users who bring their own n8n keep
   approving each batch.
 - **Every new backend must pass the conformance suite**, so a second backend is a lot of work by design.
+- **Every routine is built to the eight workflow design rules**, checked by lint, so "well designed" is a test result,
+  not a claim. Briefs must name `item_identity` for every commit step (WF5).
+- **Users who run n8n get the fix as n8n workflow JSON**, built and verified by Offload and run by them. Offload gives
+  up the gate, the journal and the measurement for those runs, and says so. Push to their instance is built but
+  switched off until n8n answers in writing (OQ-32).
+- **The n8n node catalog is upkeep.** Each new n8n release the export targets needs the catalog re-checked against a
+  live instance; until then the export keeps the pinned versions.
 
 ## Alternatives considered
 - **n8n hosted by Offload as the execution backend.** Rejected:
@@ -323,7 +464,14 @@ Safety and the single-player loop are core ([OPEN_CORE.md](../OPEN_CORE.md#2-fea
   - it would bypass the gate and the broker;
   - it adds a server and Redis ([research section 3.1](../research/workflow-engines-2026-11.md#31-n8n)).
 - **Deploying fixes into the user's own n8n by API as a backend.** Rejected as a backend: it fails conformance rules
-  1 to 3 and its license position is unconfirmed. Kept only as a possible export (OQ-30).
+  1 to 3. Kept as an export target with an optional push (section 9), labelled as outside the gate.
+- **n8n run by Offload for users now** ("Offload builds and runs it inside n8n for you"). Gated, not rejected: it
+  needs n8n's written answer and an agreement (OQ-32), and it would still fail conformance rules 1 to 3.
+- **Generating n8n JSON with n8n's own Workflow SDK or MCP server.** Both validate workflows, but using them means
+  running or shipping n8n code under the Sustainable Use License inside Offload. Offload writes the JSON itself and
+  checks it against its own schema, a pinned catalog and a live import test.
+- **Export only, no push.** Simpler and the lowest license risk, but the owner asked for n8n engineering, and a user
+  who must import by hand often doesn't. Push is built and switched off by default instead.
 - **Activepieces community edition hosted by Offload.** The license allows it (MIT). Rejected: same credential
   problem, plus Redis and workers. Its pieces are used as an integration source instead.
 - **Windmill.** AGPL plus proprietary community images; a commercial license is needed to build a paid feature on it.
@@ -348,4 +496,16 @@ Safety and the single-player loop are core ([OPEN_CORE.md](../OPEN_CORE.md#2-fea
 - [Temporal replay testing](https://docs.temporal.io/develop/typescript/testing-suite.md).
 - [Windmill step mocking](https://www.windmill.dev/docs/flows/step_mocking) (the idea of pinned step results, which
   replay fixtures already cover).
-- Owner ask of 2026-11-22.
+- n8n docs, checked 2026-11-22: [API](https://docs.n8n.io/api/), [authentication](https://docs.n8n.io/api/authentication/),
+  [workflows API](https://docs.n8n.io/connect/n8n-api/build-and-run/workflows.md),
+  [export and import](https://docs.n8n.io/build/manage-workflows/export-and-import.md),
+  [pin data](https://docs.n8n.io/build/work-with-data/pin-and-mock-data.md),
+  [error handling](https://docs.n8n.io/build/flow-logic/handle-errors-gracefully.md),
+  [node settings](https://docs.n8n.io/build/understand-workflows/workflow-components/work-with-nodes.md),
+  [workflow settings](https://docs.n8n.io/build/manage-workflows/configure-workflow-settings.md),
+  [Remove Duplicates](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.removeduplicates.md),
+  [Code node](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.code.md),
+  [Schedule Trigger](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.scheduletrigger.md),
+  [HTTP Request](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.httprequest.md),
+  [node versioning](https://docs.n8n.io/connect/create-nodes/build-your-node/reference/versioning.md).
+- Owner ask of 2026-11-22 and owner decision of 2026-11-22 ([OQ-30](../OPEN_QUESTIONS.md#oq-30-n8n-in-offload)).
