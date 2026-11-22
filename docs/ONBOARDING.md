@@ -358,7 +358,9 @@ week of capture.
   the folder summary is real.
 - The import space is analysed as of its last day, so last month's recordings still show their week. "Remove
   imported data" calls `POST /v1/me/forget` with `scope: "import"`.
-- Only offered after screen 5 was accepted. In Local mode it is hidden.
+- Through the uploader, only offered after screen 5 was accepted. In Local mode it is hidden, except once on-device
+  text reading and the local store exist (slice m3-10): then it is offered in Local mode too, because that import sends
+  nothing (slice m3-14, recorded in its SPEC). The menu bar item says why the import is not offered when it is not.
 
 ## 9. Screens 12 and 13: how hands-on, done
 

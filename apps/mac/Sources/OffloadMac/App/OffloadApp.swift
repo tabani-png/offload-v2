@@ -11,14 +11,14 @@ struct OffloadApp: App {
   @StateObject private var app: AppModel
   /// Sparkle (m3-03), started by the composition root before any scene, as Sparkle's own SwiftUI setup does.
   private let updates: AppUpdates?
-  /// Where data goes, said in the menu (Local mode, no recordings import yet).
-  private let modeLines: [String]
+  /// Where data goes, said in the menu (Local mode, the recordings import), read each time the menu draws.
+  private let modeLines: @MainActor () -> [String]
 
   init() {
     let root = AppComposition.live()
     _app = StateObject(wrappedValue: root.app)
     updates = root.updates
-    modeLines = root.modeLines
+    modeLines = { root.modeLines }
   }
 
   var body: some Scene {
@@ -48,16 +48,16 @@ struct OffloadApp: App {
 struct MenuBarOpener: View {
   @ObservedObject var app: AppModel
   let updates: AppUpdates?
-  let modeLines: [String]
+  let modeLines: @MainActor () -> [String]
   @Environment(\.openWindow) private var openWindow
 
   var body: some View {
-    // Informational lines, shown disabled: Local mode and the missing recordings import (m3-14).
-    ForEach(modeLines, id: \.self) { line in
-      Button(line) {}
-        .disabled(true)
+    // Informational text items: Local mode and the recordings import (m3-14).
+    let lines = modeLines()
+    ForEach(lines, id: \.self) { line in
+      Text(line)
     }
-    if !modeLines.isEmpty { Divider() }
+    if !lines.isEmpty { Divider() }
     MenuBarContent(
       app: app,
       openWindow: {

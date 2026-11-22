@@ -79,8 +79,8 @@ public struct CompositionSeams {
   /// Nil in Local mode: nothing exists that could send.
   public let uploads: UploadRuntime?
   public let importChoice: ImportSinkChoice
-  /// What the menu bar item says about where data goes (ModeLines).
-  public let modeLines: [String]
+  /// An importer exists (m3-10's on-device text reading is plugged in).
+  public let importerReady: Bool
   public let app: AppModel
   /// Sparkle (m3-03). Nil in tests.
   let updates: AppUpdates?
@@ -110,12 +110,12 @@ public struct CompositionSeams {
     var ledger: (any RecordingLedger)?
     var importer: RecordingImporter?
     if seams.textRecognizer != nil, sink != nil {
-      let fileLedger = FileRecordingLedger(file: env.store.home.appendingPathComponent("import-ledger.json"))
+      let fileLedger = FileRecordingLedger(file: env.store.importLedgerFile)
       ledger = fileLedger
       importer = ImportComposition.importer(recognizer: seams.textRecognizer, masker: capture.importMasker(), sink: sink,
                                             ledger: fileLedger, neverWatch: neverWatch, protected: [env.store.home])
     }
-    modeLines = ModeLines.lines(backend: env.backend, importReady: importer != nil)
+    importerReady = importer != nil
 
     let sampleWeek = SampleWeekFlag()
     let services = OnboardingServices(
@@ -132,6 +132,24 @@ public struct CompositionSeams {
     // Row 11.6 "Start fresh" deletes the unreadable buffer before setup starts over.
     let store = env.store
     app.onStartFresh = { try? store.discard() }
+    // The offer rule follows where the import's data goes (ImportOffer), read live, replacing m3-04's
+    // "while sending" default.
+    let uploadsAvailable = uploads != nil
+    let hasOnDeviceSink = seams.onDeviceImportSink != nil
+    let model = app
+    model.recordings?.offerCheck = { [weak model] in
+      guard let model else { return false }
+      return ImportOffer.isOffered(choice: choice, hasOnDeviceSink: hasOnDeviceSink, uploadsAvailable: uploadsAvailable,
+                                   state: model.onboarding.state)
+    }
+  }
+
+  /// What the menu bar item says now about where data goes (ModeLines), from the live onboarding state.
+  public var modeLines: [String] {
+    let s = app.onboarding.state
+    let sendingNow = backend.allowsUploads && s.sending && !s.reconsentPending
+    return ModeLines.lines(local: !sendingNow, importerReady: importerReady,
+                           importOffered: app.recordings?.isOffered ?? false)
   }
 
   /// The app as shipped: real permission checks, the Keychain, the store under Application Support/Offload, Sparkle.
