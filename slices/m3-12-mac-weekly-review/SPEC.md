@@ -12,7 +12,7 @@ parallel_group: M3-E
 owns: [apps/mac/Sources/OffloadMac/WeeklyReview/**, apps/mac/Tests/OffloadMacTests/M312/**]
 verify: bash slices/m3-12-mac-weekly-review/verify.sh
 min_tests: 55
-paths_in_scope: [apps/mac/Sources/OffloadMac/WeeklyReview/**, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Tests/OffloadMacTests/M312/**, apps/mac/README.md, docs/GLOSSARY.md, slices/m3-12-mac-weekly-review/**]
+paths_in_scope: [apps/mac/Sources/OffloadMac/WeeklyReview/**, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/App/OffloadApp.swift, apps/mac/Tests/OffloadMacTests/M312/**, apps/mac/README.md, docs/GLOSSARY.md, slices/m3-12-mac-weekly-review/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Sources/OffloadMac/TodayLive/**, apps/mac/Sources/OffloadMac/BuildProgress/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**, apps/mac/Tests/OffloadMacTests/M310/**, apps/mac/Tests/OffloadMacTests/M311/**, apps/mac/Tests/OffloadMacTests/M313/**]
 red_tests: [WEEK, SLOT, SENTENCE, TILES, USUAL, GOALS, QUESTIONS, ANSWERS, NOTES, NOTIFY, SETTINGS, CLOUD, STATES, FIGURES, COPY]
 ---
@@ -258,3 +258,8 @@ folders.
      arithmetic reproduces the value. m3-10's day figure keeps its own rule (`Analysis/` is out of this slice's scope).
   9. Saved by fixes is a plain view (not a dimmed button); goal rows use `.contain` so the hours button stays reachable.
   10. The note after an answer sits beside the chips, as the mockup's `k0`.
+- Scope widened (review 2, finding 1): `apps/mac/Sources/OffloadMac/App/OffloadApp.swift` gets one additive modifier
+  on the menu bar label, `.modifier(WeeklyReviewWindowOpener(hub: app.weeklyReview))`. A click on the review
+  notification must reopen the main window, a SwiftUI `Window` scene that only `openWindow(id: "main")` reopens once
+  closed (the app keeps running with no window), and the menu bar label is the one view always alive. `Shell/RootView.swift`
+  stays untouched. The modifier lives in `WeeklyReview/`.

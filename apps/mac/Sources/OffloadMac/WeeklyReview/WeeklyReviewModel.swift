@@ -80,6 +80,7 @@ public final class WeeklyReviewModel: ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
   /// Wakes at the next slot so a screen left open moves to this week (review 1, finding 2).
   private var slotTimer: Task<Void, Never>?
+  private var wakeObserver: NSObjectProtocol?
 
   public init(backends: Backends, insights: InsightsModel, navigation: NavigationModel,
               goals: @escaping @MainActor () -> [String], slot: @escaping @MainActor () -> ReviewSlot,
@@ -208,9 +209,17 @@ public final class WeeklyReviewModel: ObservableObject {
     if hasRefreshed { await refresh() }
   }
 
-  /// The slot passed: a screen that follows now moves to this week.
+  /// The slot passed: a screen that follows now moves to this week, and is loaded again only when the screen already
+  /// asked for content (review 2, finding 3: no request nobody asked for).
   public func slotPassed() async {
-    await followNow()
+    if followsNow { week = ReviewSchedule.shownWeek(now: now(), slot: slot()) }
+    if hasRefreshed { await refresh() }
+  }
+
+  /// The Mac woke: if a slot passed while it slept, the screen moves now (review 2, finding 2).
+  public func didWake() async {
+    guard followsNow, ReviewSchedule.shownWeek(now: now(), slot: slot()).id != week.id else { return }
+    await slotPassed()
   }
 
   /// The review notification was clicked: back to the week the slot shows, whichever week was open.
@@ -219,14 +228,23 @@ public final class WeeklyReviewModel: ObservableObject {
     await followNow()
   }
 
-  /// Sleeps until each next slot (at most 6 hours at a time) and then calls `slotPassed()`.
+  /// Sleeps until each next slot (at most 6 hours at a time, on the continuous clock, which counts time the Mac slept)
+  /// and then calls `slotPassed()`; waking the Mac checks at once.
   public func startFollowingSlot() {
+    if wakeObserver == nil {
+      wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+        forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+      ) { [weak self] _ in
+        guard let self else { return }
+        Task { @MainActor in await self.didWake() }
+      }
+    }
     slotTimer?.cancel()
     slotTimer = Task { @MainActor [weak self] in
       while !Task.isCancelled {
         guard let target = self?.nextSlot, let start = self?.now() else { return }
         let wait = min(max(target.timeIntervalSince(start), 1), 6 * 3600)
-        try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+        try? await Task.sleep(for: .seconds(wait), clock: .continuous)
         guard !Task.isCancelled, let self else { return }
         if self.now() >= target { await self.slotPassed() }
       }
@@ -472,7 +490,10 @@ public final class ReviewSettingsModel: ObservableObject {
 /// What AppModel keeps for the weekly review: the screen's model, the Settings section and the notification. Built
 /// from AppModel's parts; it keeps no reference to AppModel.
 @MainActor
-public final class WeeklyReviewHub {
+public final class WeeklyReviewHub: ObservableObject {
+  /// Each click on the review notification adds one: `WeeklyReviewWindowOpener` (on the always-present menu bar
+  /// label) answers with `openWindow(id: "main")`, so the review shows even when the main window was closed.
+  @Published public private(set) var windowRequests = 0
   public let review: WeeklyReviewModel
   public let settings: ReviewSettingsModel
   public let navigation: NavigationModel
@@ -492,6 +513,7 @@ public final class WeeklyReviewHub {
 
   /// The review notification was clicked: Weekly review opens on the week the slot shows (review 1, finding 2).
   public func openFromNotification() async {
+    windowRequests += 1
     navigation.selection = .weeklyReview
     await review.returnToNow()
   }
@@ -503,7 +525,12 @@ public final class WeeklyReviewHub {
     let opener = ReviewOpener()
     let notifier = LiveReviewNotifier(onOpen: {
       NSApp.activate()
-      Task { await opener.hub?.openFromNotification() }
+      Task {
+        await opener.hub?.openFromNotification()
+        // An open main window (for example behind Settings) comes forward even if the opener is not mounted.
+        NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix(WeeklyReviewWindow.mainWindowID) == true })?
+          .makeKeyAndOrderFront(nil)
+      }
     })
     self.init(backends: app.backends, insights: app.insights, navigation: app.navigation,
               goals: { [weak onboarding] in onboarding?.state.profile.goals ?? [] },

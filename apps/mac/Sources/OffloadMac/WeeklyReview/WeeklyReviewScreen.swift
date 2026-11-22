@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // The Weekly review screen (mockup `Weekly`): one sentence about what changed, tiles against your usual week, your
@@ -232,13 +233,17 @@ struct ReviewGoalRowView: View {
         Text(goal.text).textStyle(Tokens.TypeScale.body).foregroundStyle(Theme.chromeInk)
           .frame(maxWidth: .infinity, alignment: .leading)
         if let hours = goal.hoursText {
-          Button { showing.toggle() } label: {
-            Text(hours).font(.system(size: 12, design: .monospaced)).monospacedDigit()
-              .foregroundStyle(goal.linked ? Theme.chromeInk : Theme.chromeMute)
+          let label = Text(hours).font(.system(size: 12, design: .monospaced)).monospacedDigit()
+            .foregroundStyle(goal.linked ? Theme.chromeInk : Theme.chromeMute)
+          if goal.figures.isEmpty {
+            // "not linked yet": plain text, not a dimmed button (review 2, finding 4).
+            label
+          } else {
+            Button { showing.toggle() } label: { label }
+              .buttonStyle(.plain)
+              .accessibilityHint(ReviewCopy.howCounted)
+              .popover(isPresented: $showing, arrowEdge: .bottom) { FigureDetailView(figures: goal.figures) }
           }
-          .buttonStyle(.plain)
-          .disabled(goal.figures.isEmpty)
-          .popover(isPresented: $showing, arrowEdge: .bottom) { FigureDetailView(figures: goal.figures) }
         }
         if !goal.trendItems.isEmpty {
           HStack(spacing: Tokens.Space.s4) {
@@ -317,7 +322,8 @@ struct ChipRow: View {
           } label: {
             ChipLabel(text: chip.label, on: question.isOn(chip))
           }
-          .menuStyle(.borderlessButton)
+          .menuStyle(.button)
+          .buttonStyle(.borderless)
           .menuIndicator(.hidden)
           .fixedSize()
           .disabled(busy)
@@ -366,5 +372,27 @@ struct FigureDetailView: View {
     }
     .padding(Tokens.Space.s16)
     .frame(width: 340, alignment: .leading)
+  }
+}
+
+/// The main window's scene id (`App/OffloadApp.swift`).
+public enum WeeklyReviewWindow {
+  public static let mainWindowID = "main"
+}
+
+/// Opens the main window when the review notification is clicked (review 2, finding 1). Attached to the menu bar
+/// label, the one view that is always alive, because a closed `Window` scene is reopened only by `openWindow`. An open
+/// main window behind the Settings window comes to the front the same way.
+public struct WeeklyReviewWindowOpener: ViewModifier {
+  @ObservedObject var hub: WeeklyReviewHub
+  @Environment(\.openWindow) private var openWindow
+
+  public init(hub: WeeklyReviewHub) { self.hub = hub }
+
+  public func body(content: Content) -> some View {
+    content.onChange(of: hub.windowRequests) { _, _ in
+      openWindow(id: WeeklyReviewWindow.mainWindowID)
+      NSApp.activate()
+    }
   }
 }
