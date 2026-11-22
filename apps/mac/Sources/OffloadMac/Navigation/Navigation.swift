@@ -142,6 +142,7 @@ public enum NavigationCopy {
   public static let buildsPlaceholder = "Builds you start show here."
   public static let reviewSettingsTitle = "Weekly review"
   public static let showRecordingsSettings = "Show recordings settings"
+  public static let settingsWaitingBody = "This window was open when Offload last quit. Nothing is read until you show it."
   public static let localImportUnavailable = "Offload couldn't set up its folder on this Mac, so recordings can't be read here yet. Quit and open Offload again to retry."
 
   /// "connected to api.example.com".
@@ -170,7 +171,7 @@ public enum NavigationCopy {
   public static var all: [String] {
     Screen.allCases.map(\.title) + [
       sampleData, countedOnThisMac, backendTitle, backendLocal, backendLocalHelp, foldersTitle, useFolder,
-      weeklyReviewPlaceholder, buildsPlaceholder, reviewSettingsTitle, showRecordingsSettings, localImportUnavailable,
+      weeklyReviewPlaceholder, buildsPlaceholder, reviewSettingsTitle, showRecordingsSettings, settingsWaitingBody, localImportUnavailable,
       backendCloud(host: "api.example.com"),
     ] + [RecordingFolderCandidate.Kind.screenwatch, .folder, .screenRecordings, .desktop, .movies].map(folderKind)
   }

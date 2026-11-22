@@ -24,8 +24,10 @@ public struct LocalAnalysis {
   /// the uploader's, m3-02), so nothing is counted here that the cloud should have (review 2, finding 4).
   public static func importsOnThisMac(mode: BackendMode) -> Bool { mode.isLocal }
 
-  public static func live(neverWatch: NeverWatchStore, events: LocalEventSource, mode: BackendMode) -> LocalAnalysis {
-    let folders = OnDeviceRecordings.Folders.live()
+  /// `folders` and `defaults` are this user's in the app; tests pass a temporary folder and a test suite.
+  public static func live(neverWatch: NeverWatchStore, events: LocalEventSource, mode: BackendMode,
+                          folders: OnDeviceRecordings.Folders? = nil, defaults: UserDefaults = .standard) -> LocalAnalysis {
+    let folders = folders ?? OnDeviceRecordings.Folders.live()
     let box = ExclusionRulesBox()
     let store = InsightsStore(sources: InsightsStore.Sources(
       reader: LocalObservationStore(folder: folders.paths.imports), live: events, exclusions: { box.rules },
@@ -34,8 +36,9 @@ public struct LocalAnalysis {
     let insights = InsightsModel(store: store)
     var onDevice: OnDeviceRecordings?
     if importsOnThisMac(mode: mode) {
-      onDevice = try? OnDeviceRecordings.make(neverWatch: neverWatch, store: UserDefaultsRecordingsFolderStore(),
-                                              folders: folders, panel: AnalysedImportPanel(insights: insights))
+      onDevice = try? OnDeviceRecordings.make(neverWatch: neverWatch, store: UserDefaultsRecordingsFolderStore(defaults: defaults),
+                                              folders: folders, panel: AnalysedImportPanel(insights: insights),
+                                              importsListReadable: OnDeviceRecordings.importsListReadable(defaults: defaults))
     }
     return LocalAnalysis(insights: insights, onDevice: onDevice, rules: box)
   }

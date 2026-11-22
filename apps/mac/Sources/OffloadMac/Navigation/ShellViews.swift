@@ -241,6 +241,8 @@ public struct SettingsWindowView: View {
       OffloadSettingsView(app: app)
     case .waiting:
       VStack(spacing: Tokens.Space.s16) {
+        Text(NavigationCopy.settingsWaitingBody).textStyle(Tokens.TypeScale.body).foregroundStyle(Theme.ink2)
+          .multilineTextAlignment(.center)
         Button(NavigationCopy.showRecordingsSettings) { navigation.requestSettings() }
           .buttonStyle(SecondaryButtonStyle())
       }

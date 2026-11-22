@@ -62,20 +62,23 @@ public struct OnDeviceRecordings {
   public let discardedUnfinished: [String]
 
   /// The recordings model with a real importer. `pseudonymKey` nil reads or creates the local pseudonym key.
+  /// `importsListReadable` false (the stored list of imports exists but does not decode) skips the discard of
+  /// unfinished imports, so an unreadable list never deletes analysed history (review 3, finding 2).
   public static func make(neverWatch: NeverWatchStore, store: RecordingsFolderStore, folders: Folders,
                           panel: ImportPanelPresenter? = nil, picker: FolderPicker? = nil,
                           recognizer: (any TextRecognizer)? = nil, pseudonymKey: Data? = nil,
                           readers: RecordingImporter.Readers = .live, clock: any ImportClock = SystemImportClock(),
                           timeZone: TimeZone = .current,
                           durations: (@Sendable (URL) -> TimeInterval?)? = nil,
-                          appNames: (@MainActor ([String]) -> @Sendable (String) -> [String])? = { LiveAppNames.resolver(for: $0) })
+                          appNames: (@MainActor ([String]) -> @Sendable (String) -> [String])? = { LiveAppNames.resolver(for: $0) },
+                          importsListReadable: Bool = true)
     throws -> OnDeviceRecordings {
     let paths = folders.paths
     let key = try pseudonymKey ?? LocalPseudonymKey.loadOrCreate(at: paths.pseudonymKey)
     try OnDeviceFiles.ensureFolder(paths.root)
     let sink = LocalImportSink(folder: paths.imports)
     let ledger = FileRecordingLedger(file: paths.ledger)
-    let discarded = discardUnfinished(store: store, sink: sink, ledger: ledger)
+    let discarded = importsListReadable ? discardUnfinished(store: store, sink: sink, ledger: ledger) : []
     let protected = [paths.offloadSupport]
     let importer = RecordingImporter(
       recognizer: recognizer ?? VisionTextRecognizer(), masker: InterimTextMasker(key: key), hasher: nil, keyframes: nil,
@@ -99,6 +102,13 @@ public struct OnDeviceRecordings {
                               picker: chooser, paths: paths,
                               folderCandidates: RecordingFolderCandidates(folders: folders, protected: protected),
                               discardedUnfinished: discarded)
+  }
+
+  /// False only when a list of imports is stored under m3-05's key and does not decode (m3-05's store then reads it as
+  /// empty, which must not be taken for "no import finished").
+  public static func importsListReadable(defaults: UserDefaults) -> Bool {
+    guard let data = defaults.data(forKey: UserDefaultsRecordingsFolderStore.importsKey) else { return true }
+    return (try? JSONDecoder().decode([ImportRecord].self, from: data)) != nil
   }
 
   /// At launch, before any import can run: an import is listed (and so removable) only once it finished, so a file or
