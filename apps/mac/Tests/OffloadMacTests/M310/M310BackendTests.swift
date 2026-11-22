@@ -318,7 +318,8 @@ extension M310 {
     let client = M310B.brain(transport)
     var patch = BrainProfilePatch()
     patch.setGoals(["A", "a"])
-    let one = await M310B.error { try await client.updateProfile(patch) }
+    let sent = patch  // a let: the @Sendable closure below may not capture a var (Swift 6)
+    let one = await M310B.error { try await client.updateProfile(sent) }
     let two = await M310B.error { try await client.profile() }
     let three = await M310B.error { try await client.profile() }
     let four = await M310B.error { try await client.profile() }

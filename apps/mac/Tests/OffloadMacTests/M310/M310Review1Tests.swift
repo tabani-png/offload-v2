@@ -77,12 +77,14 @@ extension M310 {
     return (app, reader)
   }
 
-  static func slackCounted(_ app: AppModel) -> Bool {
-    app.insights.snapshot.day("2026-11-18")?.perApp.contains { $0.appName == "Slack" } == true
+  /// Take the snapshot (a Sendable value read on the main actor by the caller), not the app: AppModel and its
+  /// insights model are main-actor isolated, and these helpers run inside #expect's nonisolated closure.
+  static func slackCounted(_ snapshot: InsightsSnapshot) -> Bool {
+    snapshot.day("2026-11-18")?.perApp.contains { $0.appName == "Slack" } == true
   }
 
-  static func neverWatchCounted(_ app: AppModel) -> Bool {
-    app.insights.snapshot.day("2026-11-18")?.perApp.contains { $0.appName == "Never watch app" } == true
+  static func neverWatchCounted(_ snapshot: InsightsSnapshot) -> Bool {
+    snapshot.day("2026-11-18")?.perApp.contains { $0.appName == "Never watch app" } == true
   }
 
   @Test("WIRING: at launch the local analysis counts the imported days once, reading the imports once")
@@ -92,7 +94,7 @@ extension M310 {
     let recomputed = await app.insights.store.recomputed
     #expect(recomputed == ["2026-11-18"])
     #expect(reader.reads == 1)
-    #expect(Self.slackCounted(app))
+    #expect(Self.slackCounted(app.insights.snapshot))
     #expect(app.recordings?.isOffered == false)  // importer nil: nothing to offer on this Mac (finding 10)
   }
 
@@ -102,8 +104,8 @@ extension M310 {
     await app.insights.idle()
     await app.dontWatch(Exclusion(kind: .bundleID, value: M310App.slack.0))
     await app.insights.idle()
-    #expect(!Self.slackCounted(app))
-    #expect(Self.neverWatchCounted(app))
+    #expect(!Self.slackCounted(app.insights.snapshot))
+    #expect(Self.neverWatchCounted(app.insights.snapshot))
     let recomputed = await app.insights.store.recomputed
     #expect(recomputed == ["2026-11-18", "2026-11-18"])
   }
@@ -114,7 +116,7 @@ extension M310 {
     await app.insights.idle()
     await app.onboarding.perform(.neverWatch(add: [Exclusion(kind: .bundleID, value: M310App.slack.0)]))
     await app.insights.idle()
-    #expect(Self.neverWatchCounted(app))
+    #expect(Self.neverWatchCounted(app.insights.snapshot))
     // Closing the sheet asks again; nothing changed since, so nothing is recounted.
     app.insights.exclusionsChanged()
     await app.insights.idle()
