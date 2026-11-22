@@ -73,7 +73,7 @@ describe("p45a hardening", () => {
     expect(beats.length).toBeGreaterThanOrEqual(3);
   });
 
-  test("HELDOUT: an attempt row exists from the moment a worker starts, so its held-out check counts as used", async () => {
+  test("HELDOUT: an attempt row (running) exists from the moment a worker starts, and its held-out check is used", async () => {
     const h = harness([{ delayMs: 30 }]);
     const r = await ok(h);
     const run = runBuild(h.deps, { tenant_id: TENANT, build_id: r.build_id, token: r.token });

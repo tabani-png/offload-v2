@@ -1,7 +1,7 @@
 // OK, build and the build workflow (old builder/loop.ts, s35, rewritten for v2; ARCHITECTURE section 8).
 //
-//   okBuild   the user's OK: every hash and the cap must equal what the fix designer froze; a held-out check already
-//             used by a build that ran a worker is refused (ADR 0029); the insert under the one-live-build-per-brief
+//   okBuild   the user's OK: every hash and the cap must equal what the fix designer froze; a held-out check any
+//             earlier build of the brief was bound to is refused (ADR 0029); the insert under the one-live-build-per-brief
 //             rule IS the lock (old s35 had an await between its gate and its lock file, so two OKs could both get
 //             202); then the exact-hash, single-use, 24 h build approval is minted. The token goes to the workflow in
 //             process only.
@@ -213,7 +213,7 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
         row.note = "This worker's approval claim could not be made, so it did not start.";
         return { row, frozenOutput, heldOutFailed, infra: false };
       }
-      // The row exists before the worker starts: from now on this held-out check counts as used (ADR 0029).
+      // The row exists (outcome running) before the worker starts, so a crash still leaves a record of the attempt.
       try {
         await d.store.putAttempt({ ...row, outcome: "running", note: "This worker is building." });
       } catch {

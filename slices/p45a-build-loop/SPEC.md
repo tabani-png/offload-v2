@@ -42,7 +42,7 @@ stubs, listed in DESIGN.md section 4.
   202 `{ build_id }`; 400 `invalid_request`; 403 `hash_mismatch` (any hash or `cap_usd` not equal); 404 `not_found`;
   409 `already_running`; 409 `state_conflict` when the held-out hash was already used by a build of this brief.
 - `GET /v1/builds/{id}` → `Build` `{ id, state, cap_usd, spent_usd, fanout_workers, stages[], attempts[] (with
-  check_groups[]), winner_attempt_id, artifact_sha256, receipt_hash, definition_hash, started_at, ended_at }`.
+  check_groups[]), winner_attempt_id, artifact_sha256, receipt_hash, definition_hash, deployed, started_at, ended_at }`.
 - `POST /v1/builds/{id}/deploy` `{ artifact_sha256, receipt_hash, definition_hash }` → 201 `{ routine_id, version }`;
   403 `hash_mismatch`; 409 `state_conflict` unless `ready` and not yet deployed.
 - Handlers are web-standard `(Request, { tenant_id, member_id }) → Response` (`src/http.ts`); `services/api` mounts them.

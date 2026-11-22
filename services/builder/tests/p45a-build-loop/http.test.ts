@@ -37,7 +37,7 @@ describe("p45a /v1 builds", () => {
     expect(g.body.state).toBe("ready");
   });
 
-  test("GATE: OK, build with a wrong check_set_hash is 403 hash_mismatch; nothing is stored, minted or started", async () => {
+  test("GATE: a wrong brief hash is refused as forbidden (403 hash_mismatch) before any check is written or any worker runs; so is any other wrong hash or cap", async () => {
     const a = api();
     for (const k of ["brief_hash", "check_set_hash", "held_out_hash", "fixture_set_hash"]) {
       const r = await a.call("POST", `/v1/fixes/${FIX}/build-approvals`, { ...hashesOf(a.fix), [k]: "0".repeat(64) });

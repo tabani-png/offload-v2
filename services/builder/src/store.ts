@@ -60,7 +60,7 @@ export interface AttemptRow {
   ordinal: number;
   sandbox_provider: string;
   sandbox_id: string | null;
-  /** `running` from the moment the worker starts: its held-out check counts as used from then on. */
+  /** `running` from the moment the worker starts, then its final outcome. */
   outcome: "running" | "pass" | "fail" | "cap" | "tamper" | "error";
   spent_usd4: number;
   tries: number;

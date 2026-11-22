@@ -9,7 +9,7 @@ verification sandbox, nonce proof, tamper hash, build cap.
 
 | Old (`brain/src/…`) | Fate | v2 |
 |---|---|---|
-| `builder/loop.ts` | port as code (rewrite) | `services/builder/src/loop.ts` (build workflow), `src/budget.ts` |
+| `builder/loop.ts` | port as code (rewrite) | `services/builder/src/loop.ts` (OK, build and the build workflow; budget through `BuildStore.reserve`/`settle`) |
 | `builder/runner.ts` (s24 tries, stall, teeth) | rewrite | `src/attempt.ts` (one attempt: claim, sandbox, tries, stall, tamper hash) |
 | `builder/heldout.ts` | rewrite | `src/heldout.ts` |
 | `builder/checks.ts` | rewrite (TypeScript checks only, `check_sets.language`) | `src/checks.ts` (reply parsing, import rule, builder-facing BUILD.md) |
