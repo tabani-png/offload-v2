@@ -23,26 +23,34 @@ export interface SpanLabeler {
 
 export type RouteFn = (call: RouteCall) => Promise<RouteResult>;
 
-export const LABEL_SCHEMA: JsonSchema = {
-  type: "object",
-  properties: {
-    labels: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: { verb: { type: "string", enum: [...SPAN_VERBS] }, object: { type: "string", enum: [...SPAN_OBJECTS, "none"] } },
-        required: ["verb", "object"],
-        additionalProperties: false,
+/** The label-only schema for `n` items. Each label names its item ("1".."n", a label like the others: schemas hold no
+ * numbers), so an answer in another order still lands on the right span. */
+export function labelSchema(n: number): JsonSchema {
+  return {
+    type: "object",
+    properties: {
+      labels: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            item: { type: "string", enum: Array.from({ length: n }, (_, i) => String(i + 1)) },
+            verb: { type: "string", enum: [...SPAN_VERBS] },
+            object: { type: "string", enum: [...SPAN_OBJECTS, "none"] },
+          },
+          required: ["item", "verb", "object"],
+          additionalProperties: false,
+        },
       },
     },
-  },
-  required: ["labels"],
-  additionalProperties: false,
-};
+    required: ["labels"],
+    additionalProperties: false,
+  };
+}
 
 const SYSTEM =
   "You label short descriptions of screen work. For each numbered item give one verb and one object from the allowed " +
-  "lists, in the same order as the items. Use the object none when no object fits.";
+  "lists, and the item's number. Use the object none when no object fits.";
 
 export function routerSpanLabeler(route: RouteFn, who: { tenant_id: string; member_id: string }): SpanLabeler {
   return {
@@ -52,17 +60,28 @@ export function routerSpanLabeler(route: RouteFn, who: { tenant_id: string; memb
       const content = items.map((it, i) => `${i + 1}. ${untrusted("span_text", it.text)}`).join("\n");
       const r = await route({
         tenant_id: who.tenant_id, member_id: who.member_id, route: "label", system: SYSTEM, messages: [{ role: "user", content }],
-        schema: LABEL_SCHEMA, max_tokens: 64 + 32 * items.length, scope: "brain",
+        schema: labelSchema(items.length), max_tokens: 64 + 40 * items.length, scope: "brain",
       });
       if (r.status !== "ok") return out;
       const labels = (r.output as { labels?: unknown } | undefined)?.labels;
-      if (!Array.isArray(labels) || labels.length !== items.length) return out;
-      items.forEach((it, i) => {
-        const l = labels[i] as { verb?: unknown; object?: unknown } | undefined;
-        const verb = typeof l?.verb === "string" && (SPAN_VERBS as readonly string[]).includes(l.verb) ? l.verb : undefined;
-        const object = typeof l?.object === "string" && (SPAN_OBJECTS as readonly string[]).includes(l.object) ? l.object : undefined;
-        out.set(it.span_id, { ...(verb === undefined ? {} : { verb }), ...(object === undefined ? {} : { object }) });
-      });
+      if (!Array.isArray(labels)) return out;
+      // Labels map to items by their item number. An item named twice gets no label (the answer contradicts itself);
+      // an item not named gets none.
+      const byItem = new Map<number, { verb?: unknown; object?: unknown }>();
+      const repeated = new Set<number>();
+      for (const raw of labels) {
+        const l = raw as { item?: unknown; verb?: unknown; object?: unknown } | null;
+        const k = typeof l?.item === "string" && /^[1-9]\d*$/.test(l.item) ? Number(l.item) - 1 : -1;
+        if (k < 0 || k >= items.length) continue;
+        if (byItem.has(k)) repeated.add(k);
+        byItem.set(k, l!);
+      }
+      for (const [k, l] of byItem) {
+        if (repeated.has(k)) continue;
+        const verb = typeof l.verb === "string" && (SPAN_VERBS as readonly string[]).includes(l.verb) ? l.verb : undefined;
+        const object = typeof l.object === "string" && (SPAN_OBJECTS as readonly string[]).includes(l.object) ? l.object : undefined;
+        out.set(items[k]!.span_id, { ...(verb === undefined ? {} : { verb }), ...(object === undefined ? {} : { object }) });
+      }
       return out;
     },
   };
