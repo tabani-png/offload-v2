@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { cleanup, fakeBinary, fakeTools, plistValues, repo, run, tmp } from "./helpers";
@@ -140,6 +140,46 @@ test("ASSEMBLE: the bundle carries the license and the third-party notices and n
   expect(existsSync(join(app, "Contents/Resources/offload"))).toBe(false);
 });
 
+/** A stand-in for SwiftPM's Sparkle.framework beside the release binary (versioned layout with symlinks). */
+function sparkleBeside(bindir: string): string {
+  const fw = join(bindir, "Sparkle.framework");
+  mkdirSync(join(fw, "Versions/B/Updater.app/Contents/MacOS"), { recursive: true });
+  mkdirSync(join(fw, "Versions/B/XPCServices/Installer.xpc"), { recursive: true });
+  writeFileSync(join(fw, "Versions/B/Sparkle"), "framework");
+  writeFileSync(join(fw, "Versions/B/Autoupdate"), "autoupdate");
+  symlinkSync("B", join(fw, "Versions/Current"));
+  symlinkSync("Versions/Current/Sparkle", join(fw, "Sparkle"));
+  return fw;
+}
+
+function assembledWithSparkle() {
+  const d = tmp();
+  const bindir = join(d, "release");
+  mkdirSync(bindir);
+  sparkleBeside(bindir);
+  const bin = fakeBinary(bindir, "x", join(d, "env.txt"));
+  const out = join(d, "out");
+  const r = run(["assemble", bin, out]);
+  const app = join(out, "Offload.app");
+  return { app, fw: join(app, "Contents/Frameworks/Sparkle.framework"), r };
+}
+
+test("ASSEMBLE: Sparkle.framework beside the binary is copied into Contents/Frameworks with its symlinks", () => {
+  // Since the rebase onto main, the Offload executable links Sparkle (m3-03) and loads it from
+  // @executable_path/../Frameworks; without the framework the app would not launch.
+  const { fw, r } = assembledWithSparkle();
+  expect(r.code).toBe(0);
+  expect(readFileSync(join(fw, "Versions/B/Sparkle"), "utf8")).toBe("framework");
+  expect(lstatSync(join(fw, "Versions/Current")).isSymbolicLink()).toBe(true);
+  expect(lstatSync(join(fw, "Sparkle")).isSymbolicLink()).toBe(true);
+});
+
+test("ASSEMBLE: without Sparkle.framework beside the binary the bundle has no Frameworks folder", () => {
+  const { app, r } = assembled();
+  expect(r.code).toBe(0);
+  expect(existsSync(join(app, "Contents/Frameworks"))).toBe(false);
+});
+
 test("ASSEMBLE: a missing binary fails without creating a bundle", () => {
   const d = tmp();
   const r = run(["assemble", join(d, "nope"), join(d, "out")]);
@@ -160,6 +200,34 @@ test("ADHOC: sign uses an ad hoc identity and never signs with --deep", () => {
     expect(c).toMatch(/--sign - /);
     expect(c).not.toContain("--deep");
   }
+});
+
+test("ADHOC: with Sparkle.framework, sign drops its XPC services and signs Autoupdate, Updater.app, the framework, then the app", () => {
+  const { app, fw } = assembledWithSparkle();
+  const { bin, log } = fakeTools();
+  expect(run(["sign", app], {}, bin).code).toBe(0);
+  expect(existsSync(join(fw, "Versions/B/XPCServices"))).toBe(false);
+  const signs = readFileSync(log, "utf8").trim().split("\n").filter((c) => c.includes("--sign"));
+  expect(signs.map((c) => c.split(" ").pop())).toEqual([
+    join(fw, "Versions/B/Autoupdate"),
+    join(fw, "Versions/B/Updater.app"),
+    fw,
+    app,
+  ]);
+  for (const c of signs) {
+    expect(c).toMatch(/--sign - /);
+    expect(c).not.toContain("--deep");
+    expect(c).not.toContain("runtime");
+  }
+});
+
+test("ADHOC: check passes a signed bundle that carries Sparkle.framework", () => {
+  const { app } = assembledWithSparkle();
+  const { bin } = fakeTools();
+  run(["sign", app], {}, bin);
+  const r = run(["check", app], {}, bin);
+  expect(r.err + r.out).not.toContain("FAIL");
+  expect(r.code).toBe(0);
 });
 
 test("ADHOC: check passes an assembled, ad hoc signed bundle", () => {
