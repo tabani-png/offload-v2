@@ -229,6 +229,16 @@ describe("p45a OK, build", () => {
     for (const t of h.worker.turns) expect(t.cap_usd4).toBe(7000);
   });
 
+  test("BUDGET: when the cap leaves no room for a fan-out worker after a failed first worker, the build ends capped, not failed", async () => {
+    // cap $1.60: minus the $0.30 reserve leaves $1.30; the first worker spends its $0.70, no second $0.70 fits
+    const h = harness([{ perTry: [{ "slug.ts": "// bad\n" }, { "slug.ts": "// bad 2\n" }], spent_usd: 0.35 }], { config: { cap_usd4: 16_000, fanout_workers: 3 } });
+    const { build_id } = await h.okAndRun({ cap_usd: 1.6 });
+    const { build, attempts } = await view(h, build_id);
+    expect(attempts).toHaveLength(1);
+    expect(build.state).toBe("capped");
+    expect(build.stages.at(-1)!.note).toContain("build cap");
+  });
+
   test("TDD: workers get the test-first, verify-before-done instructions (obra/superpowers), with stall stop and teeth gate on", async () => {
     const h = harness();
     await h.okAndRun();
