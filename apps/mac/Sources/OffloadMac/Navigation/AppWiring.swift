@@ -27,7 +27,8 @@ public struct LocalAnalysis {
 
   /// `folders` and `defaults` are this user's in the app; tests pass a temporary folder and a test suite.
   public static func live(neverWatch: NeverWatchStore, events: LocalEventSource, mode: BackendMode,
-                          folders: OnDeviceRecordings.Folders? = nil, defaults: UserDefaults = .standard) -> LocalAnalysis {
+                          folders: OnDeviceRecordings.Folders? = nil, defaults: UserDefaults = .standard,
+                          masker: (any ImportTextMasker)? = nil) -> LocalAnalysis {
     let folders = folders ?? OnDeviceRecordings.Folders.live()
     let box = ExclusionRulesBox()
     let store = InsightsStore(sources: InsightsStore.Sources(
@@ -39,7 +40,8 @@ public struct LocalAnalysis {
     if importsOnThisMac(mode: mode) {
       onDevice = try? OnDeviceRecordings.make(neverWatch: neverWatch, store: UserDefaultsRecordingsFolderStore(defaults: defaults),
                                               folders: folders, panel: AnalysedImportPanel(insights: insights),
-                                              importsListReadable: OnDeviceRecordings.importsListReadable(defaults: defaults))
+                                              importsListReadable: OnDeviceRecordings.importsListReadable(defaults: defaults),
+                                              masker: masker)
     }
     return LocalAnalysis(insights: insights, onDevice: onDevice, rules: box)
   }

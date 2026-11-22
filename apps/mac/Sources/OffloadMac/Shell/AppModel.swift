@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// The app's root model: decides the launch route, owns the onboarding and permissions models, and switches to Today
-/// when setup is done. Everything it calls is injected, so `App/OffloadApp.swift` only wires the live pieces.
+/// when setup is done. Everything it calls is injected; `Composition/AppComposition.swift` wires the live pieces.
 @MainActor
 public final class AppModel: ObservableObject {
   @Published public private(set) var route: LaunchRoute
@@ -18,6 +18,9 @@ public final class AppModel: ObservableObject {
   public let events: LocalEventSource
   public let sampleWeek: SampleWeekFlag
   public let neverWatch: NeverWatchStore
+  /// What this launch started (m3-14). Set once in init.
+  public private(set) var launchPlan = LaunchPlan(startUpdater: true, startCapture: false, startUploader: false,
+                                                  importSink: .onDevice)
   /// m3-10: the navigation shell (the sidebar's selection and the hand-off to Build progress).
   public let navigation: NavigationModel
   /// m3-10: backend mode and the brain and builds clients (none in `.local`).
@@ -34,9 +37,12 @@ public final class AppModel: ObservableObject {
 
   /// `currentNoticeVersion` is the server's "What leaves your Mac" version from `GET /v1/me` (nil until sign-in
   /// exists, m1-04).
+  /// `uploadsAvailable` is false in Local mode (no backend, so no uploader exists; m3-14's UploadBackend). Tests of
+  /// m3-04 inject fake services and keep the default.
   public init(options: LaunchOptions, bundlePath: String, bufferReadable: Bool, store: OnboardingStore,
               services: OnboardingServices, probe: PermissionProbe, events: LocalEventSource, sampleWeek: SampleWeekFlag,
-              currentNoticeVersion: String? = nil, navigation: NavigationModel? = nil, backends: Backends = .local,
+              currentNoticeVersion: String? = nil, uploadsAvailable: Bool = true,
+              navigation: NavigationModel? = nil, backends: Backends = .local,
               insights: InsightsModel? = nil, onDeviceRecordings: OnDeviceRecordings? = nil) {
     let onboarding = OnboardingModel(store: store, services: services)
     self.onboarding = onboarding
@@ -62,10 +68,14 @@ public final class AppModel: ObservableObject {
     }
     // Rows 11.1 and 11.4: both permissions are read at every launch.
     readPermissions(atLaunch: true)
-    // Capture resumes after a relaunch once screen 2 was resolved with a permission on.
-    if onboarding.state.captureStarted { services.capture.start() }
-    // Uploads resume for a person who is sending; never without consent, never while a new notice waits.
-    if onboarding.state.sending && !onboarding.state.reconsentPending { services.uploader.start() }
+    // What starts now is decided in one place (m3-14 LaunchPlan), after the permission read and the notice check:
+    // capture resumes once screen 2 was resolved with a permission on and the buffer is readable; uploads resume for
+    // a person who is sending, never without consent, never while a new notice waits, never in Local mode.
+    let plan = LaunchPlan.decide(LaunchFacts(state: onboarding.state, uploadsAvailable: uploadsAvailable,
+                                             bufferReadable: bufferReadable, currentNoticeVersion: currentNoticeVersion))
+    launchPlan = plan
+    if plan.startCapture { services.capture.start() }
+    if plan.startUploader { services.uploader.start() }
     today = TodayModel(state: onboarding.state, now: Date())
     onboarding.onOpenToday = { [weak self] in self?.showToday() }
   }
@@ -97,36 +107,8 @@ public final class AppModel: ObservableObject {
     }
   }
 
-  /// The app as shipped in this build: real permission checks; sign-in, upload, profile and connections are local
-  /// stand-ins (their backends land in later slices); nothing is sent anywhere. m3-10: recordings are read and
-  /// analysed on this Mac (OnDeviceRecordings, local insights); backend mode is `.local` until an API base URL and a
-  /// member token exist.
-  public static func live(arguments: [String] = ProcessInfo.processInfo.arguments) -> AppModel {
-    let sampleWeek = SampleWeekFlag()
-    // One Never watch store for the observer, the onboarding screens and the recordings import.
-    let neverWatch = NeverWatchStore()
-    let events: LocalEventSource = NoLocalEvents()
-    let backends = Backends.make(mode: BackendMode.resolve(
-      baseURL: UserDefaults.standard.string(forKey: BackendMode.baseURLDefaultsKey), tokens: NoMemberToken()))
-    let local = LocalAnalysis.live(neverWatch: neverWatch, events: events, mode: backends.mode)
-    let services = OnboardingServices(
-      account: UnavailableAccountService(), consent: LocalConsentService(), uploader: NoUploader(), capture: NoCapture(),
-      profile: LocalProfileService(), neverWatch: neverWatch, exclusions: LocalExclusionService(),
-      connections: UnavailableConnectionService(), loginItem: LiveLoginItem(), relauncher: LiveRelauncher(),
-      sampleWeek: sampleWeek,
-      recordings: local.onDevice?.model ?? RecordingsImportModel.live(neverWatch: neverWatch)
-    )
-    let app = AppModel(
-      options: LaunchOptions.parse(arguments: arguments), bundlePath: Bundle.main.bundlePath, bufferReadable: true,
-      store: UserDefaultsOnboardingStore(), services: services, probe: LivePermissionProbe(), events: events,
-      sampleWeek: sampleWeek, backends: backends, insights: local.insights, onDeviceRecordings: local.onDevice
-    )
-    app.startLocalAnalysis(rules: local.rules)
-    app.weeklyReview.start()
-    app.trackFrontmostApp()
-    app.startBackgroundChecks()
-    return app
-  }
+  // The live app is built by the one composition root, `AppComposition.live()` (m3-14). m3-10's local analysis
+  // and m3-12's weekly review start there, not from a second `AppModel.live()`.
 
   /// Screen 11 and Settings, Recordings (m3-05).
   public var recordings: RecordingsImportModel? { onboarding.services.recordings }
@@ -213,8 +195,12 @@ public final class AppModel: ObservableObject {
     today = TodayModel(state: onboarding.state, now: Date())
   }
 
-  /// Row 11.6 "Start fresh": the unreadable buffer is the store's to delete (m3-02); here setup starts over.
+  /// Deletes the unreadable buffer (set by the composition root, m3-14: `StoreContext.discard()`).
+  public var onStartFresh: (() -> Void)?
+
+  /// Row 11.6 "Start fresh": the unreadable buffer is deleted, then setup starts over.
   public func startFresh() {
+    onStartFresh?()
     onboarding.reset()
     route = .onboarding(.install)
   }

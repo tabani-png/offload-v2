@@ -2,15 +2,24 @@ import AppKit
 import SwiftUI
 
 // The Offload app: a menu bar item and one main window. All logic and views live in the other folders of this module
-// (tested there); this file only wires the live pieces. The process entry point is `OffloadEntry` in OffloadMac.swift
-// (m3-03): it answers `--self-check` and `--version` (m3-09) before any window, menu bar item or permission check
-// exists, and otherwise starts this app.
+// (tested there); this file only shows what the one composition root built (`AppComposition.live()`, m3-14). The
+// process entry point is `OffloadEntry` in OffloadMac.swift: `EntryCommand` answers `--self-check` (m3-03) and
+// `--version` (m3-09) before any window, menu bar item or permission check exists, and otherwise starts this app.
 
 struct OffloadApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-  @StateObject private var app = AppModel.live()
-  /// Sparkle (m3-03) starts here, before any scene, as Sparkle's own SwiftUI setup does.
-  private let updates = AppUpdates()
+  @StateObject private var app: AppModel
+  /// Sparkle (m3-03), started by the composition root before any scene, as Sparkle's own SwiftUI setup does.
+  private let updates: AppUpdates?
+  /// Where data goes, said in the menu (Local mode, the recordings import), read each time the menu draws.
+  private let modeLines: @MainActor () -> [String]
+
+  init() {
+    let root = AppComposition.live()
+    _app = StateObject(wrappedValue: root.app)
+    updates = root.updates
+    modeLines = { root.modeLines }
+  }
 
   var body: some Scene {
     Window("Offload", id: "main") {
@@ -30,7 +39,7 @@ struct OffloadApp: App {
     .commandsRemoved()
 
     MenuBarExtra {
-      MenuBarOpener(app: app, updates: updates)
+      MenuBarOpener(app: app, updates: updates, modeLines: modeLines)
     } label: {
       MenuBarLabel(app: app)
         // m3-12: a click on the review notification opens the main window on Weekly review.
@@ -42,10 +51,17 @@ struct OffloadApp: App {
 /// Opens the main window from the menu bar item.
 struct MenuBarOpener: View {
   @ObservedObject var app: AppModel
-  let updates: AppUpdates
+  let updates: AppUpdates?
+  let modeLines: @MainActor () -> [String]
   @Environment(\.openWindow) private var openWindow
 
   var body: some View {
+    // Informational text items: Local mode and the recordings import (m3-14).
+    let lines = modeLines()
+    ForEach(lines, id: \.self) { line in
+      Text(line)
+    }
+    if !lines.isEmpty { Divider() }
     // m3-11: "today · 3 h 10 m · mostly Xcode" above m3-04's menu; no line when nothing was counted today.
     TodayMenuLine(app: app)
     MenuBarContent(
@@ -54,10 +70,11 @@ struct MenuBarOpener: View {
         openWindow(id: "main")
         NSApp.activate()
       },
-      updates: updates.menu,
-      checkForUpdates: { updates.updater.checkForUpdates(nil) }
+      updates: updates?.menu ?? [],
+      checkForUpdates: { updates?.updater.checkForUpdates(nil) }
     )
-    // Offered in Local mode (kept on this Mac) and in the cloud while sending (ONBOARDING section 8, m3-10).
+    // Shown while the import is offered (ImportOffer, m3-14): through the uploader while sending; on this Mac once
+    // m3-10's local sink exists and onboarding is past screen 2.
     if app.recordings?.isOffered == true {
       Button(RecordingsCopy.menuItem) {
         if app.route == .today {

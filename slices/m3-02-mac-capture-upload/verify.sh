@@ -9,7 +9,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m3-02-mac-capture-upload"
-BASE=""                                  # commit this slice stacks on (required once status is in_progress)
+BASE="60c7c12418b6c804b48fa19b01cef9a3fc6445e9"                                  # commit this slice stacks on (required once status is in_progress)
 PKG="apps/mac"
 TEST_DIR="apps/mac/Tests/OffloadMacTests/M302"
 SUITE="OffloadMacTests.M302"

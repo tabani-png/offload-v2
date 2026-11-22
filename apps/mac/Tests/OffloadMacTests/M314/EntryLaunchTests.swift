@@ -1,0 +1,259 @@
+import Foundation
+import Testing
+@testable import OffloadMac
+import OffloadStore
+
+// One entry point and the launch decisions (SPEC: Contract, "One entry point", "UploadBackend", "LaunchPlan").
+
+extension M314 {
+  // MARK: ENTRY
+
+  @Test("ENTRY: --self-check runs the self-check before anything else, --version prints the version, anything else starts the app")
+  @MainActor func entryCommand() {
+    #expect(EntryCommand.selfCheckFlag == SelfCheck.argument)
+    let info: [String: Any] = [
+      "CFBundleShortVersionString": "0.3.0", "CFBundleVersion": "42", "CFBundleIdentifier": "ai.offload.mac",
+      "OffloadCommit": "abc1234",
+    ]
+    #expect(EntryCommand.decide(arguments: ["/Applications/Offload.app/Contents/MacOS/Offload"], info: info) == .app)
+    #expect(EntryCommand.decide(arguments: ["Offload", "--self-check"], info: info) == .selfCheck)
+    #expect(EntryCommand.decide(arguments: ["Offload", "--self-check", "--version"], info: info) == .selfCheck)
+    #expect(EntryCommand.decide(arguments: ["Offload", "--version"], info: info)
+            == .version("Offload 0.3.0 (42) abc1234 ai.offload.mac"))
+    #expect(EntryCommand.decide(arguments: ["Offload", "--version"], info: nil) == .version("Offload dev"))
+    // Launch flags of the app itself are not commands.
+    #expect(EntryCommand.decide(arguments: ["Offload", "--onboarding"], info: info) == .app)
+  }
+
+  @Test("ENTRY: the Mac sources hold exactly one @main, and only the composition root builds the app model, the updater and the runtimes")
+  func oneEntryOneRoot() {
+    let all = M314Fixture.swiftSources("Sources")
+    #expect(all.count > 40)
+    let mains = all.filter { f in f.text.split(separator: "\n").contains { $0.trimmingCharacters(in: .whitespaces) == "@main" } }
+    #expect(mains.map(\.path) == ["Sources/OffloadMac/OffloadMac.swift"])
+    // PR #13's file is gone: capture lives in the composition root now.
+    #expect(!all.contains { $0.path == "Sources/OffloadMac/CaptureRuntime.swift" })
+
+    let built = try! Regex(#"\b(AppModel|AppUpdates|CaptureRuntime|UploadRuntime)\(|AppModel\.live\(|RecordingsImportModel\.live\("#)
+    let outside = all.filter { f in
+      !f.path.hasPrefix("Sources/OffloadMac/Composition/") && f.text.split(separator: "\n").contains { line in
+        let code = line.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false).first ?? ""
+        return !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") && code.firstMatch(of: built) != nil
+      }
+    }
+    // RecordingsImportModel.live is m3-05's own definition; it is defined there, never called outside the root.
+    #expect(outside.map(\.path).filter { $0 != "Sources/OffloadMac/Recordings/LiveRecordings.swift" } == [])
+    // The SwiftUI app asks the composition root for everything.
+    let app = all.first { $0.path == "Sources/OffloadMac/App/OffloadApp.swift" }?.text ?? ""
+    #expect(app.contains("AppComposition.live("))
+  }
+
+  // MARK: LAUNCH (LaunchPlan.decide is the one place the launch decisions are made)
+
+  @Test("LAUNCH: before consent nothing starts but the updater")
+  func beforeConsent() {
+    for uploads in [false, true] {
+      for notice in [nil, "1"] as [String?] {
+        let facts = LaunchFacts(state: M314State.fresh, uploadsAvailable: uploads, bufferReadable: true,
+                                currentNoticeVersion: notice)
+        #expect(LaunchPlan.decide(facts)
+                == LaunchPlan(startUpdater: true, startCapture: false, startUploader: false, importSink: .onDevice))
+      }
+    }
+  }
+
+  @Test("LAUNCH: after screen 2 capture starts in Local mode and the uploader does not")
+  func localModeCaptures() {
+    let local = LaunchPlan.decide(LaunchFacts(state: M314State.watchingLocally, uploadsAvailable: false,
+                                              bufferReadable: true, currentNoticeVersion: nil))
+    #expect(local == LaunchPlan(startUpdater: true, startCapture: true, startUploader: false, importSink: .onDevice))
+    // A consented, signed-in person on a Mac without a backend (the test build) still sends nothing.
+    let noBackend = LaunchPlan.decide(LaunchFacts(state: M314State.sending, uploadsAvailable: false,
+                                                  bufferReadable: true, currentNoticeVersion: "1"))
+    #expect(noBackend.startCapture)
+    #expect(!noBackend.startUploader)
+    #expect(noBackend.importSink == .onDevice)
+    // Enrolled but not consented ("Keep it on this Mac").
+    var keptLocal = M314State.sending
+    keptLocal.uploadConsent = false
+    let kept = LaunchPlan.decide(LaunchFacts(state: keptLocal, uploadsAvailable: true, bufferReadable: true,
+                                             currentNoticeVersion: "1"))
+    #expect(kept.startCapture && !kept.startUploader && kept.importSink == .onDevice)
+  }
+
+  @Test("LAUNCH: a signed-in, consented person on an enrolled Mac gets capture, the uploader and the uploader-backed import sink")
+  func consentedCloud() {
+    for notice in ["1", nil] as [String?] {
+      let plan = LaunchPlan.decide(LaunchFacts(state: M314State.sending, uploadsAvailable: true, bufferReadable: true,
+                                               currentNoticeVersion: notice))
+      #expect(plan == LaunchPlan(startUpdater: true, startCapture: true, startUploader: true, importSink: .uploader))
+    }
+  }
+
+  @Test("LAUNCH: a changed notice keeps capture local and the uploader paused, and imports stay on the Mac")
+  func noticeChanged() {
+    let changed = LaunchFacts(state: M314State.sending, uploadsAvailable: true, bufferReadable: true,
+                              currentNoticeVersion: "2")
+    #expect(changed.reconsentPending)
+    #expect(LaunchPlan.decide(changed)
+            == LaunchPlan(startUpdater: true, startCapture: true, startUploader: false, importSink: .onDevice))
+    // Already marked pending (screen 5 not accepted yet) and the version is not known this launch.
+    var pending = M314State.sending
+    pending.uploadConsent = false
+    pending.reconsentPending = true
+    let stillPending = LaunchPlan.decide(LaunchFacts(state: pending, uploadsAvailable: true, bufferReadable: true,
+                                                     currentNoticeVersion: nil))
+    #expect(!stillPending.startUploader && stillPending.startCapture && stillPending.importSink == .onDevice)
+  }
+
+  @Test("LAUNCH: an unreadable buffer starts neither capture nor the uploader")
+  func unreadableBuffer() {
+    let plan = LaunchPlan.decide(LaunchFacts(state: M314State.sending, uploadsAvailable: true, bufferReadable: false,
+                                             currentNoticeVersion: "1"))
+    #expect(plan == LaunchPlan(startUpdater: true, startCapture: false, startUploader: false, importSink: .onDevice))
+  }
+
+  @Test("LAUNCH: uploads exist only for an https API base (the screens' setting), a device id and a stored device key")
+  func uploadBackend() {
+    let api = "https://api.offload.test"
+    // The same setting m3-10's screens read for BackendMode, so one place says where the API is.
+    #expect(UploadBackend.baseURLDefaultsKey == "ai.offload.api.baseURL")
+    #expect(UploadBackend.decide(apiBase: api, deviceID: "dev_1", deviceKeyStored: true)
+            == .cloud(apiBase: URL(string: api)!, deviceID: "dev_1"))
+    #expect(UploadBackend.decide(apiBase: " \(api) ", deviceID: "dev_1", deviceKeyStored: true).allowsUploads)
+    // https only, like the screens' flag: no loopback http, no user, query or fragment.
+    for bad in [nil, "", "http://127.0.0.1:8787", "http://localhost:8787", "http://api.offload.test",
+                "ftp://api.offload.test", "https://", "https://user:pw@api.offload.test", "https://api.offload.test?x=1",
+                "https://api.offload.test#f"] as [String?] {
+      #expect(UploadBackend.decide(apiBase: bad, deviceID: "dev_1", deviceKeyStored: true) == .local)
+    }
+    #expect(UploadBackend.decide(apiBase: api, deviceID: nil, deviceKeyStored: true) == .local)
+    #expect(UploadBackend.decide(apiBase: api, deviceID: "  ", deviceKeyStored: true) == .local)
+    #expect(UploadBackend.decide(apiBase: api, deviceID: "dev_1", deviceKeyStored: false) == .local)
+    #expect(!UploadBackend.local.allowsUploads)
+  }
+
+  @Test("LAUNCH: the app model starts the uploader only when uploads are available")
+  @MainActor func appModelUploads() {
+    let fakes = M304Services()
+    fakes.store.save(M314State.sending)
+    let local = AppModel(options: LaunchOptions(), bundlePath: "/Applications/Offload.app", bufferReadable: true,
+                         store: fakes.store, services: fakes.services, probe: FakePermissionProbe(),
+                         events: NoLocalEvents(), sampleWeek: SampleWeekFlag(), currentNoticeVersion: "1",
+                         uploadsAvailable: false)
+    #expect(fakes.uploader.starts == 0)
+    #expect(fakes.capture.starts == 1)
+    #expect(!local.launchPlan.startUploader)
+    let cloud = AppModel(options: LaunchOptions(), bundlePath: "/Applications/Offload.app", bufferReadable: true,
+                         store: fakes.store, services: fakes.services, probe: FakePermissionProbe(),
+                         events: NoLocalEvents(), sampleWeek: SampleWeekFlag(), currentNoticeVersion: "1",
+                         uploadsAvailable: true)
+    #expect(fakes.uploader.starts == 1)
+    #expect(fakes.capture.starts == 2)
+    #expect(cloud.launchPlan == LaunchPlan(startUpdater: true, startCapture: true, startUploader: true, importSink: .uploader))
+  }
+
+  @Test("LAUNCH: the live upload backend reads the Keychain only when an API base and a device id are both set")
+  func liveBackend() throws {
+    let suite = "m314-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let secrets = CountingSecrets()
+    // The test build: no API base set.
+    #expect(UploadBackend.live(defaults: defaults, secrets: secrets) == .local)
+    // An API base without enrollment.
+    defaults.set("https://api.offload.test", forKey: UploadBackend.baseURLDefaultsKey)
+    #expect(UploadBackend.live(defaults: defaults, secrets: secrets) == .local)
+    #expect(secrets.reads == 0)
+    // Enrolled id but no device key: still local, after one look at the Keychain.
+    defaults.set("dev_1", forKey: UploadBackend.deviceIDDefaultsKey)
+    #expect(UploadBackend.live(defaults: defaults, secrets: secrets) == .local)
+    #expect(secrets.reads > 0)
+    try secrets.write(Data(repeating: 1, count: 32), account: "device-key")
+    #expect(UploadBackend.live(defaults: defaults, secrets: secrets)
+            == .cloud(apiBase: URL(string: "https://api.offload.test")!, deviceID: "dev_1"))
+    // Nothing was created by asking.
+    #expect(secrets.writes == 1)
+  }
+
+  @Test("LAUNCH: Local mode and the missing recordings import are said in the menu, never hidden")
+  @MainActor func modeIsLabelled() {
+    // GLOSSARY "Local mode": signed out, or signed in without upload consent, so nothing is uploaded.
+    #expect(ModeLines.lines(local: true, importerReady: false, importOffered: false, choice: .onDevice)
+            == [ModeLines.local, ModeLines.importComing])
+    #expect(ModeLines.lines(local: true, importerReady: true, importOffered: true, choice: .onDevice) == [ModeLines.local])
+    #expect(ModeLines.lines(local: false, importerReady: true, importOffered: false, choice: .uploader)
+            == [ModeLines.importAfterSending])
+    #expect(ModeLines.lines(local: false, importerReady: true, importOffered: true, choice: .uploader) == [])
+    // An on-device import held back by the screen-2 gate: never told to "Start sending" (that starts nothing here).
+    #expect(ModeLines.lines(local: true, importerReady: true, importOffered: false, choice: .onDevice)
+            == [ModeLines.local, ModeLines.importAfterSetup])
+    #expect(ModeLines.local == "Local mode: nothing leaves this Mac")
+    // PRODUCT copy rules: an unbuilt feature carries a "coming" label; no em dashes, no ADR 0016 terms.
+    #expect(ModeLines.importComing.lowercased().contains("coming"))
+    for line in [ModeLines.local, ModeLines.importComing, ModeLines.importAfterSending, ModeLines.importAfterSetup] {
+      #expect(!line.contains("\u{2014}") && !line.lowercased().contains("dry"))
+    }
+    // This build (no on-device text reading yet): both lines.
+    let c = M314App.composition(state: M314State.watchingLocally)
+    defer { c.capture.stop() }
+    #expect(c.modeLines == [ModeLines.local, ModeLines.importComing])
+    // With m3-10's on-device import plugged in, before screen 2: the setup line, not "Start sending".
+    let early = M314App.composition(state: M314State.fresh,
+                                    seams: CompositionSeams(textRecognizer: M314Recognizer(), onDeviceImportSink: M314LocalSink()),
+                                    realRecordings: true)
+    defer { early.capture.stop() }
+    #expect(early.modeLines == [ModeLines.local, ModeLines.importAfterSetup])
+    // An enrolled Mac before "Start sending" is still Local mode.
+    var enrolled = M314State.sending
+    enrolled.uploadConsent = false
+    let e = M314App.composition(backend: M314Fixture.cloud, state: enrolled, currentNoticeVersion: "1")
+    defer { e.capture.stop() }
+    #expect(e.modeLines.first == ModeLines.local)
+  }
+
+  @Test("LAUNCH: the menu lines follow the live state, not the launch")
+  @MainActor func modeLinesFollowState() async {
+    let c = M314App.composition(backend: M314Fixture.cloud, state: M314State.sending, currentNoticeVersion: "1",
+                                seams: CompositionSeams(textRecognizer: M314Recognizer()), realRecordings: true)
+    defer {
+      c.capture.stop()
+      c.uploads?.pause()
+    }
+    #expect(c.modeLines == [])
+    // Row 11.11: a new notice pauses uploads; the menu says Local mode and why the import is not offered.
+    c.app.onboarding.reconsentNeeded()
+    #expect(c.modeLines == [ModeLines.local, ModeLines.importAfterSending])
+  }
+
+  @Test("LAUNCH: when capture cannot open its storage (a Keychain that refuses), the menu says watching is off, without the error")
+  @MainActor func captureFailureIsSaid() {
+    let failed = M314App.composition(state: M314State.watchingLocally, secrets: FailingSecrets())
+    defer { failed.capture.stop() }
+    #expect(!failed.capture.isRunning)
+    #expect(failed.capture.lastError != nil)
+    #expect(failed.modeLines.contains(ModeLines.captureOff))
+    #expect(!ModeLines.captureOff.contains("Denied"))
+    // Capture running: no such line.
+    let running = M314App.composition(state: M314State.watchingLocally)
+    defer { running.capture.stop() }
+    #expect(running.capture.isRunning)
+    #expect(!running.modeLines.contains(ModeLines.captureOff))
+    // Before screen 2 nothing was tried, so nothing failed.
+    let fresh = M314App.composition(state: M314State.fresh, secrets: FailingSecrets())
+    #expect(!fresh.modeLines.contains(ModeLines.captureOff))
+  }
+}
+
+/// An in-memory Keychain that counts reads and writes.
+final class CountingSecrets: SecretStore, @unchecked Sendable {
+  private let lock = NSLock()
+  private var items: [String: Data] = [:]
+  private var readCount = 0
+  private var writeCount = 0
+  var reads: Int { lock.withLock { readCount } }
+  var writes: Int { lock.withLock { writeCount } }
+  func read(account: String) throws -> Data? { lock.withLock { readCount += 1; return items[account] } }
+  func write(_ data: Data, account: String) throws { lock.withLock { writeCount += 1; items[account] = data } }
+  func delete(account: String) throws { lock.withLock { items[account] = nil } }
+}

@@ -1,8 +1,10 @@
 // swift-tools-version: 6.0
 // Offload Mac client (thin client: capture, on-device masking and pseudonyms, egress-guarded upload, actuator, UI).
-// Library targets are still architecture only (empty). See docs/ARCHITECTURE.md#1-mac-client.
+// Capture half (slice m3-02): contracts + JCS, store, masker, observer, uploader (egress guard).
+// OffloadImport holds the recordings import (m3-05); OffloadActuator is still a marker. See docs/ARCHITECTURE.md#1-mac-client.
 // The app target OffloadMac is an executable: product "Offload", which bundle.sh copies to
-// Offload.app/Contents/MacOS/Offload (docs/DEPLOYMENT.md section 3.1).
+// Offload.app/Contents/MacOS/Offload (docs/DEPLOYMENT.md section 3.1). Its one composition root is Composition/
+// (slice m3-14-mac-app-integration).
 // Sparkle 2 is the one third-party dependency, linked only into the app target (ADR 0024, DEPLOYMENT section 4).
 // Builds only on macOS 14+ with Swift 6 (CI job "mac"). Not buildable on Linux.
 // `swift build` output is not an app bundle: TCC grants bind to bundle id + Team ID, so daily use needs the

@@ -19,7 +19,7 @@ extension AccountService {
   func recordUploadConsent(noticeVersion: String) async throws
 }
 
-/// The uploader (m3-02). Started only after "Start sending".
+/// The uploader (m3-02; `UploadRuntime` in the app, m3-14). Started only after "Start sending".
 @MainActor public protocol Uploader: AnyObject {
   func start()
   func pause()
@@ -29,7 +29,7 @@ extension Uploader {
   public func pause() {}
 }
 
-/// The observer (m3-02). Started when screen 2 is resolved with a permission on.
+/// The observer (m3-02; `CaptureRuntime` in the app, m3-14). Started when screen 2 is resolved with a permission on.
 @MainActor public protocol CaptureControl: AnyObject {
   func start()
   /// True only while the observer really captures; the menu bar and screen 13 say "not watching" otherwise.
@@ -150,13 +150,13 @@ public enum ConnectionCatalog {
   public func recordUploadConsent(noticeVersion: String) async throws { recordedVersions.append(noticeVersion) }
 }
 
-/// No uploader until m3-02: starting it does nothing.
+/// Local mode (no backend on this Mac, m3-14 UploadBackend): no uploader exists, so starting it does nothing.
 @MainActor public final class NoUploader: Uploader {
   public init() {}
   public func start() {}
 }
 
-/// No observer until m3-02: starting capture does nothing, and it says it is not running.
+/// No observer: starting capture does nothing, and it says it is not running. The app uses CaptureRuntime (m3-14).
 @MainActor public final class NoCapture: CaptureControl {
   public init() {}
   public func start() {}

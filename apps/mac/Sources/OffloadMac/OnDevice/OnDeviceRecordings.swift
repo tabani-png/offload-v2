@@ -72,7 +72,7 @@ public struct OnDeviceRecordings {
                           durations: (@Sendable (URL) -> TimeInterval?)? = nil,
                           appNames: (@MainActor ([String]) -> @Sendable (String) -> [String])? = { LiveAppNames.resolver(for: $0) },
                           importsListReadable: Bool = true, nameFinder: (any PersonNameFinder)? = nil,
-                          installedAppNames: Set<String>? = nil)
+                          installedAppNames: Set<String>? = nil, masker: (any ImportTextMasker)? = nil)
     throws -> OnDeviceRecordings {
     let paths = folders.paths
     let key = try pseudonymKey ?? LocalPseudonymKey.loadOrCreate(at: paths.pseudonymKey)
@@ -84,8 +84,10 @@ public struct OnDeviceRecordings {
     // Installed apps' names are listed once here, so the name tagger never takes a menu bar app for a person.
     let apps = installedAppNames ?? Set(InstalledAppNames.list(folders: InstalledAppNames.folders(home: folders.home)))
     let finder: any PersonNameFinder = nameFinder ?? NaturalLanguageNameFinder()
+    // Nil keeps the interim masker (m3-10's tests). The app passes PR #13's TextMasker through ImportMaskerAdapter.
+    let textMasker = masker ?? InterimTextMasker(key: key, names: finder, appNames: apps)
     let importer = RecordingImporter(
-      recognizer: recognizer ?? VisionTextRecognizer(), masker: InterimTextMasker(key: key, names: finder, appNames: apps),
+      recognizer: recognizer ?? VisionTextRecognizer(), masker: textMasker,
       hasher: nil, keyframes: nil,
       exclusions: NeverWatchImportExclusions(source: neverWatch), sink: sink, ledger: ledger, readers: readers,
       clock: clock, timeZone: timeZone, protected: protected
