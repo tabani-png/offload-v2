@@ -890,3 +890,244 @@ Every mutation below was run on a copy in `/tmp`, never in the repo.
     queued build (today `failed`, per the `GATE:` test). Only the in-process runner starts builds. DESIGN.md section 7
     asks the W1-C durable adapter to claim before, or together with, the compare-and-set. (`bd8552a`)
 11. **NIT, fixed.** The p45b thresholds are integer tenths derived from `ON_TRACK` and `PARTIAL`. (`8f5a285`)
+
+## Round 4
+
+Independent review (Opus 5.5; wrote none of the code and none of rounds 1 to 3), 2026-11-22, branch `port/build-loop` at
+`345e84d`, diff `8f6ff2d..345e84d` (focus: `3321961..345e84d`, the round 3 fixes).
+
+**Read:**
+- AGENTS.md and CLAUDE.md;
+- both SPECs, DESIGN.md, and rounds 1 to 3 with their author responses;
+- ADR 0011 and the ADRs the SPEC cites;
+- the API.md builds rows;
+- SECURITY_PRIVACY sections 8 and 13;
+- every source file changed since round 3: `harness.ts` (all of it), `sandbox/docker.ts`, `sandbox/provider.ts`,
+  `shards.ts`, `loop.ts`, `attempt.ts`, `checks.ts`, `heldout.ts`, `store.ts`, `store-pg.ts`, the SQL and p45b's
+  `outcome.ts`;
+- `git diff 3321961..HEAD` on both test folders, every removed line included.
+
+### Runs (this reviewer, DATABASE_URL set, passwordless `sudo` available, no Docker)
+
+| Command | Result |
+|---|---|
+| `bash scripts/verify-all.sh` | `verify-all: green` (exit 0). Full suite **201 tests across 34 files: 200 pass, 1 skip (`LIVE:` Docker), 0 fail**. p45a and p45b both PASS. Slices (10 specs), doc links (70 files), copy, secrets and workflows are ok, and the license boundary holds. Swift is skipped (needs macOS) |
+| `bash slices/p45a-build-loop/verify.sh` | `p45a-build-loop: PASS`. Slice suite **134 tests across 10 files: 133 pass, 1 skip, 0 fail** (min 75). All 24 tags pass: GATE 12, CHECKS 5, HELDOUT 11, TEETH 5, DEFAULT1 1, SHARDS 22, FANOUT 9, STALL 2, LOCK 14, SHIP 4, BUDGET 6, CAP 3, TAMPER 2, PROOF 3, VERDICT 1, SANDBOX 15, INFRA 3, DEPLOY 1, READY 4, TDD 3, STEPS 1, ERROR 1, API 3, RLS 2. Full suite 201. Scope checked (47 files) |
+| `bash slices/p45b-measured-saving/verify.sh` | `p45b-measured-saving: PASS`. Slice suite **17 tests across 1 file: 17 pass** (min 12). SHIP 3, MEASURE 6, FLAG 2, MONTH 1, OUTCOME 2, FIGURE 3. Full suite 201. Scope checked (38 files) |
+| Privileged tests | `sudo -n true` works here, so both `(privileged)` split tests ran and passed. The only skip is `LIVE:` |
+| Scope | Every changed file matches `paths_in_scope`. Nothing changed under `packages/{db,contracts,policy,testkit,routine-sdk,connectors-sdk}`, `services/{api,runtime,broker,brain}`, `apps`, `ee`, `.github` or `docs/adr`. `bun.lock` and `package.json` are unchanged. NOTICE lists superpowers (MIT text), craft-anything, apple/container, container-use, exo and CompanyOS (ideas only) |
+| Hygiene | After all runs: no `p45a%` schema or role left in Postgres, no `offload-sbx-*` folder left in `/tmp`, and `git status` was clean before this file was written |
+
+### Mutation checks (tests really fail without the code)
+
+How I ran them:
+- `/tmp/r4-mut/run.sh` (outside the repo) applied each change in the tree with `perl -0pi` and checked that the file
+  changed.
+- It ran both slice folders (151 tests), then restored the file with `git checkout --`.
+- No stash was used. `git status` was clean after each batch.
+
+**The round 3 user split**
+
+| Mutation | Failing tests |
+|---|---|
+| broker runs the tool as the check's user (`harness.ts:150`) | 1 (privileged cheat) |
+| guard's spawn routing off (`harness.ts:45`) | 1 (privileged cheat) |
+| verification check files `0444` instead of `0400` (`harness.ts:293`) | 2 |
+| split proof not required (`shards.ts:72`) | 2 (`SHARDS:` strict provider, `PROOF:`) |
+| harness never splits (`harness.ts:113`) | 2 (both privileged) |
+| temp folders not widened (`harness.ts:49`) | 1 (privileged honest check) |
+| process-API refusal off (`checks.ts:59`) | 1 (`CHECKS:`) |
+| development provider forced to split (`docker.ts:62`) | 4 |
+
+**473cafb and the earlier security fixes (all still fail)**
+
+| Mutation | Failing tests |
+|---|---|
+| `bun test` cwd = `/work` (`harness.ts:182`) | 8 (`SHARDS:` planted bunfig, node_modules/tsconfig/imports, `.env`, …) |
+| no `--config` / no `--no-env-file` | 2 / 2 |
+| guard `onResolve` off / `onLoad` off | 1 / 2 |
+| held-out check left out of the teeth gate (`loop.ts:183`) | 4 (`TEETH:`, `HELDOUT:`) |
+| an attempt's error rejects instead of resolving (orphans, `loop.ts:261`) | 1 (`LOCK:`) |
+| stale recovery off, memory / Postgres | 4 / 3 (`LOCK:`, `HELDOUT:`) |
+| `--network none` → `bridge` | 1 |
+| `/check` mounted read-write | 3 |
+| no `--cap-drop ALL` / no `--read-only` / an extra `SYS_ADMIN` | 1 each |
+| an exec error counted as a pass (`shards.ts:53`) | 5 |
+| proof nonce not compared (`harness.ts:284`) | 1 (`PROOF:`) |
+| approval TTL off / single use off / bound hashes not compared | 2 / 3 / 3 (`GATE:`) |
+| OK's hash gate off (`loop.ts:79`) | 1 (`GATE:` wrong brief hash) |
+| reservation ceiling off (memory) / `FOR UPDATE` off (Postgres) | 1 / 2 (`CAP:`) |
+| held-out output added to the fan-out feedback (`loop.ts:252`) | 1 (`FANOUT:`) |
+| `..` allowed in a sandbox path (`provider.ts:336`) | 1 |
+| `capped` when no fan-out fits removed / `proof` not written / `wall_seconds` not written | 1 / 1 / 1 |
+
+**Mutations that fail nothing (finding 3)**
+
+| Mutation | Failing tests |
+|---|---|
+| broker accepts a tool cwd outside `/work` (`harness.ts:144`) | **0** |
+| tool inherits the harness's environment (`harness.ts:150`) | **0** |
+| broker socket `0666` (`harness.ts:167`) | **0** |
+| broker's tools not killed after the check (`harness.ts:185`) | **0** |
+| no `kill(-1)` sweep (`harness.ts:190`, known: `LIVE:` only) | **0** |
+| report folder `0755` (`harness.ts:118`) | **0** |
+
+### Red commits and test history since round 3
+
+**Red commits.** Each red commit, exported to `/tmp` (`git archive`) and run with its own code, fails as claimed:
+- `2ab0747`: 11 fail;
+- `d128e08`: 2 fail;
+- `fb91670`: 1 fail.
+
+`1482fdb` adds tests only, for code that already existed.
+
+**Removed test lines since `3321961`:**
+- Two folder-layout `toEqual`s gained `spawn-client.ts` and the file modes. Stricter.
+- The argv pin swaps `--user 65534:65534` for the split argv. It still pins every flag exactly, and the non-split argv
+  has its own new test.
+- The guard emulator is refactored. It gains a sudo mode and a `0o1777` tmpfs.
+- The old guard tests now run with `privilege_split: false`. That is exactly the pre-split behaviour they were written
+  for, and the split has its own tests.
+- One test was renamed for NIT 6 and one for NIT 7.
+
+**No assertion is weakened.**
+
+**Other checks:**
+- No `.skip`, `.todo`, `.only` or `it(`. The skips are `describe.skipIf(!dockerUp)` (`LIVE:`) and
+  `test.skipIf(!sudoOk)` (2, ran here).
+- MIGRATION 5.6's carry list is unchanged since round 3. Every name is present, `LOCAL:` is handed to m5-03 and the
+  `GATE: a wrong brief hash…` name is now findable (`http.test.ts`).
+- SECURITY section 13 builder rows each have a test. "Outbound connection fails; no registry reachable" is still only
+  the never-run `LIVE:` test.
+
+### My own attacks on the user split (scratch tests in `/tmp/r4-scratch`, repo emulator under `sudo`)
+
+**The cheat tool fails.** The held-out check expects `zq-7781-unguessable`, and the tool reads `/check` and every
+`/proc/*/cmdline` to find it. It fails (`split: true`, the tool's output is `I do not know 65534`) when the check starts
+it through any of:
+- `Bun.spawnSync`;
+- `import { spawnSync } from "bun"`;
+- `import * as B from "bun"`;
+- an async `import { spawn } from "bun"`.
+
+I expected the guard's own ESM `import { plugin } from "bun"` to freeze the named import before the patch. It does not:
+named imports of `"bun"` are live.
+
+**The tool finds nothing else:**
+- It has `groups=<check gid>` only: supplementary groups are dropped.
+- Nothing under the shared `/tmp` contains the secret.
+- No other user's `/proc/<pid>/fd` is readable.
+
+**The verification path fails closed.** A harness that cannot split produces no proof. The teeth gate then ends the
+build "could not run" before any paid worker (`loop.ts:191`).
+
+### Round 3 findings, status
+
+| Finding | Status |
+|---|---|
+| 1 MAJOR (tool reads the held-out check) | **Fixed** for verification, by option (a). Mutations fail tests, and my own attacks fail. Real Docker is still unrun (finding 4). See finding 1 below for a side effect of the fix |
+| 2 (unpinned guards) | Fixed: the four required and the four optional each fail a test now |
+| 3 (sandbox time) | Recorded with owner m2-08 (SPEC Out of scope, DESIGN section 7) |
+| 4 (`worker_attempts` columns) | Fixed: the columns match DATA_MODEL, and `proof` and `wall_seconds` are written and pinned |
+| 5 (owner actions) | Carried (finding 4) |
+| 6, 7, 8, 9, 11 | Fixed |
+| 10 | Recorded with owner W1-C |
+
+### Findings
+
+1. **MAJOR: the user split runs *every* Docker exec as container root with `CHOWN`, `SETUID` and `SETGID`, not only
+   the trusted harness. Untrusted worker commands get root on a read-write host bind mount. This reverses DESIGN.md
+   hole 12, which the docs still list as fixed.**
+   - Evidence:
+     - `docker.ts:187` and `docker.ts:191`: with `privilege_split` on (the default, `docker.ts:62`), `runArgv` emits
+       `--user 0:0 --cap-add CHOWN --cap-add SETGID --cap-add SETUID` and the split env for every `exec`, whatever
+       the `argv` or role.
+     - `attempt.ts:39` and `attempt.ts:131`: `WorkerTurn` hands this `provider` and the worker `sandbox` to m2-07's
+       Agent SDK worker, which "writes into /work through the provider". Its tool calls will be `provider.exec(...)`
+       of model-written commands.
+     - `/work` is a host bind mount (`docker.ts:193`) without `nosuid`. Without user-namespace remapping, container
+       uid 0 is host uid 0 on it.
+     - Scratch run (repo emulator under `sudo`; these operations need no capability, so `--cap-drop ALL` does not
+       stop them): a `role: "worker"` exec of `bun -e` ran as `uid=0`. It left a copy of `bun` in the **host**
+       folder `…/offload-sbx-*/work/rootsh` with **uid 0, mode 4755** (a setuid-root binary on the builder host). It
+       also left a `0700` root-owned folder.
+     - In the same run, `destroy()` then threw `EACCES` and left the host sandbox folder behind. `docker.ts:236`
+       `rmSync` throws in `finally`, so `boxes.delete` never runs either.
+     - Without the split (and before round 3) the same exec runs as `65534:65534` with no added capability, and could
+       do neither.
+   - The docs still say the opposite:
+     - DESIGN.md:53 (hole 12: "v2 adds `--user 65534:65534`");
+     - DESIGN.md:77 ("every `exec` is `docker run … --user 65534:65534`");
+     - `docker.ts:3` ("Hardened beyond it: a non-root user").
+
+     m2-07 will build on the port contract and on these lines.
+   - No test pins a non-harness exec as unprivileged. The argv tests use the harness `argv` (split) or
+     `privilege_split: false`.
+   - Why MAJOR, although today only the harness is exec'd:
+     - The slice ships the `SandboxProvider` and `WorkerTurn` contract that m2-07 fills in.
+     - The default makes the first real worker command root on the host mount.
+     - The security doc that m2-07 will read says that cannot happen.
+     - SECURITY section 8 ("never run untrusted build code as a user who has secrets…") and the self-host
+       host-takeover row assume the worker is unprivileged.
+   - Required fix:
+     - Grant root and the three capabilities only to the trusted harness exec: an explicit `ExecOptions` flag (for
+       example `harness: true`) set only by `shards.ts` and the advisory run in `attempt.ts`. Every other exec on a
+       split provider runs `--user 65534:65534` with no `--cap-add` and no `OFFLOAD_*_UID` env.
+     - Add a red `SANDBOX:` test: a split provider's non-harness exec (worker role) has `--user 65534:65534` and no
+       `--cap-add`.
+     - Update DESIGN.md holes 12 and section 3 and the `docker.ts` header to say exactly who runs as root.
+     - Make `destroy()` drop the `boxes` entry even when `rmSync` fails.
+
+2. **MINOR: `split: true` is asserted, not probed.**
+   - `harness.ts:113` sets `SPLIT` from "I am uid 0 and `OFFLOAD_CHECK_UID` is set". The proof then says
+     `split: true` (`harness.ts:209`), and `shards.ts:72` trusts it.
+   - What actually protects the check is the bind mount enforcing the host owner and `0400` inside the container.
+     Some setups break that:
+     - rootless Docker or `userns-remap`: they fail closed (the check user cannot read its own check), which is fine.
+     - a file-sharing layer that does not enforce owner modes (some desktop or FUSE mounts): the harness would still
+       report `split: true` while the tool can read the held-out check.
+   - Required fix: before running the check, the harness spawns a probe as `TOOL_UID` that tries to open
+     `/check/<FILE>`. It reports `split: true` only when that fails with `EACCES`, and add a test. Or record the
+     supported Docker setups (Linux engine, no desktop file sharing) in DESIGN.md section 7.
+
+3. **MINOR: the root-side broker rules are unpinned.** Six mutations above fail nothing:
+   - the tool cwd rule;
+   - the tool's clean environment;
+   - the socket mode;
+   - killing the broker's tools;
+   - the `kill(-1)` sweep (known, `LIVE:`);
+   - the report folder mode.
+
+   None of them leaks the check today: the tool's uid alone protects it. But they are the broker's own guards on a
+   root process. Required fix: one test each for the cwd refusal, the clean environment (no `OFFLOAD_*` reaches the
+   tool) and the socket mode. The other three are optional.
+
+4. **MINOR (owner actions, carried, now weightier):**
+   - The `LIVE:` Docker run has never run. It is now the only proof that the default production path (root PID 1 with
+     three capabilities under `no-new-privileges`, `chown` on the bind mount, the Unix-socket broker) works on a real
+     engine, besides network and registry denial and `swept`. Run it once on a Linux Docker host before m2-07/m2-08
+     rely on it.
+   - Still open, unchanged:
+     - the `LOCAL:` tests and the `redirect: "error"` rule for m5-03;
+     - the winner order (bytes against ADR 0029's smallest diff);
+     - sandbox-time billing (m2-08);
+     - start before claim (W1-C).
+
+5. **NIT: the split changes what a check can do, and the check writer is not told.**
+   - Under the split, the guard drops the check's `env` for the tool and refuses `stdin` that is not a string or
+     bytes (`harness.ts:57-65`).
+   - A check that passes `env` to the tool therefore passes with `privilege_split: false` and fails in production.
+   - The tool also shares the check's temp folders through the group (`0770`), so a daemonised tool can read anything
+     a later test writes there.
+   - Add to `HELDOUT_WRITER_SYSTEM` (`heldout.ts:16`): no environment variables for the tool, and never write expected
+     values into the temp folder. Or refuse `env:` in `disallowedProcessApi`.
+
+p45b: sound. The round 3 NIT 11 fix derives the integer tenths from `ON_TRACK` and `PARTIAL`. Rounding is exact for
+0.8 and 0.5, and the `OUTCOME:` tests (80, 50 and 49%) pin it.
+
+**Required before PASS:**
+- Fix finding 1: root only for the harness exec, a red test, and the docs.
+- Fix finding 2 or record it, and add the finding 3 tests.
+- Finding 4 stays with its owners. Finding 5 is optional.
+
+VERDICT: CHANGES
