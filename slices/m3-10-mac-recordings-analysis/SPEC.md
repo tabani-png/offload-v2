@@ -209,7 +209,10 @@ on a Mac with the m3-09 test build.
     activity + 120 s (the idle threshold, as m3-04's local now summary). `idle_start` is written the idle threshold
     after the last activity (m3-05's readers, the observer), so it is moved back by 120 s when read, as m3-04's local
     now summary does: a span opened after that point is dropped and one running past it is cut there (corrected in
-    review 2; this line first said the readers had already moved it back). Spans cross midnight by splitting at the day boundary in the person's time zone.
+    review 2; this line first said the readers had already moved it back). An import holds several runs (each file
+    writes idle_end … idle_start), and the next file can start within the 120 s before a run's idle_start: each
+    idle_start closes the oldest open run and, when a later run has begun, cuts only what started before it (review
+    3). Spans cross midnight by splitting at the day boundary in the person's time zone.
   - *Sessions*: a maximal run of spans with no idle gap of 300 s or more; sessions under 60 s are dropped. *Focus
     block*: a session of 25 minutes or more with at most 2 app switches per 10 minutes. *Switches*: focus changes to a
     different app.
@@ -424,5 +427,19 @@ m3-12 (Weekly review) land. In Local mode onboarding skips screens 5 to 12, so t
     without a red test first; the test came after (the protection class itself is not readable on every CI volume,
     so the test checks the options the files are written with).
   - *Owner expectations* (finding 6): the Test plan now says where the analysis can be seen in this slice.
+- **Review 3** (2026-11-22, `logs/m3-10-mac-recordings-analysis.review3.md`), changes made:
+  - *Runs inside one import* (finding 1): review 2's backdating let one file's idle_start cut the next file's run
+    (back-to-back recordings, a screenwatch day continuing past midnight). Each idle_start now closes the oldest open
+    run of its import and leaves a later run's spans alone; a run left open by a lost idle_start is forgotten once a
+    later run's idle_start passes it. Live capture is one stream and keeps review 2's rule. Tests: two recordings 30 s
+    and 0 s apart, two screenwatch days across midnight, a live stream, and the real importer over two recordings 90 s
+    apart.
+  - *Unreadable list of imports* (finding 2): when m3-05's stored list exists but does not decode, nothing is
+    discarded at launch (`importsListReadable`), so an unreadable list never deletes analysed history.
+  - *Tests that pinned a predicate* (finding 3): `LocalAnalysis.live` takes the folders and defaults, and a test now
+    checks that it builds the on-device import in `.local` and none in `.cloud`. The protection test still pins
+    `OnDeviceFiles.writeOptions`: reading `FileAttributeKey.protectionKey` back depends on the CI volume supporting
+    data protection, and `writeProtected` is the only writer, so the constant is the reliable check.
+  - *Restored Settings window* (finding 4): one line says why it waits.
 - **Security review needed** before `done` (SECURITY_PRIVACY section 13): the interim masker, the local sink and the
   local pseudonym key.
