@@ -173,4 +173,15 @@ fix rules and `FixEstimate` (m5-04: `estimateFor` is passed through), `offload s
 - [x] induce, window (cce5c3e)
 - [x] job, capture adapter, durable workflow body (7af1236)
 - [x] docs: API.md section 7, ARCHITECTURE.md section 5, DATA_MODEL.md section 8, GLOSSARY.md
-- [ ] self-review, verify.sh, verify-all (next)
+- [x] self-review: SPEC, docs, chain goal; mutation spot-checks (stand-in merge rule removed → CUE, INDUCE, WINDOW,
+  CONSUME fail; duplicate check removed → two CONSUME tests fail)
+- [x] `bash slices/m5-01-understanding/verify.sh` PASS (25 slice tests, 466 in the full suite);
+  `SLICE_UPSTREAM=$(git merge-base HEAD origin/main) bash scripts/verify-all.sh` green
+- [ ] review by an agent that did not write it (AGENTS.md review gate), then `status: done`
+
+Known limits (for m1-06 and later):
+- Each event re-reads its whole days, so a live member whose Mac uploads every few minutes re-analyses today and
+  yesterday per batch. Correct (idempotent), but `offload serve` should run the drain on a tick, not per insert.
+- App cues use a fixed table of app names; a stand-in recording of an app not in it gets its host cue only.
+- Instances split by the rules above; a workflow whose steps interleave with unrelated work inside 2 min can link
+  through a transition only if it happens at least twice and on half of the step's spans.
