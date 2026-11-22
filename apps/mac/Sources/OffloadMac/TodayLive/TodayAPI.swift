@@ -27,6 +27,10 @@ public struct TodayGridCategory: Codable, Equatable, Sendable {
     self.minutes = minutes
   }
 
+  enum CodingKeys: String, CodingKey {
+    case key, name, minutes
+  }
+
   public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     key = try c.decode(String.self, forKey: .key)
@@ -46,6 +50,10 @@ public struct TodayGridCell: Codable, Equatable, Sendable {
     self.category = category
   }
 
+  enum CodingKeys: String, CodingKey {
+    case start, category
+  }
+
   public init(from decoder: any Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
     start = try c.decode(String.self, forKey: .start)
@@ -61,6 +69,10 @@ public struct TodaySwitchBurst: Codable, Equatable, Sendable {
   public init(start: String, switches: Figure?) {
     self.start = start
     self.switches = switches
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case start, switches
   }
 
   public init(from decoder: any Decoder) throws {

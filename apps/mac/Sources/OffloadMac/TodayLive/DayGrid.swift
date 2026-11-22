@@ -202,7 +202,7 @@ extension DayGrid {
     var rowOf: [String: Int] = [:]
     for (i, k) in named.enumerated() where rowOf[k.key] == nil { rowOf[k.key] = i }
     let needsOther = order.count > rowCount || held.contains { rowOf[$0.kind] == nil }
-    let otherRow = needsOther ? named.count : nil
+    let otherRow: Int? = needsOther ? named.count : nil
     let rowTotal = named.count + (needsOther ? 1 : 0)
     var cells = Array(repeating: Array(repeating: false, count: count), count: rowTotal)
     for h in held {
