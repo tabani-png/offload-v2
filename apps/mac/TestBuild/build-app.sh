@@ -117,6 +117,12 @@ assemble() {
   printf 'APPL????' > "$app/Contents/PkgInfo"
   cp "$bin" "$app/Contents/MacOS/$EXE_NAME"
   chmod 755 "$app/Contents/MacOS/$EXE_NAME"
+  # The executable links Sparkle (m3-03) and loads it from @executable_path/../Frameworks. -P keeps the framework's
+  # version symlinks, as m3-03's bundle.sh does.
+  if [ -d "$(dirname "$bin")/Sparkle.framework" ]; then
+    mkdir -p "$app/Contents/Frameworks"
+    cp -RP "$(dirname "$bin")/Sparkle.framework" "$app/Contents/Frameworks/Sparkle.framework"
+  fi
   # DEPLOYMENT 3.1: a third-party notices file in every bundle; the MIT license beside it.
   cp "$REPO/NOTICE" "$app/Contents/Resources/$NOTICES"
   cp "$REPO/LICENSE" "$app/Contents/Resources/LICENSE.txt"
@@ -127,7 +133,15 @@ assemble() {
 sign_adhoc() {
   [ $# -eq 1 ] || usage "sign <app>"
   [ -d "$1" ] || die "no bundle at $1"
-  # One executable, no nested code: the bundle signature covers it. Never --deep when signing.
+  local fw="$1/Contents/Frameworks/Sparkle.framework"
+  # Inside-out, never --deep, in m3-03's sign.sh order: Sparkle's XPC services removed (the app is not sandboxed),
+  # its helpers, the framework, then the app. No hardened runtime: this is the ad hoc test build.
+  if [ -d "$fw" ]; then
+    rm -rf "$fw/Versions/B/XPCServices" "$fw/XPCServices"
+    "$CODESIGN" --force --sign - --timestamp=none "$fw/Versions/B/Autoupdate"
+    "$CODESIGN" --force --sign - --timestamp=none "$fw/Versions/B/Updater.app"
+    "$CODESIGN" --force --sign - --timestamp=none "$fw"
+  fi
   "$CODESIGN" --force --sign - --timestamp=none "$1"
   echo "signed ad hoc $1"
 }
