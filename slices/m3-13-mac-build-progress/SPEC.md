@@ -347,3 +347,7 @@ sheet?" (m5-06); any change to m3-10's folders.
      longer describes Not now; `planNotNow` and `notNowEveryPhase` are now `planClose` and `closeEveryPhase`.
 - `BASE` is set after m3-10 is `done`, so m3-10's placeholder commit in `BuildProgress/` is not counted against this
   slice's `owns`.
+- Rebase onto the rewritten `w1/ui-analysis` (2026-11-22): `e80962a` left the history, so `BASE` is now `da18c84`,
+  the parent of "status in_progress, BASE set" on the new stack. The conflicts were in docs only: GLOSSARY and
+  SECURITY_PRIVACY keep m3-10's rows as rewritten upstream (the interim masker masks person names) beside this
+  slice's Sample build, Builds started on this Mac and Build progress rows.
