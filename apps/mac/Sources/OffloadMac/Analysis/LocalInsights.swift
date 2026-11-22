@@ -270,6 +270,9 @@ public enum LocalInsights {
           out[i].end = max(out[i].start, cutoff)
         }
         out.removeAll { $0.end <= $0.start }
+        // An import's next run counts from its own first focus, never from the previous file's app (review 4,
+        // finding 2: a recording with no readable frame has idle_end and idle_start only).
+        if runsInterleave { lastFocus = nil }
       case .pause:
         close(at: e.ts)
         paused = true
