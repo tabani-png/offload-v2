@@ -9,7 +9,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m3-13-mac-build-progress"
-BASE=""   # set to the commit this slice starts from (after m3-10 is done) when status becomes in_progress
+BASE="d3d66519c8809874b1b68dbb796f41e28a2c8105"   # set to the commit this slice starts from (after m3-10 is done) when status becomes in_progress
 PKG="apps/mac"
 TEST_DIR="apps/mac/Tests/OffloadMacTests/M313"
 SUITE="OffloadMacTests.M313"

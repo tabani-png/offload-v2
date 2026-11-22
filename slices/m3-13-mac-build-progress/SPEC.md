@@ -2,7 +2,7 @@
 id: m3-13-mac-build-progress
 title: Build progress on the Mac (builds started on this Mac, a build's steps, status, held-out check, spend against the build cap, the exact-hash OK, build and deploy approvals, measured saving) from the builds API, with a clearly labelled sample build in local backend mode
 milestone: M3
-status: ready
+status: in_progress
 depends_on: [m3-10-mac-recordings-analysis]
 parallel_safe: true
 human_gated: true
