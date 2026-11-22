@@ -11,7 +11,7 @@ size: L
 parallel_group: M5-A
 owns: [services/brain/src/understanding/**, services/brain/tests/m5-01-understanding/**]
 verify: bash slices/m5-01-understanding/verify.sh
-min_tests: 46
+min_tests: 51
 paths_in_scope: [services/brain/src/understanding/**, services/brain/src/user-model/ports.ts, services/brain/src/index.ts, services/brain/tests/m5-01-understanding/**, services/brain/package.json, bun.lock, docs/API.md, docs/ARCHITECTURE.md, docs/DATA_MODEL.md, docs/GLOSSARY.md, docs/ROADMAP.md, slices/m5-01-understanding/**, slices/m5-01-understanding/STATUS.md]
 paths_out_of_scope: [ee/**, apps/**, packages/**, services/api/**, services/runtime/**, services/broker/**, services/builder/**, services/brain/src/models/**, services/brain/src/store/**, services/brain/src/user-model/ledger.ts, services/brain/sql/**, docs/adr/**, .github/**]
 red_tests: [SPAN, CUE, DESCRIBE, EMBED, INDUCE, WINDOW, LEDGER, CONSUME]
@@ -75,8 +75,9 @@ Pipeline, all in `services/brain/src/understanding/`:
    superset of the rows just ingested, not the exact set: m3-01's payload has no range. The rows are taken as one `ts`
    range per `import_id` (null = live rows; review 3 finding 1: one range over an old import and today's live rows was
    cut to its last 31 days and dropped the import). Each range is widened to whole days in the member's timezone (from
-   the brain profile), capped at 31 days ending at its last day, and read **by `ts`**, not by `day`; rows read twice
-   count once. Only days that hold observations are analysed (finding 3). So an import is analysed on its own days and
+   the brain profile; at most `MAX_RANGE_DAYS` = 731 ending at its last day). The days of all ranges are analysed in
+   windows spanning at most `MAX_ANALYSIS_DAYS` (31), oldest first, each read **by `ts`** (not by `day`) and updated on
+   its own (review 4 finding 2: one capped range lost the older days of a long import); rows read twice count once. Only days that hold observations are analysed (finding 3). So an import is analysed on its own days and
    its records are anchored to its last day (m3-05 "ANCHOR"), also while live capture runs.
 2. **Sessionize** (`sessionize.ts`, written fresh after old `sessionize.ts`): segments end at the next focus,
    `idle_start` (backdated 120 s), `pause` or the last event; blips under 10 s join a contiguous neighbour; segments of
@@ -99,15 +100,15 @@ Pipeline, all in `services/brain/src/understanding/`:
    read on screen on a named surface (review 1: a default verb with no object, or a stand-in without a cue, says
    nothing about the work), else the best step on the same surface with cosine ≥ 0.7. Tasks are connected components of steps linked by a shared item pseudonym or a reliable
    transition. Instances split on a new day, a gap over 10 min, a step coming back with a conflicting `doc` or the instance's first
-   step recurring after another step. Ids are deterministic (uuid from sha256 of device and object ids), so the same
-   observations give the same window and `runMemberUpdate` writes the same rows.
+   step recurring after another step. Ids are deterministic (uuid from sha256 of device and object ids), so without a
+   labeler the same observations give the same window and `runMemberUpdate` writes the same rows.
 7. **Job** (`job.ts`): claim the event (session advisory lock in `withEventLock`; a second consumer gets `busy`) →
    duplicate check on `outbox_deliveries` → profile timezone (brain transaction) → read (capture transaction) → build
    the window (no transaction; the labeler's model call happens here) → `runMemberUpdate` after `repo.lockProfile`
    (brain transaction: one member's updates run one after the other) → mark delivered (capture transaction). A
    failure records `attempts` and `last_error_code` and rethrows; the drain records it as `failed` and goes on; after
-   `MAX_ATTEMPTS` (5) the event is no longer pending. A re-run after a crash rebuilds the same window, which
-   `runMemberUpdate` stores idempotently. A delivered event is never processed again.
+   `MAX_ATTEMPTS` (5) the event is no longer pending. A re-run after a crash rebuilds the same windows (without a
+   labeler), which `runMemberUpdate` stores idempotently. A delivered event is never processed again.
 
 Privacy: only masked C1 text is read; logs and errors carry ids and codes only. Task names are built from verb,
 object, app and masked title words, never from snapshot text, and are scrubbed again by the user model (`safeName`). No model call unless a labeler is injected; the labeler goes through the router.
@@ -168,6 +169,11 @@ requires it).
 | CONSUME | CONSUME: an import older than 31 days is analysed on its own days even when the member has live rows | review 3 findings 1, 3 |
 | CUE | CUE: a host-shaped OCR token needs a real top-level domain and must be lowercase as read | review 3 finding 2 |
 | CONSUME | CONSUME: event claims come from the claim pool, and a connection whose unlock failed is destroyed | review 3 finding 5 (stub pool, no database) |
+| CONSUME | CONSUME: an import spanning 40 days is analysed on every day that holds rows | review 4 finding 2 |
+| CONSUME | CONSUME: an event range from first_ts to last_ts over an old import and live rows covers both | review 4 finding 2 |
+| DESCRIBE | DESCRIBE: labels map to items by their item number; a missing or repeated item gets no label | review 4 finding 4 |
+| SPAN | SPAN: a text read at the instant of a focus change belongs to the new app | review 4 finding 4 |
+| INDUCE | INDUCE: realistic chrome without app names or a URL bar on the first lines still gives one task and keeps noise apart | review 4 finding 6 |
 
 ## Test plan
 Pure tests on synthetic, masked observations (`tests/m5-01-understanding/fixtures.ts`: a reproducible generator of
@@ -185,6 +191,12 @@ fix rules and `FixEstimate` (m5-04: `estimateFor` is passed through), `offload s
 `bash slices/m5-01-understanding/verify.sh` (needs `DATABASE_URL` to a disposable Postgres 17).
 
 ## Scope changes
+- **Days-with-rows test history (review 4 finding 3)**: the review-3 red test (then three contiguous import days)
+  did not need the days-with-rows filter; the filter landed with the fix and the test was changed to days 42 and 40
+  one commit later, which is when it first failed without the filter. The rule did not have a failing test before
+  its code.
+- **routerSpanLabeler test answer (review 4 finding 4)**: the label schema now asks for each label's item number, so
+  the earlier test's fake answer carries `item` values; an answer without them no longer fits the contract.
 - **BASE and STATUS.md (review 4 finding 1)**: the branch was rebased onto `a97f748` (Port #45), so `BASE` is now
   `a97f748`. `slices/m5-01-understanding/STATUS.md` is orchestrator-owned and committed by the orchestrator on this
   branch; it is listed in `paths_in_scope` so the scope check accepts those commits. The builder never edits it.
@@ -229,7 +241,9 @@ fix rules and `FixEstimate` (m5-04: `estimateFor` is passed through), `offload s
   finding 4 recorded under Known limits
 - [x] after review 3: `verify.sh` PASS (48 slice tests, 489 in the full suite); `verify-all` green with
   `SLICE_UPSTREAM=$(git merge-base HEAD origin/main)`
-- [ ] review 4, then `status: done`
+- [x] review 4 (CHANGES): findings 1, 2, 4, 6 and 7 fixed (d1eca51; red tests 099dffb, then 477ae3d); findings 3
+  and 5 recorded under Scope changes and Known limits
+- [ ] review 5, then `status: done`
 
 Known limits (for m1-06 and later):
 - Each event re-reads its whole days, so a live member whose Mac uploads every few minutes re-analyses today and
@@ -260,7 +274,15 @@ Known limits (for m1-06 and later):
   alone.
 - The attempt cap applies on every path: the drain skips exhausted events and `runUnderstanding` returns `failed`
   (`attempts_exhausted`) for them, so a durable runtime retrying the workflow does not run them again.
-- App cues use a fixed table of app names, read only at the start of a snapshot's first two lines; a recording of
-  an app not in the table, or whose chrome OCR reads lower down, gets its host cue only.
+- App cues seldom fire on real recordings (review 4 finding 6): on macOS, Chrome, Safari, Mail and Excel show their
+  name only in the menu bar, and a recording without one usually starts with the tab strip, so the URL bar lands
+  below the first two lines and no host cue fires either. Such a recording is one uncued span per recording; it still
+  joins its repeats by embedding, and the realistic-chrome INDUCE test covers that path (one task, noise apart). The
+  cues then only refine what the e2e-01 fixture shows. A recording of an app not in the table gets its host cue only.
+- With a label route the window is not deterministic (review 4 finding 5): verbs and objects come from the model, so
+  re-running the same days can change step keys, task signatures and `t_` ids, which feeds the stale ledger entries
+  above. A later slice can cache labels per span id.
+- Hand-off to m1-06 (review 4 finding 2): `first_ts`/`last_ts` may span import spaces and live rows; understanding
+  splits the days into 31-day windows itself, so ingest only has to write the accepted objects' ts range.
 - Instances split by the rules above; a workflow whose steps interleave with unrelated work inside 2 min can link
   through a transition only if it happens at least twice and on half of the step's spans.

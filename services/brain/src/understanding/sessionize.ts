@@ -52,8 +52,10 @@ type Event =
   | { kind: CaptureObservation["kind"]; id: string; ts: number; o: CaptureObservation }
   | { kind: "text"; id: string; ts: number; t: CaptureText };
 
-/** At one instant: what ends comes first, then what resumes, then the focus, then what happens on it. A text read at
- * the moment of a focus change belongs to the new app, never to the old one re-opened by idle_end. */
+/** At one instant: what ends comes first, then what resumes, then the focus, then what happens on it. The order that
+ * matters is texts and input after the focus: a text read at the moment of a focus change belongs to the new app,
+ * never to the old one re-opened by idle_end (SPAN test). idle_end before or after the focus gives the same spans:
+ * after it, idle_end is a no-op; before it, the old app's zero-length segment is dropped by close(). */
 const RANK: Readonly<Record<Event["kind"], number>> = {
   idle_start: 0, pause: 1, resume: 2, idle_end: 3, focus: 4, permission_change: 5, input_counts: 6, text: 6,
 };
