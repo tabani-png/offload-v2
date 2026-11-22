@@ -118,6 +118,26 @@ cloud backend is configured.
   is gone (404): the row says "This build is no longer available." with **Remove from list**; offline and errors as
   above.
 - **Provenance**: `.sample` in `.local` (m3-10's `SampleDataLabel`), `.cloud` otherwise; the two never mix.
+- **Pure first, model second, views last.** Everything the screen says is decided by pure types that tests drive
+  directly: `StepMapping.rows(build:fix:)`, `HeadlineMap.headline(_:)` and `HeadlineMap.dot(_:)`,
+  `AttemptRow.rows(_:)`, `HeldOutResult.of(_:)`, `BudgetMeter(build:now:)`, `Money.usd(_:)` (half up through `Decimal`,
+  so 0.845 is "$0.85"), `SavingLine.make(fix:installed:outcome:)`, `SampleTimeline.state(at:)` (the mockup's formula
+  ported tick for tick) and `BuildCopy`. `BuildDetail.make(build:fix:outcome:now:name:)` puts them together (the name
+  comes from the record: the API's build has none) and `BuildDetail.sample(tick:)` does the same for the sample.
+- **Loops are steps.** The model's three timed loops (the build poll, the plan poll, the sample's 100 ms ticks) are a
+  step function that returns the next delay or nil (`pollStep()`, `planStep()`, `sampleStep()`), run by one loop over
+  an injected `BuildSleeper`. Tests call the steps and the loops with a recording sleeper; nothing waits in real time.
+  `appear(pending:)` starts them and `disappear()` cancels them and makes every step return nil.
+- **The fix id.** m3-10's `Opportunity` has no `fix_id`, and an option's `id` is its fix id (`FixOption.id`, "the fix
+  id"); so the plan step reads the fix named by the hand-off's `option_id`, else the recommended option, else the
+  first. While the opportunity is `open`, `chosen`, `capturing_fixtures` or `designing` it says "Designing the fix…";
+  in `needs_connection` it says "Connect <apps> first."; in any other state it reads the fix, and a 404 keeps waiting.
+- **The measured line** uses the outcome's `ratio` × `estimated_minutes_per_week` ÷ 60 for "saved … h/wk measured"
+  (the outcome has no single measured-per-week field; `weeks` holds per-week values whose unit the API does not name).
+  The install's `routine_id` and the install time are kept on the build's record, so the outcome is found by routine
+  in the month it was installed (UTC).
+- **Errors in words.** `BuildCopy.sentence(for: APIError)` gives every `APIError` one plain sentence; a
+  `policy_denied` shows the server's message as given; nothing shows a request id or a hash.
 
 ## Red tests (write these first, run them, see them fail)
 Folder `apps/mac/Tests/OffloadMacTests/M313/`, Swift Testing, every test `@Test("TAG: ...")` inside
