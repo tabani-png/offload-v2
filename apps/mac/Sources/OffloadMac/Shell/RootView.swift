@@ -85,11 +85,17 @@ public struct MenuBarContent: View {
   /// Observed too, so the menu follows setup and Never watch changes made anywhere.
   @ObservedObject private var onboarding: OnboardingModel
   let openWindow: () -> Void
+  /// The updater's lines (m3-03, `UpdateMenu`), shown before Quit; empty in previews and tests.
+  let updates: [UpdateMenuEntry]
+  let checkForUpdates: () -> Void
 
-  public init(app: AppModel, openWindow: @escaping () -> Void) {
+  public init(app: AppModel, openWindow: @escaping () -> Void, updates: [UpdateMenuEntry] = [],
+              checkForUpdates: @escaping () -> Void = {}) {
     self.app = app
     self.onboarding = app.onboarding
     self.openWindow = openWindow
+    self.updates = updates
+    self.checkForUpdates = checkForUpdates
   }
 
   public var body: some View {
@@ -109,6 +115,17 @@ public struct MenuBarContent: View {
     Button(OnboardingCopy.menuNeverWatchMore) {
       app.showNeverWatch()
       openWindow()
+    }
+    if !updates.isEmpty {
+      Divider()
+      ForEach(updates, id: \.self) { entry in
+        switch entry.action {
+        case .checkForUpdates:
+          Button(entry.title) { checkForUpdates() }
+        case .disabled:
+          Text(entry.title)
+        }
+      }
     }
     Divider()
     Button(OnboardingCopy.menuQuit) { app.quit() }

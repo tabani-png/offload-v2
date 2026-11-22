@@ -12,7 +12,7 @@ parallel_group: M3-C
 owns: [apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Sources/OffloadMac/Onboarding/OnboardingFlow.swift, apps/mac/Sources/OffloadMac/Onboarding/OnboardingState.swift, apps/mac/Sources/OffloadMac/Onboarding/OnboardingStore.swift, apps/mac/Sources/OffloadMac/Onboarding/OnboardingCopy.swift, apps/mac/Sources/OffloadMac/Onboarding/Profile.swift, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Tests/OffloadMacTests/M304/**]
 verify: bash slices/m3-04-mac-onboarding/verify.sh
 min_tests: 80
-paths_in_scope: [apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Package.swift, apps/mac/README.md, docs/GLOSSARY.md, docs/ONBOARDING.md, docs/SECURITY_PRIVACY.md, slices/m3-04-mac-onboarding/**]
+paths_in_scope: [apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/App/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Package.swift, apps/mac/README.md, docs/GLOSSARY.md, docs/ONBOARDING.md, docs/SECURITY_PRIVACY.md, slices/m3-04-mac-onboarding/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Packaging/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift]
 red_tests: [SHELL, ONBOARDING, MODE, REASK, PERMS, NOW, NEVERWATCH, COPY, TOKENS, TIME, META, TYPE, BUDDY]
 ---
@@ -211,3 +211,12 @@ exits 0; with `REQUIRE_MAC=1` (CI `mac` job) a skip fails. The CI `mac` job's pl
   and `Onboarding/**` folders: `Shell/AppModel.swift`, `Onboarding/Services.swift`, `Onboarding/OnboardingModel.swift`
   and `Onboarding/OnboardingView.swift` are shared with m3-05 (its SPEC, Scope changes). Every new file in those
   folders must be added to `owns` here or to the slice that writes it.
+- **Rebase onto main (2026-11-22, m3-03 merged)**: m3-03 made `OffloadMac` the executable target (product
+  `Offload`, Sparkle linked, `@main` in `OffloadMac.swift` with `--self-check`). Main's `Package.swift` is kept as
+  is, so the target `OffloadMacApp` and the `OffloadMac` library product are gone. The SwiftUI `App` moved from
+  `Sources/OffloadMacApp/OffloadApp.swift` to `Sources/OffloadMac/App/OffloadApp.swift` (no `@main`); m3-03's entry
+  answers `--self-check`, then `--version` (m3-09), then starts it. m3-03's placeholder AppKit menu became
+  `App/AppUpdates.swift` (`UpdateMenu`: a line per permission lost in an update, then "Check for Updates…" or the
+  status line, shown before Quit by `MenuBarContent`; tests `M304` `ShellUpdatesTests.swift`). `paths_in_scope` names
+  `apps/mac/Sources/OffloadMac/App/**` instead of `apps/mac/Sources/OffloadMacApp/**`.
+  The Package.swift row of the Contract (additive `OffloadMacApp` target) no longer applies.

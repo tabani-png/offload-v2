@@ -1,28 +1,16 @@
 import AppKit
-import OffloadMac
 import SwiftUI
 
-// The Offload app: a menu bar item and one main window. All logic and views live in the OffloadMac library
-// (tested there); this file only wires the live pieces.
-
-/// Entry point. `Offload --version` answers before any window, menu bar item or permission check exists, so the
-/// installed-copy smoke check (apps/mac/TestBuild/build-app.sh smoke, slice m3-09) can run it with an empty
-/// environment. Everything else starts the SwiftUI app.
-@main
-enum OffloadMain {
-  @MainActor
-  static func main() {
-    if let line = VersionLine.line(arguments: CommandLine.arguments, info: Bundle.main.infoDictionary) {
-      FileHandle.standardOutput.write(Data((line + "\n").utf8))
-      exit(0)
-    }
-    OffloadApp.main()
-  }
-}
+// The Offload app: a menu bar item and one main window. All logic and views live in the other folders of this module
+// (tested there); this file only wires the live pieces. The process entry point is `OffloadEntry` in OffloadMac.swift
+// (m3-03): it answers `--self-check` and `--version` (m3-09) before any window, menu bar item or permission check
+// exists, and otherwise starts this app.
 
 struct OffloadApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
   @StateObject private var app = AppModel.live()
+  /// Sparkle (m3-03) starts here, before any scene, as Sparkle's own SwiftUI setup does.
+  private let updates = AppUpdates()
 
   var body: some Scene {
     Window("Offload", id: "main") {
@@ -40,7 +28,7 @@ struct OffloadApp: App {
     .commandsRemoved()
 
     MenuBarExtra {
-      MenuBarOpener(app: app)
+      MenuBarOpener(app: app, updates: updates)
     } label: {
       MenuBarLabel(app: app)
     }
@@ -50,13 +38,19 @@ struct OffloadApp: App {
 /// Opens the main window from the menu bar item.
 struct MenuBarOpener: View {
   @ObservedObject var app: AppModel
+  let updates: AppUpdates
   @Environment(\.openWindow) private var openWindow
 
   var body: some View {
-    MenuBarContent(app: app) {
-      openWindow(id: "main")
-      NSApp.activate()
-    }
+    MenuBarContent(
+      app: app,
+      openWindow: {
+        openWindow(id: "main")
+        NSApp.activate()
+      },
+      updates: updates.menu,
+      checkForUpdates: { updates.updater.checkForUpdates(nil) }
+    )
     // Hidden in Local mode and before "Start sending" (ONBOARDING section 8).
     if app.recordings?.isOffered == true {
       Button(RecordingsCopy.menuItem) {

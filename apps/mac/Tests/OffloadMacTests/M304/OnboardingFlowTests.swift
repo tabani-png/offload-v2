@@ -208,7 +208,7 @@ extension M304 {
   @Test("ONBOARDING: Input Monitoring is never requested during setup")
   @MainActor func noInputMonitoring() {
     let banned = try! Regex("IOHIDRequestAccess|IOHIDCheckAccess|CGRequestListenEventAccess|CGPreflightListenEventAccess|kIOHIDRequestTypeListenEvent|Privacy_ListenEvent")
-    let sources = M304Repo.swiftSources("Sources/OffloadMac") + M304Repo.swiftSources("Sources/OffloadMacApp")
+    let sources = M304Repo.swiftSources("Sources/OffloadMac")
     #expect(sources.count > 5)
     for f in sources {
       #expect(f.text.firstMatch(of: banned) == nil, "Input Monitoring API in \(f.path)")

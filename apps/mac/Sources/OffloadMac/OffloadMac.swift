@@ -1,9 +1,11 @@
 // OffloadMac: thin Mac client. See docs/ARCHITECTURE.md#1-mac-client.
 // The entry point of the `Offload` executable. `Offload --self-check` runs SelfCheck and exits without any UI;
-// otherwise a minimal menu bar app starts. m3-02-mac-capture-upload replaces this file's placeholder UI; the updater
-// wiring (m3-03) is the one `updater.menuItem()` line below.
+// `Offload --version` prints VersionLine and exits (m3-09, the test build's smoke check); otherwise the SwiftUI app
+// starts (App/OffloadApp.swift, m3-04). The updater wiring (m3-03) moved with the placeholder menu into
+// App/AppUpdates.swift when this branch was rebased onto main (2026-11-22).
 import AppKit
 import Foundation
+import SwiftUI
 
 /// TODO: not implemented. See docs/ARCHITECTURE.md#1-mac-client.
 public enum OffloadMacTodo {
@@ -25,51 +27,12 @@ enum OffloadEntry {
             }
             exit(code)
         }
+        if let line = VersionLine.line(arguments: CommandLine.arguments, info: Bundle.main.infoDictionary) {
+            FileHandle.standardOutput.write(Data((line + "\n").utf8))
+            exit(0)
+        }
         MainActor.assumeIsolated {
-            let app = NSApplication.shared
-            let delegate = OffloadAppDelegate()
-            app.delegate = delegate
-            app.setActivationPolicy(.accessory)
-            // NSApplication holds its delegate weakly.
-            withExtendedLifetime(delegate) { app.run() }
+            OffloadApp.main()
         }
-    }
-}
-
-/// Placeholder menu bar app until m3-02: a status item with the updater and Quit.
-@MainActor
-final class OffloadAppDelegate: NSObject, NSApplicationDelegate {
-    private var statusItem: NSStatusItem?
-    private var lifecycle: UpdateLifecycle?
-    private var updater: UpdaterController?
-
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        let settings = UserDefaults.standard
-        let lifecycle = UpdateLifecycle(
-            capture: CaptureNotStarted(),
-            permissions: SystemPermissionSource(),
-            settings: settings
-        )
-        let updater = UpdaterController(info: Bundle.main.infoDictionary, lifecycle: lifecycle, settings: settings)
-        let missing = lifecycle.didLaunch()
-
-        let menu = NSMenu()
-        // After an update, a missing permission is named here until m3-04's repair banner exists.
-        for permission in missing {
-            let item = NSMenuItem(title: "\(permission.displayName) is off", action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            menu.addItem(item)
-        }
-        menu.addItem(updater.menuItem())
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit Offload", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-
-        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "Offload"
-        statusItem.menu = menu
-
-        self.statusItem = statusItem
-        self.lifecycle = lifecycle
-        self.updater = updater
     }
 }

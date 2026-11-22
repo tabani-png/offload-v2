@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// The app's root model: decides the launch route, owns the onboarding and permissions models, and switches to Today
-/// when setup is done. Everything it calls is injected, so `OffloadMacApp` only wires the live pieces.
+/// when setup is done. Everything it calls is injected, so `App/OffloadApp.swift` only wires the live pieces.
 @MainActor
 public final class AppModel: ObservableObject {
   @Published public private(set) var route: LaunchRoute

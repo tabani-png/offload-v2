@@ -12,7 +12,7 @@ parallel_group: M3-C
 owns: [.github/workflows/mac-artifact.yml, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Tests/OffloadMacTests/M309/**, scripts/tests/m3-09-mac-test-build/**]
 verify: bash slices/m3-09-mac-test-build/verify.sh
 min_tests: 46
-paths_in_scope: [.github/workflows/mac-artifact.yml, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Tests/OffloadMacTests/M309/**, apps/mac/README.md, docs/DEPLOYMENT.md, scripts/tests/m3-09-mac-test-build/**, slices/m3-09-mac-test-build/**]
+paths_in_scope: [.github/workflows/mac-artifact.yml, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Tests/OffloadMacTests/M309/**, apps/mac/README.md, docs/DEPLOYMENT.md, scripts/tests/m3-09-mac-test-build/**, slices/m3-09-mac-test-build/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, NOTICE, .github/workflows/ci.yml, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Tests/OffloadMacTests/M303/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift]
 red_tests: [PLIST, STAMP, ASSEMBLE, ADHOC, SMOKE, PINNED, ARTIFACT, GUIDE, VERSION]
 ---
@@ -146,3 +146,15 @@ workflow run on GitHub (needs operator items O4 and O12).
   covers `apps/mac/**`, but m3-02 has not started (as m3-04 records). A SwiftPM resource bundle now stops the build
   instead of being copied (finding 11). The bundle carries `LICENSE.txt` and `THIRD_PARTY_NOTICES.txt`, and `check`
   applies the DEPLOYMENT 3.1 rules (finding 10). `min_tests` 24 → 46.
+- **Rebase onto main (2026-11-22, m3-03 merged)**: m3-03 made `OffloadMac` the executable target (product
+  `Offload`, Sparkle linked, `@main` in `OffloadMac.swift` with `--self-check`). Main's `Package.swift` is kept as
+  is, so the target `OffloadMacApp` and the `OffloadMac` library product are gone. The SwiftUI `App` moved from
+  `Sources/OffloadMacApp/OffloadApp.swift` to `Sources/OffloadMac/App/OffloadApp.swift` (no `@main`); m3-03's entry
+  answers `--self-check`, then `--version` (m3-09), then starts it. m3-03's placeholder AppKit menu became
+  `App/AppUpdates.swift` (`UpdateMenu`: a line per permission lost in an update, then "Check for Updates…" or the
+  status line, shown before Quit by `MenuBarContent`; tests `M304` `ShellUpdatesTests.swift`). `paths_in_scope` names
+  `apps/mac/Sources/OffloadMac/App/**` instead of `apps/mac/Sources/OffloadMacApp/**`.
+  `--version` is answered in `OffloadMac.swift` after `--self-check`, not in `Sources/OffloadMacApp/`. The bundle
+  now links Sparkle.framework, so `build-app.sh assemble` copies `Sparkle.framework` from beside the binary into
+  `Contents/Frameworks` and `sign` signs its helpers and the framework inside-out before the app (still ad hoc,
+  no hardened runtime, never `--deep`); tests ASSEMBLE and ADHOC.
