@@ -40,3 +40,12 @@ holds backend mode and the brain and builds clients (`.local` by default: no cli
 holds the sidebar shell (Today, Weekly review, Builds, Recordings, Settings), the Sample data label and the launch
 wiring. `TodayLive/`, `WeeklyReview/` and `BuildProgress/` start as placeholders owned by m3-11, m3-12 and m3-13.
 Tests: `Tests/OffloadMacTests/M310/`.
+
+Today on the Mac (slice m3-11): `Sources/OffloadMac/TodayLive/` replaces m3-10's placeholder with the mockup's Daily
+screen wired to real data. In `.local` it reads m3-10's local insights (the header, the day grid of the top apps, What
+you did, "Keeps coming back this week" with each count opening to how it was counted, one suggested fix whose Not now
+and Leave it alone are kept on this Mac through `LocalAnswerStore`); in `.cloud` it reads the brain's day and week
+records and the open opportunities. **OK, build** hands the fix to Build progress (`NavigationModel.startBuild`). The
+menu bar item shows today's line above m3-04's menu. `TodayContent` builds every number from a Figure; `TodayLiveModel`
+holds the day, the states (empty, importing, ready, not recorded, failed), the answers and the keys.
+Tests: `Tests/OffloadMacTests/M311/`.
