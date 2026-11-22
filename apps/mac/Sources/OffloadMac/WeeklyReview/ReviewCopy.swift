@@ -166,6 +166,11 @@ public enum ReviewCopy {
   public static let notifyToggle = "Tell me when my review is ready"
   public static let notifyHelp = "One notification a week, at your review slot. It says only that your review is ready."
   public static let notificationsOff = "Notifications are off for Offload in System Settings."
+  /// The review screen's offer (ONBOARDING section 12), with **Tell me when my review is ready** and **No thanks**.
+  public static let offerLine = "Get one notification a week, at your review slot, when your review is ready."
+  public static let offerDismiss = "No thanks"
+  /// `.cloud`: a 404 for a week whose slot has passed.
+  public static let noReview = "There is no review for this week."
   public static let slotSaveFailed = "The review slot wasn't saved. Try again."
   public static let notificationTitle = "Offload"
   public static let notificationBody = "Your weekly review is ready."
@@ -181,21 +186,34 @@ public enum ReviewCopy {
   public static var all: [String] {
     let slot = ReviewSlot(day: .fri, time: "16:00", timeZone: TimeZone(identifier: "UTC") ?? .current)
     let week = ISOWeek(containing: Date(timeIntervalSince1970: 1_795_348_800), timeZone: slot.timeZone)
-    return [
+    let screen: [String] = [
       title(week), reviewItem, weeksKnownItem(8), everyNumberOpens,
       grew("Xcode, then Slack", weeks: "3"), firstWeekSentence(hours: "41.2"), aboutUsual(hours: "41.2"),
       moreThanUsual(hours: "41.2", percent: "12"), lessThanUsual(hours: "41.2", percent: "12"), sentenceFallback,
+    ]
+    let tiles: [String] = [
       activeLabel, deepWorkLabel, switchesLabel, savedLabel, focusLabel, meetingsLabel, noFixesYet, firstWeek, sameAsUsual,
       newThisWeek, unitLabel("hours"), unitLabel("count"), vsUsual(percent: -2), vsUsual(percent: 6), running(up: false, weeks: 3),
-      running(up: true, weeks: 4), goalsTitle, notLinkedYet, questionsTitle,
+      running(up: true, weeks: 4), goalsTitle, notLinkedYet,
+    ]
+    let questions: [String] = [
+      questionsTitle,
       goalQuestion(repeat: "Xcode, then Slack", goal: "Ship a product"), buildQuestion(repeat: "Xcode, then Slack"),
       cloudQuestion(name: "Reconcile invoices"), whyLine(top: true, minutesPerWeek: 145, present: 3, observed: 4),
       whyLine(top: false, minutesPerWeek: 60, present: 1, observed: 1), yes, no, anotherGoal, okBuild, notNow, never, keep,
-      leaveAlone, whichGoal, neverNote, pickGoal, answerFailed, loading, empty, chooseRecordings, seeWeek(week), notYet(slot), tryAgain,
-      failedOffline, failedSignedOut, failedBusy, failedServer, failedOther, previousWeek, nextWeek, howCounted, slotTitle,
-      dayLabel, timeLabel, notifyToggle, notifyHelp, notificationsOff, slotSaveFailed, notificationTitle, notificationBody,
-    ] + goalTrendItems(up: true, weeks: 4) + goalTrendItems(up: false, weeks: 3) + counterItems(answered: 2, total: 4)
-      + buildNoteItems
+      leaveAlone, whichGoal, neverNote, pickGoal, answerFailed,
+    ]
+    let states: [String] = [
+      loading, empty, chooseRecordings, seeWeek(week), notYet(slot), noReview, tryAgain,
+      failedOffline, failedSignedOut, failedBusy, failedServer, failedOther, previousWeek, nextWeek, howCounted,
+    ]
+    let settings: [String] = [
+      slotTitle, dayLabel, timeLabel, notifyToggle, notifyHelp, notificationsOff, offerLine, offerDismiss, slotSaveFailed,
+      notificationTitle, notificationBody,
+    ]
+    let items: [String] = goalTrendItems(up: true, weeks: 4) + goalTrendItems(up: false, weeks: 3)
+      + counterItems(answered: 2, total: 4) + buildNoteItems
+    return screen + tiles + questions + states + settings + items
   }
 
   /// Captions: lowercase (the proper nouns Mac and Offload aside), facts as separate items.

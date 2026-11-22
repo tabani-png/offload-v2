@@ -52,8 +52,10 @@ public final class WeeklyReviewModel: ObservableObject {
     case ready
     /// `.local`: nothing counted in the week.
     case empty
-    /// The current week before its slot, or a week the brain has no review for yet.
+    /// The current week before its slot (never requested, never computed).
     case notYet(ISOWeek)
+    /// `.cloud`: the brain has no review for a week whose slot has passed (a 404).
+    case noReview(ISOWeek)
     case failed(ReviewError)
   }
 
@@ -73,7 +75,11 @@ public final class WeeklyReviewModel: ObservableObject {
   private let now: @Sendable () -> Date
   /// True until the person steps to another week: the screen then follows the slot.
   private var followsNow = true
-  private var cancellable: AnyCancellable?
+  /// True once the screen asked for content: a slot read at launch then moves the week without loading.
+  private var hasRefreshed = false
+  private var cancellables: Set<AnyCancellable> = []
+  /// Wakes at the next slot so a screen left open moves to this week (review 1, finding 2).
+  private var slotTimer: Task<Void, Never>?
 
   public init(backends: Backends, insights: InsightsModel, navigation: NavigationModel,
               goals: @escaping @MainActor () -> [String], slot: @escaping @MainActor () -> ReviewSlot,
@@ -88,9 +94,21 @@ public final class WeeklyReviewModel: ObservableObject {
     if backends.mode.isLocal {
       // A finished import or a Never watch change publishes a new snapshot: the review follows it. `$snapshot` sends
       // the new value before the property changes, so the value it sends is used.
-      cancellable = insights.$snapshot.dropFirst().sink { [weak self] snapshot in
-        MainActor.assumeIsolated { self?.rebuildLocal(snapshot) }
+      insights.$snapshot.dropFirst().sink { [weak self] snapshot in
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          self.rebuildLocal(snapshot, analysing: self.insights.isAnalysing)
+        }
       }
+      .store(in: &cancellables)
+      // While a recount runs an empty week reads loading, not "Nothing counted" (review 1, finding 4).
+      insights.$isAnalysing.dropFirst().sink { [weak self] analysing in
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          self.rebuildLocal(self.insights.snapshot, analysing: analysing)
+        }
+      }
+      .store(in: &cancellables)
     }
   }
 
@@ -107,6 +125,19 @@ public final class WeeklyReviewModel: ObservableObject {
     if case .failed(let e) = state { return e.sentence }
     return nil
   }
+
+  /// The one line a state without content shows (not yet, no review, failed).
+  public var stateLine: String? {
+    switch state {
+    case .notYet: return ReviewCopy.notYet(slot())
+    case .noReview: return ReviewCopy.noReview
+    case .failed(let e): return e.sentence
+    case .loading, .ready, .empty: return nil
+    }
+  }
+
+  /// The next slot after now: when the shown week moves next.
+  public var nextSlot: Date { ReviewSchedule.next(after: now(), slot: slot()) }
 
   // MARK: Weeks
 
@@ -169,10 +200,37 @@ public final class WeeklyReviewModel: ObservableObject {
     await refresh()
   }
 
-  /// The slot changed (Settings): the shown week follows it.
+  /// The slot changed (Settings, or the profile read at launch): the shown week follows it, and is loaded again only
+  /// when the screen already asked for content.
   public func slotChanged() async {
+    if slotTimer != nil { startFollowingSlot() }
     if followsNow { week = ReviewSchedule.shownWeek(now: now(), slot: slot()) }
-    await refresh()
+    if hasRefreshed { await refresh() }
+  }
+
+  /// The slot passed: a screen that follows now moves to this week.
+  public func slotPassed() async {
+    await followNow()
+  }
+
+  /// The review notification was clicked: back to the week the slot shows, whichever week was open.
+  public func returnToNow() async {
+    followsNow = true
+    await followNow()
+  }
+
+  /// Sleeps until each next slot (at most 6 hours at a time) and then calls `slotPassed()`.
+  public func startFollowingSlot() {
+    slotTimer?.cancel()
+    slotTimer = Task { @MainActor [weak self] in
+      while !Task.isCancelled {
+        guard let target = self?.nextSlot, let start = self?.now() else { return }
+        let wait = min(max(target.timeIntervalSince(start), 1), 6 * 3600)
+        try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+        guard !Task.isCancelled, let self else { return }
+        if self.now() >= target { await self.slotPassed() }
+      }
+    }
   }
 
   /// The shown week again without loading (the slot was read at launch).
@@ -184,13 +242,14 @@ public final class WeeklyReviewModel: ObservableObject {
 
   public func refresh() async {
     answerError = nil
+    hasRefreshed = true
     if ReviewSchedule.isNotYet(week, now: now(), slot: slot()) {
       content = nil
       state = .notYet(week)
       return
     }
     if isLocal {
-      rebuildLocal(insights.snapshot)
+      rebuildLocal(insights.snapshot, analysing: insights.isAnalysing)
       return
     }
     guard let brain = backends.brain else {
@@ -208,7 +267,8 @@ public final class WeeklyReviewModel: ObservableObject {
     } catch let e as APIError {
       guard requested.id == week.id else { return }
       content = nil
-      state = e == .notFound || e.code == .notFound ? .notYet(requested) : .failed(ReviewError(e))
+      // Weeks before their slot are never requested, so a 404 means the brain has no review for this week.
+      state = e == .notFound || e.code == .notFound ? .noReview(requested) : .failed(ReviewError(e))
     } catch {
       guard requested.id == week.id else { return }
       content = nil
@@ -216,7 +276,7 @@ public final class WeeklyReviewModel: ObservableObject {
     }
   }
 
-  private func rebuildLocal(_ snapshot: InsightsSnapshot) {
+  private func rebuildLocal(_ snapshot: InsightsSnapshot, analysing: Bool) {
     guard isLocal else { return }
     if ReviewSchedule.isNotYet(week, now: now(), slot: slot()) {
       content = nil
@@ -228,7 +288,7 @@ public final class WeeklyReviewModel: ObservableObject {
       state = .ready
     } else {
       content = nil
-      state = .empty
+      state = analysing ? .loading : .empty
     }
   }
 
@@ -267,7 +327,7 @@ public final class WeeklyReviewModel: ObservableObject {
         return
       }
       await insights.reload()
-      rebuildLocal(insights.snapshot)
+      rebuildLocal(insights.snapshot, analysing: insights.isAnalysing)
     } else {
       guard let brain = backends.brain else {
         answerError = ReviewCopy.answerFailed
@@ -299,7 +359,7 @@ public final class WeeklyReviewModel: ObservableObject {
 @MainActor
 public final class ReviewSettingsModel: ObservableObject {
   /// Shared with the scheduler, which reads the slot when it schedules.
-  final class SlotHolder {
+  @MainActor final class SlotHolder {
     var slot: ReviewSlot
     init(_ slot: ReviewSlot) { self.slot = slot }
   }
@@ -331,17 +391,44 @@ public final class ReviewSettingsModel: ObservableObject {
   public var slotText: String { slot.text }
   public var notifyOn: Bool { scheduler.isOn }
 
+  /// The review screen offers the notification while it is off and was never offered, accepted or declined
+  /// (ONBOARDING section 12: "notification offered here for the first time").
+  public var showsNotificationOffer: Bool { !scheduler.isOn && !store.offerDone }
+
+  /// **Tell me when my review is ready** on the review screen: macOS is asked once (by the scheduler).
+  public func acceptNotificationOffer() async {
+    markOffered()
+    await scheduler.setOn(true)
+  }
+
+  /// **No thanks**: the offer does not come back; the toggle stays in Settings.
+  public func dismissNotificationOffer() { markOffered() }
+
+  /// The Settings toggle: the same as answering the offer.
+  public func setNotify(_ on: Bool) async {
+    markOffered()
+    await scheduler.setOn(on)
+  }
+
+  private func markOffered() {
+    guard !store.offerDone else { return }
+    objectWillChange.send()
+    store.offerDone = true
+  }
+
   /// `.local`: the slot kept on this Mac, else the rhythm. `.cloud`: `GET /v1/profile` (the slot shown so far stays
   /// when it fails).
+  /// A slot that differs from the one shown moves the notification and the review screen (review 1, finding 6).
   public func load() async {
+    var read: ReviewSlot?
     if backends.mode.isLocal {
-      set(ReviewSlot.resolve(store: store, rhythm: rhythm(), timeZone: timeZone))
-      return
+      read = ReviewSlot.resolve(store: store, rhythm: rhythm(), timeZone: timeZone)
+    } else if let brain = backends.brain, let profile = try? await brain.profile() {
+      read = ReviewSlot(brain: profile.reviewSlot, timeZone: timeZone)
     }
-    guard let brain = backends.brain else { return }
-    if let profile = try? await brain.profile(), let s = ReviewSlot(brain: profile.reviewSlot, timeZone: timeZone) {
-      set(s)
-    }
+    guard let read, set(read) else { return }
+    await scheduler.slotChanged()
+    await onSlotChange?()
   }
 
   /// A new slot: saved on this Mac in `.local`, `PATCH /v1/profile { review_slot }` in `.cloud`; then the
@@ -372,10 +459,13 @@ public final class ReviewSettingsModel: ObservableObject {
     await onSlotChange?()
   }
 
-  private func set(_ s: ReviewSlot) {
-    guard s != holder.slot else { return }
+  /// True when the slot changed.
+  @discardableResult
+  private func set(_ s: ReviewSlot) -> Bool {
+    guard s != holder.slot else { return false }
     objectWillChange.send()
     holder.slot = s
+    return true
   }
 }
 
@@ -385,6 +475,7 @@ public final class ReviewSettingsModel: ObservableObject {
 public final class WeeklyReviewHub {
   public let review: WeeklyReviewModel
   public let settings: ReviewSettingsModel
+  public let navigation: NavigationModel
 
   public init(backends: Backends, insights: InsightsModel, navigation: NavigationModel,
               goals: @escaping @MainActor () -> [String], rhythm: @escaping @MainActor () -> Rhythm?,
@@ -396,25 +487,36 @@ public final class WeeklyReviewHub {
     settings.onSlotChange = { [weak review] in await review?.slotChanged() }
     self.settings = settings
     self.review = review
+    self.navigation = navigation
+  }
+
+  /// The review notification was clicked: Weekly review opens on the week the slot shows (review 1, finding 2).
+  public func openFromNotification() async {
+    navigation.selection = .weeklyReview
+    await review.returnToNow()
   }
 
   /// The app's: goals and rhythm from onboarding's profile answers, the slot and toggle in `UserDefaults`, macOS
   /// notifications that open Weekly review when clicked.
   public convenience init(app: AppModel) {
     let onboarding = app.onboarding
-    let navigation = app.navigation
-    self.init(backends: app.backends, insights: app.insights, navigation: navigation,
+    let opener = ReviewOpener()
+    let notifier = LiveReviewNotifier(onOpen: {
+      NSApp.activate()
+      Task { await opener.hub?.openFromNotification() }
+    })
+    self.init(backends: app.backends, insights: app.insights, navigation: app.navigation,
               goals: { [weak onboarding] in onboarding?.state.profile.goals ?? [] },
               rhythm: { [weak onboarding] in onboarding?.state.profile.rhythm },
-              store: UserDefaultsReviewSettingsStore(),
-              notifier: LiveReviewNotifier(onOpen: { [weak navigation] in
-                navigation?.selection = .weeklyReview
-                NSApp.activate()
-              }))
+              store: UserDefaultsReviewSettingsStore(), notifier: notifier)
+    opener.hub = self
+    // At once, so a click that launched Offload finds its handler (review 1, finding 3).
+    notifier.installPresenter()
   }
 
   /// At launch, off the main path: read the slot (the profile in `.cloud`) and keep the notification if it is on.
   public func start() {
+    review.startFollowingSlot()
     Task { await startAndWait() }
   }
 
@@ -423,4 +525,10 @@ public final class WeeklyReviewHub {
     review.followSlot()
     await settings.scheduler.start()
   }
+}
+
+/// Lets the notification's click handler, made before the hub, reach it.
+@MainActor
+final class ReviewOpener {
+  weak var hub: WeeklyReviewHub?
 }

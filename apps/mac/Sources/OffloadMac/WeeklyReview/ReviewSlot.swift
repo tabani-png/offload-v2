@@ -76,15 +76,19 @@ public protocol ReviewSettingsStore: AnyObject {
   func storedSlot() -> ReviewSlotChoice?
   func saveSlot(day: Weekday, time: String)
   var notify: Bool { get set }
+  /// The review screen's notification offer was answered (accepted or declined) or the toggle was used.
+  var offerDone: Bool { get set }
 }
 
 public final class MemoryReviewSettingsStore: ReviewSettingsStore {
   private var slot: ReviewSlotChoice?
   public var notify: Bool
+  public var offerDone: Bool
 
-  public init(slot: ReviewSlotChoice? = nil, notify: Bool = false) {
+  public init(slot: ReviewSlotChoice? = nil, notify: Bool = false, offerDone: Bool = false) {
     self.slot = slot
     self.notify = notify
+    self.offerDone = offerDone
   }
 
   public func storedSlot() -> ReviewSlotChoice? { slot }
@@ -92,11 +96,12 @@ public final class MemoryReviewSettingsStore: ReviewSettingsStore {
 }
 
 /// `UserDefaults`: `ai.offload.review.day` (`mon` … `sun`), `ai.offload.review.time` ("HH:mm"),
-/// `ai.offload.review.notify`.
+/// `ai.offload.review.notify`, `ai.offload.review.offered`.
 public final class UserDefaultsReviewSettingsStore: ReviewSettingsStore {
   public static let dayKey = "ai.offload.review.day"
   public static let timeKey = "ai.offload.review.time"
   public static let notifyKey = "ai.offload.review.notify"
+  public static let offeredKey = "ai.offload.review.offered"
 
   private let defaults: UserDefaults
 
@@ -116,6 +121,11 @@ public final class UserDefaultsReviewSettingsStore: ReviewSettingsStore {
   public var notify: Bool {
     get { defaults.bool(forKey: Self.notifyKey) }
     set { defaults.set(newValue, forKey: Self.notifyKey) }
+  }
+
+  public var offerDone: Bool {
+    get { defaults.bool(forKey: Self.offeredKey) }
+    set { defaults.set(newValue, forKey: Self.offeredKey) }
   }
 }
 
