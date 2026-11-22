@@ -729,3 +729,196 @@ weakened (test files only gained tests and list entries).
    are refused in goals.
 6. **Still deferred (scope).** `docs/GLOSSARY.md` is outside both slices' `paths_in_scope`; the round 1 response's
    wording stands for a docs slice that owns it.
+
+## Round 5
+
+Independent reviewer (Claude Code, Opus 5.5). It did not write this code. Reviewed at `2c59562`, working only from the
+SPECs, DESIGN.md, `git diff 8f6ff2d..HEAD` (54 files) and the tests, not from the author's summaries.
+
+**Read:**
+- AGENTS.md (review gate, slice format, privacy rules) and CLAUDE.md.
+- Both SPECs and DESIGN.md.
+- The docs: ADR 0003, 0013 and 0019; DATA_MODEL 1 and 4; API.md (profile, records, review, the user model shapes);
+  ARCHITECTURE 5 and 6; SECURITY_PRIVACY 13; MIGRATION 5.4.
+- Every file in `services/brain/src` and `services/brain/sql`.
+- Every test file, and every commit since round 4 (`6da626b`, `8219ebf`, `d66885b`, `ed99313`, `7d7757b`, `2c59562`).
+- Old code at `/workspace/offload-wsB` (`f9e2793`, read only): `memory/seal.ts` (`assertDerivedOnly`),
+  `usermodel/observe.ts` (`safeName`), `api/memory-routes.ts` and `api/s14-routes.ts` (`jsonBody`).
+
+**Old rules:** none is lost. The old 413 body cap and JSON content-type rule are kept, now streamed, so an oversized
+body is not read to the end. The old email/URL refusal on every sealed write is now `guard()` on every repository
+write. Review answers are the exception: `subject_key` must match `^k_[0-9a-f]{12}$` and `goal_id` must match
+`^g_[0-9a-f]{10}$`, so no free text can reach that table.
+
+### Runs (DATABASE_URL set, local Postgres 17)
+
+| Command | Result |
+|---|---|
+| `bash scripts/verify-all.sh` | `verify-all: green`, exit 0. Full suite **154 pass, 0 fail**, 2698 `expect()` calls, 34 files. Typecheck ok, license boundary ok, both done slices PASS, slices lint ok (10 specs), doc links ok (70 files), copy ok, secrets ok, workflows ok. |
+| `bash slices/p43a-user-model-core/verify.sh` | `p43a-user-model-core: PASS`, exit 0. Slice suite **67 pass, 0 fail**, 7 files (`min_tests` 55). LEDGER 7, OBSERVE 2, DAY 6, LEAKS 2, WEEK 4, THEIL-SEN 2, MONTH 2, QUARTER 1, NARRATIVE 7, SCORE 8, PROPOSE 5, LONG-TERM 2, INVALIDATE 2, SUPERSEDE 3, REVISE 1, MERGE 1, PROFILE 5, PROMPTS 2, PRIVACY 1, REVIEW 4. Full suite 154/154. Scope checked (54 files). |
+| `bash slices/p43b-user-model-store-api/verify.sh` | `p43b-user-model-store-api: PASS`, exit 0. Slice suite **37 pass, 0 fail**, 4 files (`min_tests` 20). PROFILE 5, API 13, PRIVACY 1, RLS 5, MERGE 1, INVALIDATE 2, STORE 10. Full suite 154/154. Scope checked (34 files). |
+| `bun test services/brain` (mutation baseline) | 104 pass, 0 fail. |
+
+There are no `skip`, `todo` or `.only` tests. The four Postgres files use `describe.skipIf(!HAS_DB)`, and p43b's
+`verify.sh` has `NEEDS_POSTGRES=1`, so a missing database fails instead of passing vacuously. After all runs, mutations
+and probes, there were 0 `p43b%` schemas and 0 `p43b%` roles left, and `git status` was clean before this file was
+written.
+
+### 1. Tests fail without the code (mutation check)
+
+This round used a fresh set, mostly guards that earlier rounds did not mutate. Each change was made alone with a
+literal `perl` replacement and confirmed applied. Then `bun test services/brain` ran, and the file was restored with
+`git checkout -- <file>`.
+
+| # | Change (file) | Result |
+|---|---|---|
+| M1 | `checkNarrative` drops the `others` list: the round-4 fix reverted (`src/records/narrative.ts:69`) | NARRATIVE non-ASCII test fails |
+| M2 | `safeName` strips only `[0-9]`, not `\p{N}` (`src/user-model/names.ts:25`) | LEAKS test fails |
+| M3 | Timezone mismatch check removed (`src/store/job.ts:48`) | STORE timezone test fails |
+| M4 | `FORCE ROW LEVEL SECURITY` removed (`sql/0001_user_model.sql:230`) | RLS structure test fails |
+| M5 | `guard()` never throws (`src/store/repository.ts:39`) | STORE leak test fails |
+| M6 | `applyAnswerToOpportunity` without the review-state filter (`repository.ts:323`) | STORE "never moves" test fails |
+| M7 | Future-week check removed from `parseReviewAnswer` (`src/review/answers.ts:48`) | REVIEW and API tests fail (2) |
+| M8 | Drain boost `<=` to `<` 4 weeks (`src/opportunities/score.ts:154`) | SCORE test fails |
+| M9 | `MAX_QUESTIONS` 4 to 5 (`src/review/week-review.ts:8`) | REVIEW and API tests fail (2) |
+| M10 | `writeWeekSentence` without `hasAnyLink` (`narrative.ts:117`) | NARRATIVE link test fails |
+| M11 | Extra keys in a `{ text }` goal accepted (`src/profile/profile.ts:111`) | PROFILE validation test fails |
+| M13 | `member_isolation` made permissive (no `AS RESTRICTIVE`) | 5 RLS tests fail |
+| M14 | `GRANT DELETE` also on `propositions` and `day_records` | INVALIDATE DELETE test fails |
+| M15 | JSON content-type check removed (`src/http/handlers.ts:45`) | 2 API tests fail |
+| M18 | `not_now` `<` to `<=` 4 weeks (`score.ts:143`) | SCORE `not_now` test fails |
+| M19 | `invalid_at = f.validAt` instead of the max (`src/user-model/merge.ts:260`) | SUPERSEDE overlap test fails |
+| M20 | `<user_context>` cleaner keeps `<` and `>` (`src/understanding/context.ts:15`) | PROMPTS test fails |
+| M22 | Focus gap `<` to `<=` 2 min (`src/records/day-record.ts:105`) | DAY focus-block test fails |
+| M23 | `CENTROID_MATCH` 0.85 to 0.8 (`src/user-model/ledger.ts`) | LEDGER centroid test fails |
+| M24 | `safeName` no longer strips emails (`names.ts`) | LEAKS and REVIEW tests fail |
+| M12 | `bunRunInTenant` uuid check removed (`src/store/tenant.ts:37`) | **no test fails** (finding 3) |
+| M21 | `writeWeekNarrative`'s second-transaction recheck removed (`src/store/job.ts:111`) | **no test fails** (finding 2) |
+
+M21 is a real gap, shown end to end. A probe kept in `/tmp` used its own schema and role and dropped both. Its
+`complete` callback reruns the job with another seed while the model call is in flight, then returns a sentence
+quoting the old total.
+- *With the code as it is:* `writeWeekNarrative` returns `"code"` and `narrative` stays null (old total 14.62 h, new
+  total 14.87 h).
+- *With M21 applied:* it returns `"model"` and stores `"A steady week: 14.62 h of active time."` next to a record
+  that says 14.87 h.
+
+### 2. Test changes after the red commits
+
+Every commit since `8f6ff2d` that touched `services/brain/tests` was listed with its added and removed lines:
+
+| Commits | Lines removed from tests |
+|---|---|
+| Round-4 commits `6da626b` and `d66885b` | none (+31 and +27) |
+| Round-3 commits `cb5d715` and `6b0547f` | 1 (an import, widened) |
+| Round-2 commits `b95c828` and `64c7d7c` | 3 |
+| Round-1 commits `fd2454f` and `3a2edd6` | 3 |
+| `c69e88e` and `935f14e` | 3 |
+
+Each of the 10 removed lines was read. None weakens an assertion:
+- Three are imports that were widened.
+- Two requests gained a JSON content type, which the round-1 rule needs.
+- Two goal fixtures were replaced to pin the link rules.
+- The NARRATIVE sentence `"… over 3 days."` lost the `3`. That is the documented SPEC scope change: the old assertion
+  accepted a number that is not in the record.
+- `rejects.toThrow(/timezone/)` became `toMatch(/timezone/)` **plus** `toMatchObject({ code: "timezone_mismatch",
+  retryable: false })` and a zero-rows check. That is stronger.
+
+No fix or docs commit touched a test.
+
+The round-4 tests are real. The NARRATIVE case refuses `٤٠`, `½`, `²`, `③` and full-width `４０`, and falls back to
+the code sentence (M1 shows it). The STORE rebuild test asserts that the total changed before it expects null.
+
+Every mandatory red test in MIGRATION 5.4 is present by tag and name, including `API: GET /v1/review/week?w= …` and
+the restated PRIVACY test (every row of every table, dumped as the superuser).
+
+### 3. Correctness
+
+- **Tables and grants:** tables, keys, CHECKs, the goal trigger, `figure_index`'s 5-column key and the grants match
+  DATA_MODEL 4 and its "as built" note.
+- **RLS:** policies match ADR 0013. `member_isolation` has USING only, so Postgres uses it as WITH CHECK too; the
+  "insert for another member" tests prove it.
+- **Shapes:** the error codes are in API.md's closed list. The shapes match API.md (`/v1/review/week` adds `iso_week`,
+  as the SPEC says).
+- **Bi-temporal rules:** they hold (M19, and the `invalid_at >= valid_at` CHECK).
+- **Formulas:** the score, payback, drain boost and decline rules match ARCHITECTURE 6 (M8, M18). Persistence,
+  Theil-Sen, the baseline and focus blocks match ARCHITECTURE 5 (M22).
+- **Gap:** goal re-casing is ignored (finding 4).
+
+### 4. Security and privacy
+
+- **RLS:** tests run as a `NOLOGIN NOBYPASSRLS` role that does not own the tables. The member and tenant walls hold on
+  all 12 tables (M4, M13). The tenant and member come only from `auth`.
+- **SQL:** every value is a bind parameter. The only text interpolated into SQL is constants (`TID`, `MID`, `OWN`,
+  `ROLLUP_TABLE`) or passes `ident()`.
+- **No I/O or logs:** `src/` has no `console.*`, `process.env` or `fetch(`. The body is read before `runInTenant`, and
+  the model call is outside both transactions.
+- **Goals:** they reach the one prompt only inside `<user_context>` (M20). Task names reach it scrubbed: no `<`, `>`,
+  controls, format characters or number characters.
+- **Raw text:** none in any R-model table (PRIVACY dump; M2, M5, M24). Evidence holds observation ids, as DATA_MODEL
+  4 specifies for `episodes.evidence`.
+- **Numbers (ADR 0003):** the round-4 MAJOR is closed for digits and number characters. Two narrower routes remain
+  (findings 1 and 2).
+
+### 5. Scope
+
+- All 54 changed files are in `paths_in_scope`; none is outside it.
+- Nothing changed under `packages/`, `services/api`, `services/runtime`, `services/broker`, `services/builder`,
+  `apps/`, `ee/`, `.github/` or `docs/adr/`.
+- `package.json` and `bun.lock` are unchanged since `8f6ff2d`, and there is no new dependency.
+- NOTICE lists gum (MIT) and graphiti (Apache-2.0) as ideas only, naming the files that use them.
+
+### Findings
+
+1. **MINOR. Invisible characters, bidi controls and look-alike letters get an invented number past
+   `checkNarrative` (ADR 0003).**
+   - *Cause:* number words are read only as ASCII `[a-z]+` tokens (`src/records/narrative.ts:29`), and no format or
+     control character is refused in a model sentence.
+   - *Probe* (record total 12 h; known numbers 12, 90, 3 and 4.5): `checkNarrative` returns `ok: true` for each of:
+     - `"You spent for​ty hours"`: a zero-width space, shown as "forty";
+     - `"for­ty"`: a soft hyphen;
+     - `"fоrty"` with a Cyrillic `о`;
+     - `"You spent ‮12‬ hours"`: right-to-left override; the check reads 12, the screen shows "21".
+   - `writeWeekSentence` returns `source: "model"` for the bidi and zero-width cases.
+   - *Why not MAJOR:* unlike round 4's `½`, none of these is ordinary model prose. The prompt asks for digits. The
+     inputs that could inject them are scrubbed: task names lose `\p{Cc}`/`\p{Cf}`, and profile text refuses them.
+     Only a model that is already misbehaving, or a look-alike letter copied from a task name, gets through.
+
+   *Fix:* refuse a model sentence that holds any `\p{Cc}`, `\p{Cf}`, `\p{Zl}` or `\p{Zp}` character. Read number
+   words with a Unicode-aware tokenizer that refuses a word mixing Latin with another script (or folds confusables
+   first). Add NARRATIVE cases for all four probes, red first.
+2. **MINOR. The second-transaction recheck in `writeWeekNarrative` is untested, and nothing else stops a stale
+   sentence.**
+   - *The gap:* `job.ts:111` is the only ADR 0003 check between the model call and the stored sentence when the week
+     is rebuilt during that call. Removing it (M21) leaves 104/104 passing, and the probe in section 1 stores a stale
+     14.62 h sentence next to a 14.87 h record.
+   - *No second line:* `setWeekNarrative` (`src/store/repository.ts:207`) refuses links but stores any number. The
+     probe stored `"You saved 999 hours this week."` through it, and `GET /v1/review/week` served it. The read path
+     (`src/review/week-review.ts:43`, `week.narrative ?? weekSentence(week)`) does not re-check either.
+   - *The round-4 response is wrong here:* it says "the job recheck and the API read path use the same function".
+     The read path calls no check.
+
+   *Fix:* make `setWeekNarrative` load the week in its transaction and refuse a sentence that fails `checkNarrative`
+   (as it already refuses links), so the rule lives at the write. Add a STORE test whose `complete` reruns the job with
+   a window that changes the total, then returns a sentence quoting the old total. It expects `"code"` and a null
+   `narrative`, and must fail under M21.
+3. **NIT. The uuid guard in `bunRunInTenant` (`src/store/tenant.ts:37`) is unpinned (M12).** Without it, a bad id
+   fails later at the policies' `::uuid` cast (500), or an empty one reads zero rows, so this is defence in depth. Add
+   one RLS case: a non-uuid `memberId` rejects with `RangeError` before any query.
+4. **NIT. Re-casing an active goal is answered 200 but not applied.**
+   - *Probe:* PATCH `{ goals: ["ship v2"] }`, then `{ goals: ["Ship V2"] }`. The stored text stays `"ship v2"` while
+     `version` goes to 2.
+   - *Cause:* `profile.ts:119` reuses the old goal object, and `saveProfile` only updates `position` for kept goals
+     (`repository.ts:99`).
+   - *Docs:* API.md promises the same id for the same case-insensitive text, not that an edit is dropped.
+
+   *Fix:* keep the id and take the new text (and update `goals.text`), or document it.
+5. **NIT (carried).** Round-1 finding 8 is still open: the glossary terms (`never` vs `left_alone`, "Focus block",
+   "Time share", "Revision group", "Track record"). It is outside both slices' `paths_in_scope`, so it is for a docs
+   slice.
+
+No BLOCKER or MAJOR is left. The round-4 MAJOR (non-ASCII digits and number characters) and findings 2 to 5 are fixed
+and pinned (M1, M2, M11 and the new STORE and REVIEW tests). Findings 1 and 2 above should be fixed red first in the
+next slice that touches `services/brain`, before m5-05 calls `writeWeekNarrative` from the durable runtime.
+
+VERDICT: PASS
