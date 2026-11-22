@@ -47,7 +47,8 @@ public struct APIClientCore: Sendable {
   /// True when `segment` can be one path segment as is: 1 to 128 of `A-Z a-z 0-9 . _ -`, and no `..`. So `/`, `?`,
   /// `#`, `%`, `:`, whitespace and empty values are refused.
   public static func isSafeSegment(_ segment: String) -> Bool {
-    guard !segment.isEmpty, segment.count <= 128, !segment.contains("..") else { return false }
+    // A lone "." is refused too: a server may normalise `/v1/builds/.` to the list route (review 1, finding 10).
+    guard !segment.isEmpty, segment != ".", segment.count <= 128, !segment.contains("..") else { return false }
     for scalar in segment.unicodeScalars {
       switch scalar.value {
       case 0x61...0x7A, 0x41...0x5A, 0x30...0x39, 0x2E, 0x5F, 0x2D: continue  // a-z A-Z 0-9 . _ -

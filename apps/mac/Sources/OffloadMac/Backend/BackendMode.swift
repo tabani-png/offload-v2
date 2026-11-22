@@ -103,14 +103,15 @@ public struct Backends: Sendable {
   /// `.cloud`. A nil `signer` means approvals are refused locally with `APIError.signingUnavailable`.
   public static func make(
     mode: BackendMode,
-    transport: any HTTPTransport = URLSessionTransport(),
+    transport: (any HTTPTransport)? = nil,
     signer: (any RequestSigner)? = nil
   ) -> Backends {
     switch mode {
     case .local:
+      // No networking object at all in `.local` (review 1, finding 10).
       return .local
     case .cloud(let config):
-      let core = APIClientCore(config: config, transport: transport, signer: signer)
+      let core = APIClientCore(config: config, transport: transport ?? URLSessionTransport(), signer: signer)
       return Backends(
         mode: mode,
         brain: HTTPBrainClient(core: core),
