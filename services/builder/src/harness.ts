@@ -96,10 +96,11 @@ plugin({
  * only that user may connect to. Every process the check starts (Bun.spawn / Bun.spawnSync, routed by the guard) runs
  * through the broker as OFFLOAD_TOOL_UID, in /work, with the check's group (to share its temp folders) and a clean
  * environment. That user cannot read /check, the check's /proc entries or this harness, so the built tool can neither
- * read the held-out check nor the nonce. Without root (development, emulation) it runs everything as one user and
+ * read the held-out check nor the nonce. The split is probed, not assumed: the proof says `split: true` only when a
+ * process of the tool's user got EACCES opening the check (a mount that ignores file modes would not). Without root (development, emulation) it runs everything as one user and
  * says so in the proof (`split: false`); a provider that isolates the tool then refuses the pass. */
 export const HARNESS_TS = String.raw`// Offload trusted check harness. See services/builder/src/harness.ts. Never imports worker code.
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, chownSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -173,6 +174,14 @@ function flush(sock: any) {
   while (st.out.length > 0) { const n = sock.write(st.out); if (n <= 0) return; st.out = st.out.slice(n); }
   if (st.ended) sock.end();
 }
+// Probe, do not assume: the split counts only if the tool's user really cannot open the check (a mount that ignores
+// file modes, or a check written world-readable, would leave it readable). Run before the check, from "/".
+let proven = false;
+if (SPLIT) {
+  const code = "try { const f = require('node:fs'); f.closeSync(f.openSync(" + JSON.stringify(join(CHECK, FILE)) + ", 'r')); process.exit(0); } catch (e) { process.exit(e && e.code === 'EACCES' ? 3 : 4); }";
+  const probe = spawnSync(process.execPath, ["--no-env-file", "-e", code], { cwd: "/", uid: TOOL_UID, gid: CHECK_GID, env: { PATH }, stdio: "ignore", timeout: 30000 });
+  proven = probe.status === 3;
+}
 const env: Record<string, string> = { PATH, HOME: run, TMPDIR: tmpdir(), OFFLOAD_WS: WS, OFFLOAD_WS_RAW: WS, OFFLOAD_REFUSED: MSG, BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0" };
 if (SPLIT) { env.OFFLOAD_BROKER = socketPath; env.OFFLOAD_SPAWN_CLIENT = join(CHECK, "spawn-client.ts"); }
 // cwd: the read-only check folder, never the artifact (bun reads bunfig.toml, tsconfig.json and .env from there).
@@ -206,7 +215,7 @@ try {
 } catch {}
 if (!SPLIT) { try { rmSync(run, { recursive: true, force: true }); } catch {} }
 const status = exit === 0 && completed ? "pass" : "fail";
-process.stdout.write("\nOFFLOAD_PROOF " + JSON.stringify({ nonce, status, exit, completed, tests, swept, split: SPLIT, why }) + "\n");
+process.stdout.write("\nOFFLOAD_PROOF " + JSON.stringify({ nonce, status, exit, completed, tests, swept, split: SPLIT && proven, why }) + "\n");
 process.exit(status === "pass" ? 0 : 1);
 `;
 
