@@ -243,6 +243,9 @@ fix rules and `FixEstimate` (m5-04: `estimateFor` is passed through), `offload s
   `SLICE_UPSTREAM=$(git merge-base HEAD origin/main)`
 - [x] review 4 (CHANGES): findings 1, 2, 4, 6 and 7 fixed (d1eca51; red tests 099dffb, then 477ae3d); findings 3
   and 5 recorded under Scope changes and Known limits
+- [x] after review 4: plain `bash slices/m5-01-understanding/verify.sh` PASS (53 slice tests, 655 in the full suite,
+  scope checked 36 files); `SLICE_UPSTREAM=a97f748 bash scripts/verify-all.sh` green (the first run timed out once in
+  `packages/contracts` CONTRACT, untouched by this branch; it passes alone and on the re-run)
 - [ ] review 5, then `status: done`
 
 Known limits (for m1-06 and later):
