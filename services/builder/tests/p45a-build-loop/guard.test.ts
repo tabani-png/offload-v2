@@ -30,9 +30,11 @@ afterAll(() => {
   }
 });
 
-/** Runs the command of a `docker run` argv with local bun; container paths are mapped to the sandbox's host folders.
- * With `sudo`, the harness runs as root (as in the container, where it is PID 1 with SETUID, SETGID and CHOWN only), so
- * the check and the built tool really run as two different users. */
+/** Runs the command of a `docker run` argv locally; container paths are mapped to the sandbox's host folders.
+ * With `sudo`, the argv's `--user` and `--cap-add` are honoured through setpriv, exactly as the container gets them:
+ * `--user 0:0` runs as root with ONLY the added capabilities (bounding set, no inheritable, no-new-privs; for the
+ * harness that is CHOWN, SETGID and SETUID), any other `--user u:g` runs as that user with no capability. So the
+ * check and the built tool really run as two different users, under the container's real capability set. */
 const emulator = (o2: { sudo: boolean }): Executor => async (argv, o) => {
   if (argv[1] !== "run") return { exit: 0, stdout: "", stderr: "", timed_out: false };
   const maps: Array<[string, string]> = [];
@@ -40,6 +42,8 @@ const emulator = (o2: { sudo: boolean }): Executor => async (argv, o) => {
   const env: Record<string, string> = {};
   let workdir = "/";
   let entrypoint: string | null = null;
+  let user = "";
+  const caps: string[] = [];
   let i = 2;
   for (; i < argv.length; i++) {
     const a = argv[i]!;
@@ -57,6 +61,8 @@ const emulator = (o2: { sudo: boolean }): Executor => async (argv, o) => {
     }
     else if (a === "--workdir") workdir = v;
     else if (a === "--entrypoint") entrypoint = v;
+    else if (a === "--user") user = v;
+    else if (a === "--cap-add") caps.push(v.toLowerCase());
     else if (a === "--env") env[v.slice(0, v.indexOf("="))] = v.slice(v.indexOf("=") + 1);
   }
   const targets = maps.map((m) => m[0]).sort((a, b) => b.length - a.length);
@@ -69,14 +75,18 @@ const emulator = (o2: { sudo: boolean }): Executor => async (argv, o) => {
     return s;
   };
   const cmd = [...(entrypoint === null ? [] : [entrypoint]), ...argv.slice(i + 1)].map(map);
-  expect(cmd[0]).toBe("bun");
-  cmd[0] = process.execPath;
+  if (cmd[0] === "bun") cmd[0] = process.execPath;
   const fullEnv: Record<string, string> = { PATH: process.env["PATH"] ?? "/usr/bin:/bin", ...Object.fromEntries(Object.entries(env).map(([k, v]) => [k, map(v)])) };
   if (o2.sudo) {
     // In a container the mounts are roots; on the host their parent (the sandbox folder, 0700) must be traversable.
     for (const host of mounts) chmodSync(join(host, ".."), 0o711);
   }
-  const p = Bun.spawn(o2.sudo ? ["sudo", "-n", "env", "-i", ...Object.entries(fullEnv).map(([k, v]) => `${k}=${v}`), ...cmd] : cmd, {
+  const [uid, gid] = user.split(":");
+  const priv =
+    user === "0:0"
+      ? ["setpriv", `--bounding-set=-all${caps.map((c) => `,+${c}`).join("")}`, "--inh-caps=-all", "--no-new-privs"]
+      : ["setpriv", `--reuid=${uid}`, `--regid=${gid}`, "--clear-groups", "--bounding-set=-all", "--inh-caps=-all", "--no-new-privs"];
+  const p = Bun.spawn(o2.sudo ? ["sudo", "-n", "env", "-i", ...Object.entries(fullEnv).map(([k, v]) => `${k}=${v}`), ...priv, ...cmd] : cmd, {
     cwd: map(workdir),
     env: fullEnv,
     stdin: new TextEncoder().encode(o.stdin ?? ""),
@@ -289,9 +299,14 @@ describe("p45a check guard on its own (onLoad)", () => {
   });
 });
 
+/** Privileged tests need passwordless sudo AND setpriv (util-linux): they never fall back to full root, which would
+ * hide what the container's three capabilities cannot do (review round 5). */
 const sudoOk = (() => {
   try {
-    return Bun.spawnSync(["sudo", "-n", "true"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
+    return (
+      Bun.spawnSync(["sudo", "-n", "true"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0 &&
+      Bun.spawnSync(["sudo", "-n", "setpriv", "--bounding-set=-all", "--inh-caps=-all", "--no-new-privs", "true"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0
+    );
   } catch {
     return false;
   }
