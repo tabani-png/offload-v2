@@ -11,7 +11,7 @@ size: L
 parallel_group: M5-A
 owns: [services/brain/src/understanding/**, services/brain/tests/m5-01-understanding/**]
 verify: bash slices/m5-01-understanding/verify.sh
-min_tests: 43
+min_tests: 46
 paths_in_scope: [services/brain/src/understanding/**, services/brain/src/user-model/ports.ts, services/brain/src/index.ts, services/brain/tests/m5-01-understanding/**, services/brain/package.json, bun.lock, docs/API.md, docs/ARCHITECTURE.md, docs/DATA_MODEL.md, docs/GLOSSARY.md, docs/ROADMAP.md, slices/m5-01-understanding/**]
 paths_out_of_scope: [ee/**, apps/**, packages/**, services/api/**, services/runtime/**, services/broker/**, services/builder/**, services/brain/src/models/**, services/brain/src/store/**, services/brain/src/user-model/ledger.ts, services/brain/sql/**, docs/adr/**, .github/**, slices/m5-01-understanding/STATUS.md]
 red_tests: [SPAN, CUE, DESCRIBE, EMBED, INDUCE, WINDOW, LEDGER, CONSUME]
@@ -72,16 +72,19 @@ Pipeline, all in `services/brain/src/understanding/`:
    the `ts` range of the member's rows whose partition `day` is the event's UTC day or one of the `LIVE_LATE_DAYS` (7)
    days before it. Live rows have `day` = UTC date of `ts` and ingest accepts them up to 7 days late (`too_old`), so a
    batch uploaded days late is still found (review 2 finding 1); imported rows carry the ingest date. This is a
-   superset of the rows just ingested, not the exact set: m3-01's payload has no range. The range is widened to whole
-   days in the member's timezone (from the brain profile), capped at 31 days ending at its last day, and every
-   observation and text in it is read **by `ts`**, not by `day`. So an import is analysed on its own days and its
-   records are anchored to its last day (m3-05 "ANCHOR").
+   superset of the rows just ingested, not the exact set: m3-01's payload has no range. The rows are taken as one `ts`
+   range per `import_id` (null = live rows; review 3 finding 1: one range over an old import and today's live rows was
+   cut to its last 31 days and dropped the import). Each range is widened to whole days in the member's timezone (from
+   the brain profile), capped at 31 days ending at its last day, and read **by `ts`**, not by `day`; rows read twice
+   count once. Only days that hold observations are analysed (finding 3). So an import is analysed on its own days and
+   its records are anchored to its last day (m3-05 "ANCHOR"), also while live capture runs.
 2. **Sessionize** (`sessionize.ts`, written fresh after old `sessionize.ts`): segments end at the next focus,
    `idle_start` (backdated 120 s), `pause` or the last event; blips under 10 s join a contiguous neighbour; segments of
    the same app + title + host merge across idle up to 15 min. Text snapshots attach to the segment open at their `ts`.
 3. **Cues** (`cues.ts`; app names only at the start of the first two lines of a snapshot): a segment on a **stand-in app** (`recording.unknown`, `screenwatch.screen`, app name `Screen`: what
    the recordings import emits without a macOS menu bar) takes its host from a URL-bar-shaped token in its masked text
-   (lowercase as read, after a scheme or `www.`, or on a chrome line with three labels or a common top-level domain;
+   (lowercase as read, after a scheme or `www.`, or on a chrome line ending in a known top-level domain with no initials
+   before it, review 3 finding 2;
    OCR fragments like `Mr.Smith` or `update.Regards` are not hosts, review 2 finding 2) and its app from known app names
    in window chrome text, before merging. A stand-in segment with no cue never merges
    across idle, so unrelated recordings stay apart.
@@ -162,6 +165,9 @@ requires it).
 | CONSUME | CONSUME: an event of a frozen member reads nothing | review 2 finding 4b |
 | CONSUME | CONSUME: the analysed days are the member's timezone days | review 2 finding 4c |
 | CONSUME | (in the failing-event test) an exhausted event is refused on the durable path too | review 2 finding 7 |
+| CONSUME | CONSUME: an import older than 31 days is analysed on its own days even when the member has live rows | review 3 findings 1, 3 |
+| CUE | CUE: a host-shaped OCR token needs a real top-level domain and must be lowercase as read | review 3 finding 2 |
+| CONSUME | CONSUME: event claims come from the claim pool, and a connection whose unlock failed is destroyed | review 3 finding 5 (stub pool, no database) |
 
 ## Test plan
 Pure tests on synthetic, masked observations (`tests/m5-01-understanding/fixtures.ts`: a reproducible generator of
@@ -216,7 +222,9 @@ fix rules and `FixEstimate` (m5-04: `estimateFor` is passed through), `offload s
   recorded under Known limits
 - [x] after review 2: `verify.sh` PASS (45 slice tests, 486 in the full suite); `verify-all` green with
   `SLICE_UPSTREAM=$(git merge-base HEAD origin/main)`
-- [ ] review 3, then `status: done`
+- [x] review 3 (CHANGES): findings 1, 2, 3 and 5 fixed with red tests first (fb478bf, then 8592887, 9c7d9ea);
+  finding 4 recorded under Known limits
+- [ ] review 4, then `status: done`
 
 Known limits (for m1-06 and later):
 - Each event re-reads its whole days, so a live member whose Mac uploads every few minutes re-analyses today and
@@ -237,6 +245,14 @@ Known limits (for m1-06 and later):
   Readers of episodes or the ledger (m5-04, `GET /v1/today`) must go through `day_records.episode_ids` (DATA_MODEL
   section 4 already requires it for episodes). Dropping a re-analysed day's absent episodes needs a change in
   `services/brain/src/store/` (out of this slice's scope): the window already carries its `days` for that.
+- An older window can commit last (review 3 finding 4): the read and the optional label call happen before the
+  member's profile lock, so an event that read early and waited on a slow label call can commit after an event that
+  read newer rows, and its day records win until the member's next event re-reads the days. m1-06 removes this by
+  running one understanding run per member per tick (coalescing the member's pending events); a later slice could
+  also skip a commit when a window read later has already committed for the member.
+- An import day that overlaps live days past the raw TTL (review 3 finding 3): only days holding observations are
+  analysed, but a day holding imported rows whose live rows were already purged is rebuilt from the imported rows
+  alone.
 - The attempt cap applies on every path: the drain skips exhausted events and `runUnderstanding` returns `failed`
   (`attempts_exhausted`) for them, so a durable runtime retrying the workflow does not run them again.
 - App cues use a fixed table of app names, read only at the start of a snapshot's first two lines; a recording of

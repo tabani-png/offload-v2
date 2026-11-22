@@ -310,16 +310,17 @@ from the old `sessionize.ts`, `understanding/*`, written fresh):
   with a session advisory lock (a second consumer skips it), `outbox_deliveries` marks it delivered (a delivered event
   is never processed again), a failure records its code, and an event that failed 5 times is no longer drained. One
   member's model updates run one after the other (the profile lock). It reads the event's member's `observations` and
-  `observation_texts` **by `ts`** inside `withTenant` (member wall on): the `ts` range of the member's rows with partition
-  `day` from 7 days before the event's UTC day to that day (live rows keep the UTC date of `ts` and may arrive up to
-  7 days late; imported rows carry the ingest date), or the event's `first_ts`/`last_ts` when present, widened to whole
-  days in the profile's timezone, at most 31 days. So an import is analysed on its own days and its records are
-  anchored to its last day. Entry points for `offload serve`: `drainUnderstanding(deps, { tenantId })` and the durable
+  `observation_texts` **by `ts`** inside `withTenant` (member wall on): the member's rows with partition `day` from 7
+  days before the event's UTC day to that day (live rows keep the UTC date of `ts` and may arrive up to 7 days late;
+  imported rows carry the ingest date), taken as one `ts` range per import space and one for live rows (or the
+  event's `first_ts`/`last_ts` when present). Each range is widened to whole days in the profile's timezone and capped
+  at 31 days on its own, and only days that hold observations are analysed. So an import, however old, is analysed on
+  its own days and its records are anchored to its last day, even while live capture runs. Entry points for `offload serve`: `drainUnderstanding(deps, { tenantId })` and the durable
   workflow body `understandingWorkflow(deps)` (input `{ tenant_id, event_id }`).
 - Spans: continuous focus on one app + title + host; minimum span 10 s; idle merges up to 15 min; idle start backdated
   120 s. Text snapshots attach to the span open at their time.
 - Stand-in apps: a recording without a macOS menu bar arrives as `recording.unknown` / "Screen". Its masked text gives
-  app cues (a known app name opening one of the snapshot's first two lines: window chrome, never body text) and host cues (a URL-bar-shaped host: lowercase, after a scheme or `www.`, or on a chrome line with three labels or a common top-level domain); the segment splits where they change.
+  app cues (a known app name opening one of the snapshot's first two lines: window chrome, never body text) and host cues (a URL-bar-shaped host: lowercase, after a scheme or `www.`, or on a chrome line ending in a known top-level domain with no initials before it); the segment splits where they change.
   A stand-in segment without a cue never merges across idle, and one without text joins no task, so unrelated
   recordings stay apart.
 - Span descriptions: rules first (verb and object from fixed vocabularies counted in the masked title and text, else a
