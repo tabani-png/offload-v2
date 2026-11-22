@@ -54,6 +54,12 @@ describe("p45a checks", () => {
       'const w = new Worker("./x.ts");',
       'process.dlopen(module, "x.node");',
       'import cluster from "node:cluster";',
+      // review round 5 finding 3: ways around the Bun.$ pattern
+      "const { $ } = Bun;",
+      "const { spawnSync: run } = globalThis.Bun;",
+      'await Bun["$"]`ls`;',
+      'const cp = process.getBuiltinModule("node:child_process");',
+      "const B = Bun;",
     ]) {
       const r = parseCheckReply(reply(`${bad}\nimport { test } from "bun:test";\ntest("t", () => {});\n`));
       expect([bad, "reason" in r]).toEqual([bad, true]);

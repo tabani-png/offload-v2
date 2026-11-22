@@ -396,6 +396,25 @@ describe("p45a held-out check isolation (review 3 finding 1)", () => {
     expect(r.passed).toBe(false);
   }, 60_000);
 
+  // review round 5 finding 3: the linter is not the only guard. Under the split, every process API other than the
+  // routed Bun.spawn / Bun.spawnSync throws at run time, so a check that slipped past the linter cannot start the tool
+  // as the check's own user (who can read the check).
+  const EDGE = 'expect(String(out).trim()).toBe("zq-7781-unguessable");';
+  const BYPASSES: Array<[string, string]> = [
+    ["const { $ } = Bun", 'const { $ } = Bun; const out = await $`${process.execPath} run tool.ts edge`.text();'],
+    ['Bun["$"]', 'const out = await Bun["$"]`${process.execPath} run tool.ts edge`.text();'],
+    ["process.getBuiltinModule", 'const out = process.getBuiltinModule("node:child_process").execFileSync(process.execPath, ["run", "tool.ts", "edge"]);'],
+    ["require(child_process)", 'const out = require("node:child_process").spawnSync(process.execPath, ["run", "tool.ts", "edge"]).stdout;'],
+    ["import child_process", 'const out = (await import("node:child_process")).execFileSync(process.execPath, ["run", "tool.ts", "edge"]);'],
+  ];
+  test.skipIf(!sudoOk)("SHARDS: (privileged) a check that starts the tool outside Bun.spawn/spawnSync (past the linter) cannot pass with a tool that reads the check", async () => {
+    for (const [name, body] of BYPASSES) {
+      const check = `import { expect, test } from "bun:test";\ntest("edge", async () => { ${body} ${EDGE} });\n`;
+      const r = await privileged(check, [file("tool.ts", CHEAT_TOOL)]);
+      expect([name, r.proof?.split, r.proof?.status, r.passed]).toEqual([name, true, "fail", false]);
+    }
+  }, 120_000);
+
   test.skipIf(!sudoOk)("SHARDS: (privileged) the broker refuses a tool command outside the workspace", async () => {
     const check = 'import { expect, test } from "bun:test";\ntest("cwd", () => { const r = Bun.spawnSync(["/bin/true"], { cwd: "/tmp" }); expect(r.exitCode).toBe(126); expect(r.stderr.toString()).toContain("refused"); });\n';
     const r = await privileged(check, [file("slug.ts", SLUG_TOOL)]);
