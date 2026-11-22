@@ -14,3 +14,4 @@ One line per slice step: slice | decision | tests | reviewer verdict.
 - 2026-11-22 09:31 m3-04-mac-onboarding | wave2 review: last round 3 | 255 tests | reviewer: VERDICT: PASS (logs: review3)
 - 2026-11-22 09:35 m3-05-recordings-import | wave2 review: last round 4 | 113 tests | reviewer: VERDICT: PASS (logs: review4)
 - 2026-11-22 09:37 s4 | CI green on ae88dfd503b8c468cc6990b840a068025cd4b573 | runs: mac-artifact=success
+- 2026-11-22 09:37 s4 | Mac artifact: {"message":"Not Found","documentation_url":"https://docs.github.com/rest","status":"404"} | run null
