@@ -56,8 +56,8 @@ public struct OnDeviceRecordings {
   public let observations: LocalObservationStore
   public let picker: OnDeviceFolderPicker
   public let paths: OnDevicePaths
-  /// The default folders found when the model was built (existence only).
-  public let candidates: [RecordingFolderCandidate]
+  /// The default folders, found when the Recordings screen asks (existence only), never at launch.
+  public let folderCandidates: RecordingFolderCandidates
 
   /// The recordings model with a real importer. `pseudonymKey` nil reads or creates the local pseudonym key.
   public static func make(neverWatch: NeverWatchStore, store: RecordingsFolderStore, folders: Folders,
@@ -79,11 +79,12 @@ public struct OnDeviceRecordings {
       exclusions: NeverWatchImportExclusions(source: neverWatch), sink: sink, ledger: ledger, readers: readers,
       clock: clock, timeZone: timeZone, protected: protected
     )
-    let exists = folders.exists
-    let candidates = DefaultRecordingFolders.candidates(home: folders.home, screencaptureLocation: folders.screencaptureLocation,
-                                                        protected: protected, exists: { exists($0) })
-    let suggested = candidates.first?.url
-      ?? RecordingFolder.suggested(home: folders.home, screencaptureLocation: folders.screencaptureLocation)
+    // At launch only `~/screenwatch` (outside the folders macOS guards) is checked; otherwise the suggestion is where
+    // macOS saves screen recordings, named without looking inside a guarded folder such as Desktop or Documents
+    // (m3-05's rule: no folder is read before its screen appears; review 1, finding 5).
+    let screenwatch = folders.home.appendingPathComponent("screenwatch", isDirectory: true)
+    let suggested = folders.exists(screenwatch.appendingPathComponent("days", isDirectory: true).path) ? screenwatch
+      : RecordingFolder.suggested(home: folders.home, screencaptureLocation: folders.screencaptureLocation)
     let chooser = OnDeviceFolderPicker(fallback: picker ?? LiveFolderPicker())
     let lengths: @Sendable (URL) -> TimeInterval? = durations ?? { AVRecordingFrameSource.duration(of: $0) }
     let model = RecordingsImportModel(
@@ -92,13 +93,34 @@ public struct OnDeviceRecordings {
       protected: protected, timeZone: timeZone, neverWatch: neverWatch, appNames: appNames
     )
     return OnDeviceRecordings(model: model, sink: sink, ledger: ledger, observations: LocalObservationStore(folder: paths.imports),
-                              picker: chooser, paths: paths, candidates: candidates)
+                              picker: chooser, paths: paths,
+                              folderCandidates: RecordingFolderCandidates(folders: folders, protected: protected))
   }
 
   /// "Use this folder": the candidate becomes the chosen folder (kept for next time) and is read for its summary.
   public func use(_ candidate: RecordingFolderCandidate) async {
     picker.next = candidate.url
     await model.chooseFolder()
+  }
+}
+
+/// The default recordings folders for the Recordings screen. `refresh()` checks existence only, and only when the
+/// screen asks.
+@MainActor
+public final class RecordingFolderCandidates: ObservableObject {
+  @Published public private(set) var candidates: [RecordingFolderCandidate] = []
+  private let folders: OnDeviceRecordings.Folders
+  private let protected: [URL]
+
+  public init(folders: OnDeviceRecordings.Folders, protected: [URL]) {
+    self.folders = folders
+    self.protected = protected
+  }
+
+  public func refresh() {
+    let exists = folders.exists
+    candidates = DefaultRecordingFolders.candidates(home: folders.home, screencaptureLocation: folders.screencaptureLocation,
+                                                    protected: protected, exists: { exists($0) })
   }
 }
 

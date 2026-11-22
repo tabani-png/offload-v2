@@ -48,8 +48,8 @@ public enum OnDeviceFiles {
     try? u.setResourceValues(values)
   }
 
-  /// Writes `data` to `file` (0600, complete file protection where the Mac supports it) in one step: a temporary
-  /// file beside it, then a rename.
+  /// Writes `data` to `file` (0600, file protection until first unlock where the Mac supports it) in one step: a
+  /// temporary file beside it, then a rename.
   public static func writeAtomically(_ data: Data, to file: URL) throws {
     let dir = file.deletingLastPathComponent()
     try ensureFolder(dir)
@@ -62,11 +62,12 @@ public enum OnDeviceFiles {
     }
   }
 
-  /// Creates `file` with `data`, 0600, written with complete file protection (falls back to plain when the volume
-  /// does not support data protection).
+  /// Creates `file` with `data`, 0600, protected until the first unlock after a restart (falls back to plain when the
+  /// volume does not support data protection). Not complete protection: an import that runs while the screen locks,
+  /// and the counting after it, must still be able to write and read (review 1, finding 6).
   public static func writeProtected(_ data: Data, to file: URL) throws {
     do {
-      try data.write(to: file, options: [.withoutOverwriting, .completeFileProtection])
+      try data.write(to: file, options: [.withoutOverwriting, .completeFileProtectionUntilFirstUserAuthentication])
     } catch {
       guard FileManager.default.createFile(atPath: file.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
         throw OnDeviceWriteError(step: "create")

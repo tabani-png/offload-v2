@@ -2,7 +2,8 @@ import Foundation
 import OffloadImport
 
 // The on-device import sink: an import's masked observations are kept on this Mac only, one JSON line each, in
-// `OnDevice/imports/<import_id>.jsonl` (folder 0700, files 0600, complete file protection, excluded from backups).
+// `OnDevice/imports/<import_id>.jsonl` (folder 0700, files 0600, file protection until first unlock, excluded from
+// backups).
 // It sends nothing: it is not the uploader, and in `.local` backend mode nothing leaves the Mac. The masked text itself
 // is not kept (insights need only that the text changed, so only its hash is), no pixels, no file names or paths.
 
