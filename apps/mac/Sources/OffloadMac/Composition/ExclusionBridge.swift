@@ -39,10 +39,25 @@ public enum ExclusionBridge {
     try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
-    try encoder.encode(rules).write(to: file, options: .atomic)
-    // Owner-only, like the sealed store's files. It stays plain because PR #13's reloader reads plain JSON; the list
-    // holds bundle ids, hosts and title words, no screen content (SPEC Scope changes, review 2 finding 5).
-    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    // Owner-only from its first byte (review 3): a temp file created 0600 in the same (0700) folder replaces the file
+    // in one step, keeping the new file's permissions. It stays plain because PR #13's reloader reads plain JSON; the
+    // list holds bundle ids, hosts and title words, no screen content (SPEC Scope changes, review 2 finding 5).
+    let fm = FileManager.default
+    let temp = file.deletingLastPathComponent().appendingPathComponent(".\(file.lastPathComponent).\(UUID().uuidString)")
+    guard fm.createFile(atPath: temp.path, contents: try encoder.encode(rules), attributes: [.posixPermissions: 0o600]) else {
+      throw CocoaError(.fileWriteUnknown)
+    }
+    do {
+      if fm.fileExists(atPath: file.path) {
+        _ = try fm.replaceItemAt(file, withItemAt: temp, options: .usingNewMetadataOnly)
+      } else {
+        try fm.moveItem(at: temp, to: file)
+      }
+    } catch {
+      try? fm.removeItem(at: temp)
+      throw error
+    }
+    try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
     written = rules
     return true
   }

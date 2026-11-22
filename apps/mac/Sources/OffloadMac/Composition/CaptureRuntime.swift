@@ -93,6 +93,8 @@ import OffloadUploader
     return ImportMaskerAdapter(load: { try CaptureRuntime.masker(secrets: secrets) })
   }
 
+  /// Creates the pseudonym key on the first capture if none exists, before any enrollment (a recorded divergence from
+  /// SECURITY_PRIVACY section 6; see PseudonymKeyStore and the SPEC's Scope changes, review 3).
   nonisolated static func masker(secrets: any SecretStore) throws -> TextMasker {
     TextMasker(pseudonymizer: Pseudonymizer(key: try PseudonymKeyStore(secrets: secrets).loadOrCreate()))
   }
@@ -116,14 +118,17 @@ import OffloadUploader
     store.set(dayStore)
   }
 
-  /// One tick: the Never watch list is written first, so an entry added since the last tick applies to this one, then
-  /// the observer runs, unless a tick is still running. False when nothing ticked. The timer calls it while running.
+  /// What one tick runs on the observer. Tests replace it to see the order without running the live sources.
+  var observerTick: @MainActor (Observer) async -> Void = { await $0.tick() }
+
+  /// One tick, only while capture runs: the Never watch list is written first, so an entry added since the last tick
+  /// applies to this one, then the observer runs, unless a tick is still running. False when nothing ticked.
   @discardableResult
   public func tickOnce() async -> Bool {
+    guard running, let observer, !ticking else { return false }
     _ = try? syncExclusions()
-    guard let observer, !ticking else { return false }
     ticking = true
-    await observer.tick()
+    await observerTick(observer)
     ticking = false
     return true
   }
