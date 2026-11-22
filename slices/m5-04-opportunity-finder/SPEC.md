@@ -12,8 +12,8 @@ parallel_group: M5-B
 owns: [services/brain/src/opportunities/**, services/brain/sql/0002_fixes.sql, services/brain/tests/m5-04-opportunity-finder/**]
 verify: bash slices/m5-04-opportunity-finder/verify.sh
 min_tests: 31
-paths_in_scope: [services/brain/src/opportunities/**, services/brain/src/store/job.ts, services/brain/src/store/repository.ts, services/brain/src/store/migrate.ts, services/brain/sql/0002_fixes.sql, services/brain/src/records/day-record.ts, services/brain/src/records/kinds.ts, services/brain/src/understanding/job.ts, services/brain/src/index.ts, services/brain/tests/m5-04-opportunity-finder/**, docs/API.md, docs/ARCHITECTURE.md, docs/DATA_MODEL.md, docs/GLOSSARY.md, docs/ROADMAP.md, slices/m5-04-opportunity-finder/**]
-paths_out_of_scope: [ee/**, apps/**, packages/**, services/api/**, services/runtime/**, services/broker/**, services/builder/**, services/brain/src/models/**, services/brain/sql/0001_user_model.sql, services/brain/tests/p43a-user-model-core/**, services/brain/tests/p43b-user-model-store-api/**, services/brain/tests/m5-01-understanding/**, docs/adr/**, .github/**, slices/m5-04-opportunity-finder/STATUS.md]
+paths_in_scope: [services/brain/src/opportunities/**, services/brain/src/store/job.ts, services/brain/src/store/repository.ts, services/brain/src/store/migrate.ts, services/brain/sql/0002_fixes.sql, services/brain/src/records/day-record.ts, services/brain/src/records/kinds.ts, services/brain/src/understanding/job.ts, services/brain/src/index.ts, services/brain/tests/m5-04-opportunity-finder/**, docs/API.md, docs/ARCHITECTURE.md, docs/DATA_MODEL.md, docs/GLOSSARY.md, docs/ROADMAP.md, slices/m5-04-opportunity-finder/**, slices/m5-04-opportunity-finder/STATUS.md]
+paths_out_of_scope: [ee/**, apps/**, packages/**, services/api/**, services/runtime/**, services/broker/**, services/builder/**, services/brain/src/models/**, services/brain/sql/0001_user_model.sql, services/brain/tests/p43a-user-model-core/**, services/brain/tests/p43b-user-model-store-api/**, services/brain/tests/m5-01-understanding/**, docs/adr/**, .github/**]
 red_tests: [EVIDENCE, CONNECTOR, RULE, ESTIMATE, OPTIONS, RANK, PERSIST, FINDER]
 ---
 
@@ -226,6 +226,12 @@ into `offload serve` (m1-06), `remove_step` and `small_app` rules, track record 
   options); an estimate that gives no option clears the earlier run's options instead of leaving them attached.
 - The stand-in `estimateFor` path (p43b tests) also stores one option, built from the bare estimate, so every ranked
   finder opportunity has at least one option row.
+- Rebase onto the rewritten m5-01 (2026-11-22): verify.sh `BASE` moves from 3d64207 (old m5-01 tip, no longer in the
+  history) to e0d4840 (new m5-01 tip). `understanding/job.ts` now analyses 31-day windows (m5-01 review 4); `fixRules`
+  is passed to `runMemberUpdate` inside each window, under the same workspace condition as `estimateFor`.
+- `slices/m5-04-opportunity-finder/STATUS.md` is orchestrator-owned and committed by the orchestrator on this branch;
+  it moves from `paths_out_of_scope` to `paths_in_scope` so the scope check accepts those commits (as m5-01 did in its
+  review 4). The builder never edits it.
 
 ## Progress
 - [x] SPEC, verify.sh, ROADMAP link (375d690)
@@ -247,6 +253,8 @@ into `offload serve` (m1-06), `remove_step` and `small_app` rules, track record 
   (eef0db8; both reverted guards now fail a test); findings 5, 6, 7 recorded below and in API.md
 - [x] after review 2: `verify.sh` PASS (31 slice tests, 681 in the full suite); `verify-all` green with
   `SLICE_UPSTREAM=$(git merge-base HEAD origin/chain/m5-01-understanding)`
+- [x] rebased onto the rewritten m5-01 (e0d4840; one conflict in `understanding/job.ts`, see Scope changes):
+  `verify.sh` PASS (31 slice tests, 686 in the full suite); `SLICE_UPSTREAM=e0d4840 bash scripts/verify-all.sh` green
 - [ ] review 3, then `status: done`
 
 Known limits (for the next slices):
