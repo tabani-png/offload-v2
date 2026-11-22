@@ -48,7 +48,8 @@ A candidate execution backend has to live with these, or the product changes:
 5. **MIT core, commercial `ee/`**, and Offload Cloud hosts the product for paying teams
    ([ADR 0038](../adr/0038-license-mit-core-commercial-ee.md)). Code from AGPL, SSPL, BSL, Elastic or other
    non-permissive sources is never copied ([AGENTS.md](../../AGENTS.md#license-boundary-and-notices)).
-6. **What was verified is what runs**: pins fixed at design time, `definition_hash` bound by the deploy approval
+6. **What was verified is what runs** (an n8n export keeps this only up to a shape check of its node bindings;
+   [ADR 0039 section 9.3](../adr/0039-routine-definition-v2-and-execution-backends.md#93-validation)): pins fixed at design time, `definition_hash` bound by the deploy approval
    ([ADR 0032](../adr/0032-deploy-approval-binds-definition.md), [ADR 0033](../adr/0033-pinned-connector-resolution-and-launch-catalog.md)).
 7. **No dry run** in product, API or copy. Verification is frozen checks, held-out check and replay of real
    instances inside the build ([ADR 0016](../adr/0016-no-dry-run.md)). This page says "replay" and "static
@@ -74,6 +75,8 @@ credentials and make the outbound call themselves, so Offload's broker and gate 
   The FAQ quotes below are from that page.
 
 What the FAQ allows and forbids (all quotes checked 2026-11-22 at the FAQ URL above):
+- **The page's bolded headline line**: "If workflows are only created or modified by you or people in your
+  organization, you can use n8n under the Community license for free."
 - **Scope**: it "applies to the self-hosted version of n8n only"; "n8n Cloud is a paid subscription with its own
   terms; this page doesn't apply to it." No public n8n Cloud terms page was found in the docs index that day
   (**UNVERIFIED**: Cloud terms).
@@ -84,8 +87,12 @@ What the FAQ allows and forbids (all quotes checked 2026-11-22 at the FAQ URL ab
   - "Build automations for your clients on your instance, as long as your clients do not have the possibility to
     create or edit them."
   - "Charge your customers for workflow creation, setup, and maintenance services."
-  - "Consulting and automation services are explicitly permitted under the Sustainable Use License." The condition:
-    "n8n remains your internal tool, where clients receive outputs, not access."
+  - "Consulting and automation services are explicitly permitted under the Sustainable Use License." The condition,
+    for a consultant's own instance: "n8n remains your internal tool, where clients receive outputs, not access."
+  - Under "Can I install and manage n8n on a client's own server?": "Yes, provided that you are not *also* hosting
+    for them. Where a client runs n8n on their own infrastructure and needs consultancy or implementation services,
+    you can charge the client for installing, configuring, building workflows, and maintaining n8n on their behalf.
+    This is allowed as long as you don’t offer hosting as well, which would compete with n8n's own Cloud offering."
 - **Not allowed**, as listed:
   - "Allow external end users to build or configure their own workflows through your product, whether via a custom
     UI, our API, MCP, or an AI agent acting on the user's behalf."
@@ -102,8 +109,8 @@ What the FAQ allows and forbids (all quotes checked 2026-11-22 at the FAQ URL ab
   architecture with license@n8n.io before launch."
 - **Contacts**: "For licensing questions, contact" license@n8n.io; "To discuss a commercial license, contact"
   sales@n8n.io.
-- **Not in the FAQ**: who owns workflow JSON a user creates, or a third-party product that writes workflows into a
-  user's own instance.
+- **Not in the FAQ**: who owns workflow JSON a user creates. The FAQ covers a third party (a consultant) building
+  workflows in a client's own n8n, but not a third-party *product* that generates them, by an AI, for many users.
 
 The OEM route:
 - The old Embed page `n8n.io/embed` returned 404. The docs now describe an OEM deployment that "requires a separate
@@ -121,17 +128,23 @@ use of n8n ("through your product", "on your instance").
 - **Shipping n8n** in Offload's images: no. Free redistribution is limited to non-commercial purposes.
 - **Export file** (decided, slice m5-12): Offload writes n8n workflow JSON with its own code; the user imports it into
   their own self-hosted n8n. Offload runs no n8n, ships no n8n code and is not an n8n licensee here. The user is the
-  licensee and uses n8n "for your own internal business purposes", which the license allows. The closest FAQ lines
-  favour it: "Charge your customers for workflow creation, setup, and maintenance services" and "clients receive
-  outputs". Residual risk: low. n8n could argue the commercial-value clause, but that clause restricts use of
-  n8n, which Offload does not use here.
+  licensee and uses n8n "for your own internal business purposes", which the license allows.
+  - For it: the client's-own-server answer lets a third party charge for "building workflows ... on their behalf" in
+    the client's own n8n, as long as it does not also host n8n. Offload does not host n8n for the user.
+  - Against it: that answer is written for consultancy, not for a product that generates workflows by AI for many
+    users. And the bolded headline grants free use "If workflows are only created or modified by you or people in
+    your organization". These workflows are created by Offload, so the headline does not plainly cover the **user**,
+    and the risk sits with the user's own license as well as with Offload. (The "clients receive outputs, not
+    access" condition is about a consultant's own instance and does not apply: here the user owns the instance.)
+  - Residual risk: **moderate, unconfirmed**. n8n could also argue the commercial-value clause, though that clause
+    restricts use of n8n, which Offload does not use here. Asked in writing in OQ-32; the export card tells the user.
 - **Push to the user's own instance** (decided, slice m5-12, ships off): Offload calls the user's n8n public API with
   the user's API key to create and optionally publish the approved JSON. The user is still the licensee of that
   instance and the workflow serves their own business, so on our reading the "through your product" limit is not
   triggered: there is no n8n of Offload's for the user to build on. But the not-allowed sentence names exactly this
-  medium ("our API ... an AI agent acting on the user's behalf"), and the test is "medium-neutral". Residual risk:
-  **real**. A user on n8n Cloud is under terms we have not read. So push ships switched off until n8n confirms in
-  writing (OQ-32).
+  medium ("our API ... an AI agent acting on the user's behalf"), and the test is "medium-neutral". The user-side
+  headline point above applies too. Residual risk: **real**. A user on n8n Cloud is under terms we have not read. So
+  push ships switched off until n8n confirms in writing (OQ-32).
 - **Calling workflows a customer built themselves** in their own n8n, as tools, matches "Triggering or executing
   pre-built workflows via API or webhooks is fine". n8n can expose one workflow as an MCP server through its MCP
   Server Trigger node
@@ -184,6 +197,17 @@ use of n8n ("through your product", "on your instance").
     system or make HTTP requests"
     ([Code](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.code.md)). **UNVERIFIED** in the
     docs read: the exact `$input.all()` syntax; the m5-12 live test confirms the wrapper.
+  - Error Trigger: "You have to publish the workflow that uses the Error Trigger node"; "You can't test error
+    workflows when running workflows manually"
+    ([Error Trigger](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.errortrigger.md)).
+  - Idempotency: "Idempotency for the n8n API is available from n8n 2.45.0 on"; "n8n keeps the first successful
+    response for 12 hours from when you send the key"; "After 12 hours, the same key runs the POST again and can
+    create a duplicate"; "Keys belong to the user, not to one API key"
+    ([idempotency](https://docs.n8n.io/connect/n8n-api/idempotency.md)). The publish route's reference lists no
+    idempotency header.
+  - Code node modules: "If you self-host n8n, you can import and use built-in and external npm modules in the Code
+    node"; "If you use n8n Cloud, you can't import external npm modules"
+    ([Code](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.code.md)).
   - Human approval inside n8n exists per app, for example Slack "Send and Wait for Response"
     ([Slack approvals](https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.slack/approvals.md)). The
     export does not add one by default. Queue mode with Redis and workers is in the community edition; multi-main is paid
@@ -433,7 +457,11 @@ backend and several integration sources.
 - **n8n**:
   - Hosting or embedding it for paying users without an agreement breaches the SUL. The license "will automatically
     terminate" on violation (LICENSE.md).
-  - Export file to the user's own n8n: low residual risk (section 3.1). Still part of the written question.
+  - Export file to the user's own n8n: moderate residual risk, unconfirmed (section 3.1). The FAQ lets a third party
+    build workflows in a client's own n8n ("you can charge the client for installing, configuring, building
+    workflows, and maintaining n8n on their behalf"), but its headline grants free use only "If workflows are only
+    created or modified by you or people in your organization". That is a risk to the **user's** free use, not only
+    to Offload; the export card says so and OQ-32 asks n8n.
   - Push into the user's own n8n by its API: real residual risk, because the FAQ's not-allowed sentence names "our API"
     and "an AI agent acting on the user's behalf" and calls its test medium-neutral. Built, but off until n8n answers
     in writing ([OQ-32](../OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n), owner action: ask
