@@ -207,7 +207,7 @@ override.
 | Rule | Native routine definition | n8n export | Issue codes |
 |---|---|---|---|
 | **WF1 Explicit trigger** (`wf.trigger`) | Exactly one trigger: `schedule` (cron and an IANA time zone, never a default zone), `manual`, `webhook` or `event` | Exactly one trigger node (Schedule Trigger with a cron expression, Manual Trigger or Webhook) and `settings.timezone` set to the trigger's zone; n8n otherwise falls back to the instance zone, `America/New York` by default. The error workflow has exactly one Error Trigger | `trigger_invalid` |
-| **WF2 Small, single-purpose steps** (`wf.single_purpose`) | Each step has one class, at most one capability and one `connection_ref`. A transform module exports one function and has at most 150 non-blank lines. At most 20 steps. Step ids are unique `snake_case` | One node per step, plus only the helper nodes section 9.2 names. Node names are unique and come from the step ids; each node's `notes` holds that step's sentence from the definition in words | `step_not_single_purpose`, `transform_too_large`, `too_many_steps` |
+| **WF2 Small, single-purpose steps** (`wf.single_purpose`) | Each step has one class, at most one capability and one `connection_ref`. A transform module exports one function and has at most 150 non-blank lines. At most 20 steps. Step ids are unique `snake_case` | One node per step, plus only the helper nodes section 9.2 names (split, skip check, skipped-items, model output check, Remove Duplicates). Node names are unique and come from the step ids; each node's `notes` holds that step's sentence from the definition in words | `step_not_single_purpose`, `transform_too_large`, `too_many_steps` |
 | **WF3 Error workflow and error branches** (`wf.error_path`) | Every step's `on_error` is explicit in the resolved definition. The element-level error branch is `skip_item` with a code; the run-level error path is the runtime's (a failed run commits nothing, the breaker counts it, the member sees it). The IR stays linear: no error routes (section 1) | `settings.errorWorkflow` names the companion error workflow in the same export (Error Trigger, then one notification node). A `skip_item` step's node has `onError: "continueErrorOutput"` with its error output wired to the skipped-items node; every other node has `onError: "stopWorkflow"`. No node uses `continueRegularOutput` or the deprecated `continueOnFail` | `error_path_missing` |
 | **WF4 Per-step retries and timeouts** (`wf.retry_timeout`) | Every `read`, `draft` and `model` step has an explicit `retry` and `timeout_ms` inside the class rules; commit steps have `timeout_ms` and no `retry` (section 1) | Those nodes set `retryOnFail: true`, `maxTries` and `waitBetweenTries` from the retry policy; commit nodes set `retryOnFail: false`. HTTP Request nodes set their Timeout option (milliseconds) from `timeout_ms`; `settings.executionTimeout` bounds the run. n8n waits a fixed time between tries, so `backoff_rate` is not carried over and the export card says so | `retry_missing`, `retry_not_allowed`, `timeout_missing` |
 | **WF5 Idempotent writes** (`wf.idempotent`) | Every commit step has a `dedupe` key, written by the scaffold from the brief's `item_identity`. A brief without `item_identity` for a commit step is refused | A Remove Duplicates node ("Remove Items Processed in Previous Executions", scope Workflow, value the rendered dedupe key) directly before each commit node | `dedupe_missing` |
@@ -346,8 +346,10 @@ Built in slice [m5-12-n8n-export](../../slices/m5-12-n8n-export/SPEC.md). n8n fa
   `packages/n8n-export` (core, MIT) is pure and returns a bundle: the main workflow, its error workflow, a credential
   map (placeholder name, n8n credential type, the Offload connection it stands for, in words) and the export card.
   Same inputs, byte-identical bundle.
-- `export_hash = sha256(JCS(bundle))`, computed with the main workflow's `settings.errorWorkflow` set to the fixed
-  placeholder `offload:error-workflow`. That field is the only value ever filled after approval (section 9.5).
+- `export_hash = sha256(JCS(bundle))` over the two workflows, the credential map and the pinned n8n version, computed
+  with the main workflow's `settings.errorWorkflow` set to the fixed placeholder `offload:error-workflow`. That field
+  is the only value ever filled after approval (section 9.5). The card is generated from the bundle by code and is
+  not hashed.
 - Made only from a build whose receipt passes WF8. The routine definition stays the source; the export is derived
   and never edited by a model.
 - A run in the user's n8n is **outside Offload's gate, item journal, broker, approvals, breakers and hours-saved
@@ -361,10 +363,10 @@ Built in slice [m5-12-n8n-export](../../slices/m5-12-n8n-export/SPEC.md). n8n fa
 | `manual`, `webhook` trigger | Manual Trigger, Webhook |
 | `read` step | the catalog node for that capability (for example Gmail, Google Calendar, Google Drive, Google Sheets), or HTTP Request with a predefined credential type, which n8n recommends "when it's available" |
 | `foreach` | n8n runs a node once per input item; an array field is split by the catalog's split node |
-| `transform` step | Code node, JavaScript, "Run Once for All Items", with the transform module inlined in a fixed wrapper that maps `json` items in and out. n8n's docs say Code nodes "can't access the file system or make HTTP requests", which keeps transforms pure |
+| `transform` step | Code node, JavaScript, "Run Once for All Items", with the transform module inlined in a fixed wrapper that calls it per element, drops `null` and marks `$skip` results; a skip check (If node, helper) sends marked items to the skipped-items node. n8n's docs say Code nodes "can't access the file system or make HTTP requests", which keeps transforms pure |
 | `model` step | the catalog's model-call node using the user's own model credential in their n8n, then a Code node that checks the output against the step's output schema (helper node). Text goes from the user's n8n to the user's model provider unmasked, not through Offload's router; the card says so |
 | `commit` step | Remove Duplicates (helper node, WF5), then the catalog node, `retryOnFail: false` |
-| `skip_item` | error output to one skipped-items node (helper node, WF3) |
+| `skip_item` on a `read` or `model` step | `onError: "continueErrorOutput"`, error output to the one skipped-items node (No Operation, helper node, WF3) |
 | failed run | the error workflow: Error Trigger, then one notification node (WF3) |
 
 A step with `runs_on: mac`, a browser connector, an `opaque_workflow` connection or a capability with no catalog
