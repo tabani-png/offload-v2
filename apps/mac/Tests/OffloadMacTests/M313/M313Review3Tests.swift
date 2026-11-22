@@ -80,7 +80,7 @@ extension M313 {
   }
 
   @Test("PLAN: Close is offered in every phase but starting, and does nothing while OK, build is on its way")
-  @MainActor func notNowEveryPhase() async {
+  @MainActor func closeEveryPhase() async {
     // Designing.
     let designing = M313Client()
     designing.script("answer", .value(M313F.opportunity("designing")))

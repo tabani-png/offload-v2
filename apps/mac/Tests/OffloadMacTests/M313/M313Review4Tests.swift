@@ -3,7 +3,10 @@ import Testing
 @testable import OffloadMac
 
 // Review round 4 of m3-13 (logs/m3-13-mac-build-progress.review4.md): a design that stopped (`needs_you`) is said so
-// and an unknown state keeps waiting, the fix is read only in `ready_for_approval` (finding 2); Not now posts the
+// and an unknown state keeps waiting, the fix is read only in `ready_for_approval` (finding 2); closing a plan posts
+// nothing (review5.md finding 1, which replaced finding 3's posting answer); the capped headline names the build's own
+// cap (finding 8).
+// (Earlier header text, kept for the record:) Not now posts the
 // glossary's answer and a failure keeps the plan (finding 3); the capped headline names the build's own cap (finding 8).
 
 extension M313 {
@@ -53,12 +56,19 @@ extension M313 {
     #expect(client.count("fix") == 1)
   }
 
-  @Test("PLAN: closing a plan posts nothing in any phase (not_now is allowed only from open); a stopped plan closes quietly")
+  @Test("PLAN: closing a plan posts nothing in any phase (not_now is allowed only from open), says it can't be opened here again, true to the phase; a stopped plan closes quietly")
   @MainActor func planCloseNeverPosts() async {
-    for state in ["designing", "ready_for_approval", "chosen"] {
+    // review6.md finding 1: a ready plan's design has finished, and a plan waiting on a connection designs nothing.
+    let cases: [(String, String)] = [
+      ("designing", "Closed on this Mac. Offload may still design it, but it can't be opened here again."),
+      ("chosen", "Closed on this Mac. Offload may still design it, but it can't be opened here again."),
+      ("ready_for_approval", "Closed on this Mac. This plan can't be opened here again."),
+      ("needs_connection", "Closed on this Mac. Nothing more happens until the apps are connected, and it can't be opened here again."),
+    ]
+    for (state, line) in cases {
       let client = M313Client()
       let plans = MemoryPlanRecordStore()
-      client.script("answer", .value(M313F.opportunity(state)))
+      client.script("answer", .value(M313F.opportunity(state, missing: state == "needs_connection" ? ["github"] : [])))
       client.fallback("fix", .value(M313F.fix))
       let model = M313M.cloud(client, plans: plans)
       await model.startPlan(opportunityID: "opp_1", optionID: "fix_1")
@@ -68,7 +78,8 @@ extension M313 {
       #expect(client.calls.count == calls, "\(state)")
       #expect(model.plan == nil)
       #expect(plans.load() == nil)
-      #expect(model.notice == "Closed on this Mac. Offload may still finish designing it.")
+      #expect(model.notice == line, "\(state)")
+      #expect(model.notice?.contains("can't be opened here again") == true)
     }
     let failed = M313Client()
     failed.script("answer", .error(M313F.server(500, "server_error")))

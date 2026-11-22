@@ -96,7 +96,7 @@ extension M313 {
   }
 
   @Test("PLAN: Close hides the plan on this Mac, posts nothing, says so and stops reading the opportunity")
-  @MainActor func planNotNow() async {
+  @MainActor func planClose() async {
     let client = M313Client()
     // review5.md finding 1: the opportunity is past open, where not_now is not allowed (ARCHITECTURE section 7).
     client.script("answer", .value(M313F.opportunity("designing")))
@@ -108,7 +108,7 @@ extension M313 {
     model.closePlan()
     #expect(client.count("answer") == 1)
     #expect(!client.calls.contains { $0.contains("not_now") })
-    #expect(model.notice == "Closed on this Mac. Offload may still finish designing it.")
+    #expect(model.notice == "Closed on this Mac. Offload may still design it, but it can't be opened here again.")
     #expect(model.plan == nil)
     #expect(model.planTask == nil)
     #expect(await model.planStep() == nil)
