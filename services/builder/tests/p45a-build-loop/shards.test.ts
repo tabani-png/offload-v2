@@ -100,6 +100,7 @@ describe("p45a shards", () => {
     expect(new Set(seen.map((e) => e.stdin)).size).toBe(2);
     for (const e of seen) {
       expect(e.argv).toEqual(["bun", "/check/harness.ts"]);
+      expect(e.harness).toBe(true);
       expect(JSON.stringify(e.env)).not.toContain(e.stdin!.trim());
       expect(e.env).toMatchObject({ OFFLOAD_WS: "/work", OFFLOAD_CHECK_DIR: "/check", OFFLOAD_CHECK_FILE: "accept.test.ts" });
     }

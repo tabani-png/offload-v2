@@ -95,6 +95,9 @@ describe("p45a attempt", () => {
     const w = h.provider.workers()[0]!;
     expect(w.spec).toMatchObject({ vcpu: 2, memory_mb: 4096, wall_ms: 12 * 60_000, role: "worker" });
     expect([...w.check.keys()].sort()).toEqual(["BUILD.md", "accept.test.ts", "bunfig.toml", "fixtures/instances/1.json", "guard.ts", "harness.ts", "spawn-client.ts"]);
+    // the advisory check run is the trusted harness (the only exec that may run as root on a split provider)
+    expect(w.execs.length).toBeGreaterThan(0);
+    expect(w.execs.every((e) => e.harness)).toBe(true);
     // the worker may read its own frozen check (it is visible to it)
     expect(w.modes.get("accept.test.ts")).toBe(0o444);
     expect(text({ path: "", bytes: w.check.get("fixtures/instances/1.json")! })).toContain("tok_");

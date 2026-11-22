@@ -89,7 +89,7 @@ export interface FakeSandbox {
   /** File modes asked for in the read-only check folder. */
   modes: Map<string, number>;
   destroyed: boolean;
-  execs: Array<{ argv: string[]; stdin: string | undefined; env: Record<string, string> }>;
+  execs: Array<{ argv: string[]; stdin: string | undefined; env: Record<string, string>; harness: boolean }>;
 }
 
 /** Decides one harness run. `work` is the sandbox's /work, `shard` which check ran, `role` worker or verification. */
@@ -145,9 +145,9 @@ export class FakeProvider implements SandboxProvider {
     const files = await this.getFiles(s, mount);
     return sha256Hex(files.map((x) => `${x.path}\0${sha256Hex(x.bytes)}`).join("\n"));
   }
-  async exec(s: Sandbox, o: { argv: string[]; cwd: string; stdin?: string; env?: Record<string, string>; timeout_ms: number }): Promise<ExecResult> {
+  async exec(s: Sandbox, o: { argv: string[]; cwd: string; stdin?: string; env?: Record<string, string>; timeout_ms: number; harness?: boolean }): Promise<ExecResult> {
     const f = this.sb(s);
-    f.execs.push({ argv: o.argv, stdin: o.stdin, env: o.env ?? {} });
+    f.execs.push({ argv: o.argv, stdin: o.stdin, env: o.env ?? {}, harness: o.harness === true });
     await new Promise((r) => setTimeout(r, 3));
     const check = text(fileOf(f.check, "accept.test.ts"));
     const shard = check.includes("HELDOUT") ? "held_out" : "frozen";

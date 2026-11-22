@@ -3,7 +3,7 @@
 // the old runner: non-root user, no-new-privileges, pids limit, env allowlist, a timed-out container is removed.
 // The executor is faked to pin the exact argv; a LIVE: test runs real Docker and skips when it is absent.
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DockerProvider, spawnExecutor, type Executor } from "../../src/sandbox/docker.ts";
 import { HARNESS_TS } from "../../src/harness.ts";
@@ -35,7 +35,7 @@ describe("p45a docker provider", () => {
     const { p, calls } = fake();
     const sb = await p.create(SPEC);
     const dirs = p.paths(sb);
-    await p.exec(sb, { argv: ["bun", "/check/harness.ts"], cwd: "/check", stdin: "nonce\n", env: { OFFLOAD_WS: "/work", OFFLOAD_CHECK_DIR: "/check" }, timeout_ms: 1000 });
+    await p.exec(sb, { argv: ["bun", "/check/harness.ts"], cwd: "/check", stdin: "nonce\n", env: { OFFLOAD_WS: "/work", OFFLOAD_CHECK_DIR: "/check" }, timeout_ms: 1000, harness: true });
     const a = calls[0]!.argv;
     const name = a[a.indexOf("--name") + 1]!;
     const uid = process.getuid!();
@@ -79,6 +79,40 @@ describe("p45a docker provider", () => {
     expect(name).toMatch(/^offload-sbx_[0-9a-f]+-\d+$/);
     expect(calls[0]!.stdin).toBe("nonce\n");
     expect(a.join(" ")).not.toContain("nonce");
+  });
+
+  test("SANDBOX: on a split provider only the trusted harness runs as root; any other exec (a worker's command) runs as nobody with no added capability", async () => {
+    const { p, calls } = fake();
+    for (const role of ["worker", "verification"] as const) {
+      const sb = await p.create({ ...SPEC, role });
+      await p.exec(sb, { argv: ["bun", "-e", "1"], cwd: "/work", timeout_ms: 10 });
+      const a = calls.at(-1)!.argv;
+      expect(a[a.indexOf("--user") + 1]).toBe("65534:65534");
+      expect(a).not.toContain("--cap-add");
+      expect(a.join(" ")).not.toContain("OFFLOAD_CHECK_UID");
+      expect(a.join(" ")).not.toContain("OFFLOAD_TOOL_UID");
+      expect(a).toContain("--cap-drop");
+      await p.exec(sb, { argv: ["bun", "/check/harness.ts"], cwd: "/check", timeout_ms: 10, harness: true });
+      const h = calls.at(-1)!.argv;
+      expect(h[h.indexOf("--user") + 1]).toBe("0:0");
+      expect(h.filter((x, k) => h[k - 1] === "--cap-add")).toEqual(["CHOWN", "SETGID", "SETUID"]);
+    }
+  });
+
+  test("SANDBOX: destroy forgets a sandbox even when its folder cannot be removed (the reaper takes it from there)", async () => {
+    const { p } = fake();
+    const sb = await p.create(SPEC);
+    const dirs = p.paths(sb);
+    mkdirSync(join(dirs.work, "stuck"));
+    writeFileSync(join(dirs.work, "stuck", "f"), "x");
+    chmodSync(join(dirs.work, "stuck"), 0o555);
+    try {
+      await p.destroy(sb);
+      expect(p.known().map((x) => x.id)).not.toContain(sb.id);
+    } finally {
+      chmodSync(join(dirs.work, "stuck"), 0o755);
+      rmSync(dirs.root, { recursive: true, force: true });
+    }
   });
 
   test("SANDBOX: without the user split (development only) the container runs as nobody with no added capability", async () => {
