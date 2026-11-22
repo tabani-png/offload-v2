@@ -41,3 +41,4 @@ One line per slice step: slice | decision | tests | reviewer verdict.
   disposable database (`*_test`, or `COMMENT ON DATABASE ... IS 'offload:disposable'`).
 - **SPECs.** m3-04, m3-05 and m3-09 `paths_in_scope` add `apps/mac/Sources/OffloadMac/App/**` and keep
   `apps/mac/Sources/OffloadMacApp/**` for their earlier commits. Each records the change under Scope changes.
+- 2026-11-22 10:00 s5 | CI green on 440d46b0cfb6e1d65c163b57d266c50cefd164e4 | Mac artifact: Offload-mac-92ed60a | run https://github.com/tabani-png/offload-v2/actions/runs/45035606854
