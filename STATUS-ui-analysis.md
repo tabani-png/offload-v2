@@ -42,3 +42,4 @@ One line per slice step: slice | decision | tests | reviewer verdict.
 - 2026-11-22 12:20 analysis | CI green on 8212c38ef699e99c83b1557d36b645fa555bcd09 | runs: mac-artifact=success, ci=success
 - 2026-11-22 12:33 m3-10-mac-recordings-analysis | wave2 review to round 4 | reviewer: VERDICT: PASS
 - 2026-11-22 12:39 analysis-r | CI green on e80962af0248e97373f166071c3fce8360db35af | runs: mac-artifact=success, ci=success
+- 2026-11-22 13:00 m3-10-mac-recordings-analysis | ADR 0007 amendment + person names; review to round 7 | reviewer: VERDICT: PASS
