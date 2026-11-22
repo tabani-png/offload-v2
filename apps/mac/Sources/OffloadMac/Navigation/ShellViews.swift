@@ -65,7 +65,7 @@ public struct ShellView: View {
     case .today: TodayLiveScreen(app: app)
     case .weeklyReview: WeeklyReviewScreen(app: app)
     case .builds: BuildProgressScreen(app: app)
-    case .recordings: RecordingsScreen(app: app)
+    case .recordings: RecordingsShellScreen(app: app)
     case .settings: SettingsScreen(app: app)
     }
   }
@@ -110,8 +110,9 @@ public struct SampleDataLabel: View {
   }
 }
 
-/// Recordings: m3-05's Settings view, the default folders found on this Mac and the local insights done line.
-public struct RecordingsScreen: View {
+/// Recordings: m3-05's Settings view, the default folders found on this Mac and the local insights done line. Not
+/// `RecordingsScreen`: that name is m3-04's onboarding screen 11 in the same module.
+public struct RecordingsShellScreen: View {
   @ObservedObject var app: AppModel
   @ObservedObject var insights: InsightsModel
 
