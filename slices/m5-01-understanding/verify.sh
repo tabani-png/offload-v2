@@ -12,7 +12,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m5-01-understanding"
-BASE="9f17bed"                                # commit this slice stacks on (required once status is in_progress)
+BASE="a97f748"                                # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="services/brain/tests/m5-01-understanding" # one or more folders, space separated
 NEEDS_POSTGRES=1                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 # -------------------------------------------------------------------------

@@ -12,8 +12,8 @@ parallel_group: M5-A
 owns: [services/brain/src/understanding/**, services/brain/tests/m5-01-understanding/**]
 verify: bash slices/m5-01-understanding/verify.sh
 min_tests: 46
-paths_in_scope: [services/brain/src/understanding/**, services/brain/src/user-model/ports.ts, services/brain/src/index.ts, services/brain/tests/m5-01-understanding/**, services/brain/package.json, bun.lock, docs/API.md, docs/ARCHITECTURE.md, docs/DATA_MODEL.md, docs/GLOSSARY.md, docs/ROADMAP.md, slices/m5-01-understanding/**]
-paths_out_of_scope: [ee/**, apps/**, packages/**, services/api/**, services/runtime/**, services/broker/**, services/builder/**, services/brain/src/models/**, services/brain/src/store/**, services/brain/src/user-model/ledger.ts, services/brain/sql/**, docs/adr/**, .github/**, slices/m5-01-understanding/STATUS.md]
+paths_in_scope: [services/brain/src/understanding/**, services/brain/src/user-model/ports.ts, services/brain/src/index.ts, services/brain/tests/m5-01-understanding/**, services/brain/package.json, bun.lock, docs/API.md, docs/ARCHITECTURE.md, docs/DATA_MODEL.md, docs/GLOSSARY.md, docs/ROADMAP.md, slices/m5-01-understanding/**, slices/m5-01-understanding/STATUS.md]
+paths_out_of_scope: [ee/**, apps/**, packages/**, services/api/**, services/runtime/**, services/broker/**, services/builder/**, services/brain/src/models/**, services/brain/src/store/**, services/brain/src/user-model/ledger.ts, services/brain/sql/**, docs/adr/**, .github/**]
 red_tests: [SPAN, CUE, DESCRIBE, EMBED, INDUCE, WINDOW, LEDGER, CONSUME]
 ---
 
@@ -185,6 +185,9 @@ fix rules and `FixEstimate` (m5-04: `estimateFor` is passed through), `offload s
 `bash slices/m5-01-understanding/verify.sh` (needs `DATABASE_URL` to a disposable Postgres 17).
 
 ## Scope changes
+- **BASE and STATUS.md (review 4 finding 1)**: the branch was rebased onto `a97f748` (Port #45), so `BASE` is now
+  `a97f748`. `slices/m5-01-understanding/STATUS.md` is orchestrator-owned and committed by the orchestrator on this
+  branch; it is listed in `paths_in_scope` so the scope check accepts those commits. The builder never edits it.
 - **Event payload**: API.md section 7 said `observations.ingested` carries `{ device_id, member_id, count, first_ts,
   last_ts }`; m3-01 writes `{ device_id, member_id, seq, accepted }`. services/api is out of scope here, so the
   consumer finds the range itself (Design note step 1) and uses `first_ts`/`last_ts` when present. API.md is corrected.
