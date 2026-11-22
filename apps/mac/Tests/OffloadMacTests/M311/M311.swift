@@ -344,9 +344,17 @@ final class M311Builds: BuildsClient, @unchecked Sendable {
     return _answers
   }
 
+  // NSLock's lock() and unlock() are unavailable in async functions (Swift 6), so the async client methods below
+  // only call these synchronous helpers.
   private func count() {
     lock.lock()
     _calls += 1
+    lock.unlock()
+  }
+
+  private func record(_ id: String, _ answer: OpportunityAnswer, _ optionID: String?) {
+    lock.lock()
+    _answers.append((id, answer, optionID))
     lock.unlock()
   }
 
@@ -357,9 +365,7 @@ final class M311Builds: BuildsClient, @unchecked Sendable {
   func opportunity(id: String) async throws -> Opportunity { throw APIError.notFound }
   func answerOpportunity(id: String, answer: OpportunityAnswer, optionID: String?) async throws -> Opportunity {
     if let answerFailure { throw answerFailure }
-    lock.lock()
-    _answers.append((id, answer, optionID))
-    lock.unlock()
+    record(id, answer, optionID)
     return Opportunity(id: id, title: "", state: .notNow)
   }
   func fix(id: String) async throws -> Fix { throw APIError.notFound }
