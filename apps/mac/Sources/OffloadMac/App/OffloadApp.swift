@@ -46,6 +46,8 @@ struct MenuBarOpener: View {
   @Environment(\.openWindow) private var openWindow
 
   var body: some View {
+    // m3-11: "today · 3 h 10 m · mostly Xcode" above m3-04's menu; no line when nothing was counted today.
+    TodayMenuLine(app: app)
     MenuBarContent(
       app: app,
       openWindow: {

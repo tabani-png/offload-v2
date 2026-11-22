@@ -241,6 +241,9 @@ Conventions:
 | **Weekly review** | One sentence, a few tiles against your usual week, goals, up to 4 one-tap questions whose answers tune next week's ranking. Charts one tap deeper. On the Mac it is counted from local insights in `.local` and read from the brain in `.cloud` (slice m3-12). |
 | **Build progress** | The screen that shows checks running, failures being fixed, spend against the cap, and the install step. |
 
+
+| **Day grid** | Today's 15-minute cells from the person's rhythm start to end (widened to whole hours for activity outside), one row per top app on the Mac (kinds of work in the cloud, from m5-05's `GET /v1/today`), plus a **Switch bursts** row marking cells with 4 or more app switches. |
+| **Menu bar line** | The menu bar item's one line about today, "today · 3 h 10 m · mostly Xcode", shown only when something was counted today. |
 | **Weekly review** | One sentence, a few tiles, goals, quick questions. Charts one tap deeper. |
 | **Build progress** | The screen that shows checks running, failures being fixed, spend against the cap, and the install step. On the Mac (slice m3-13): five step rows (Plan locked, Checks frozen first, Workers testing, Matches what you asked for, Ready to ship), one row per worker attempt with its frozen and held-out marks, the OK, build plan step and the deploy approval. |
 | **"How it was counted"** | The drill-down behind every number: arithmetic and evidence. |
