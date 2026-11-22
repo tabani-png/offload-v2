@@ -1,5 +1,6 @@
-// Input port of the user model: what understanding (sessionize, describe, induce; slice m5-01) hands over for one
-// analysed window. This is a local stand-in until m5-01 lands; see slices/p43a-user-model-core/DESIGN.md section 4.
+// Input port of the user model: what understanding (sessionize, describe, embed, induce) hands over for one analysed
+// window. Produced by buildUnderstandingWindow (src/understanding/window.ts, slice m5-01); see
+// slices/m5-01-understanding/SPEC.md and slices/p43a-user-model-core/DESIGN.md section 4.
 // Everything here is already masked and pseudonymised upstream. `title` is read for nothing and never stored.
 
 /** A calendar day `YYYY-MM-DD` in the member's timezone (`profiles.timezone`). */
