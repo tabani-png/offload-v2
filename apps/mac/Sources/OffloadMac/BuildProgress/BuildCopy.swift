@@ -119,9 +119,19 @@ public enum BuildCopy {
   /// "Connect Google Sheets and Github first."
   public static func connectFirst(_ apps: [String]) -> String { "Connect \(joined(apps.map(appName))) first." }
 
-  /// A provider id in words: "google_sheets" is "Google Sheets".
+  /// Providers whose names are not plain title case (review 2, finding 8).
+  static let providerNames: [String: String] = [
+    "github": "GitHub", "gitlab": "GitLab", "hubspot": "HubSpot", "quickbooks": "QuickBooks", "linkedin": "LinkedIn",
+    "youtube": "YouTube", "google_sheets": "Google Sheets", "google_drive": "Google Drive", "google_docs": "Google Docs",
+    "google_calendar": "Google Calendar", "gmail": "Gmail", "slack": "Slack", "notion": "Notion", "jira": "Jira",
+    "salesforce": "Salesforce", "xero": "Xero", "outlook": "Outlook", "microsoft_teams": "Microsoft Teams",
+  ]
+
+  /// A provider id in words: a known brand as it writes itself ("github" is "GitHub"), else title case
+  /// ("acme_crm" is "Acme Crm").
   public static func appName(_ raw: String) -> String {
-    raw.split(whereSeparator: { $0 == "_" || $0 == "-" || $0 == " " })
+    if let known = providerNames[raw.lowercased()] { return known }
+    return raw.split(whereSeparator: { $0 == "_" || $0 == "-" || $0 == " " })
       .map { $0.prefix(1).uppercased() + $0.dropFirst() }
       .joined(separator: " ")
   }

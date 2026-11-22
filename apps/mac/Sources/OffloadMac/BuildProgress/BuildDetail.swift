@@ -234,12 +234,12 @@ public enum Money {
 }
 
 enum Decimals {
-  /// `value` × 10^places rounded half up, as an integer; 0 for negative, NaN or infinite values.
-  static func scaled(_ value: Double, places: Int) -> Int {
+  /// `value` × 10^places rounded (half up by default), as an integer; 0 for negative, NaN or infinite values.
+  static func scaled(_ value: Double, places: Int, mode: NSDecimalNumber.RoundingMode = .plain) -> Int {
     guard value.isFinite, value > 0 else { return 0 }
     var exact = Decimal(string: "\(value)", locale: Locale(identifier: "en_US_POSIX")) ?? Decimal(value)
     var rounded = Decimal()
-    NSDecimalRound(&rounded, &exact, places, .plain)
+    NSDecimalRound(&rounded, &exact, places, mode)
     var factor = Decimal(1)
     for _ in 0..<places { factor *= 10 }
     return NSDecimalNumber(decimal: rounded * factor).intValue
@@ -250,9 +250,10 @@ enum Decimals {
     return s.count >= width ? s : String(repeating: "0", count: width - s.count) + s
   }
 
-  /// One decimal, half up: 1.204 is "1.2", 2 is "2.0".
-  static func oneDecimal(_ value: Double) -> String {
-    let tenths = scaled(value, places: 1)
+  /// Hours to one decimal, rounded half to even as hs-1 displays them (ADR 0022, `round_half_even(seconds / 360) /
+  /// 10`): 1.25 is "1.2", 1.35 is "1.4", 2 is "2.0" (review 2, finding 6).
+  static func hours(_ value: Double) -> String {
+    let tenths = scaled(value, places: 1, mode: .bankers)
     return "\(tenths / 10).\(tenths % 10)"
   }
 }
@@ -317,7 +318,16 @@ public struct BudgetMeter: Equatable, Sendable {
   public init(build: Build, now: Date) {
     var seconds = 0
     if let start = BuildTime.parse(build.startedAt) {
-      let end = BuildTime.parse(build.endedAt) ?? now
+      // A build that ended without `ended_at` stops at its last stage's end, else stands still: it never counts on
+      // to now (review 2, finding 10).
+      let end: Date
+      if let ended = BuildTime.parse(build.endedAt) {
+        end = ended
+      } else if build.state.isLive {
+        end = now
+      } else {
+        end = build.stages.compactMap { BuildTime.parse($0.endedAt) }.max() ?? start
+      }
       let delta = end.timeIntervalSince(start)
       seconds = delta.isFinite && delta > 0 ? Int(delta.rounded(.down)) : 0
     }
@@ -354,7 +364,7 @@ public struct SavingLine: Equatable, Sendable {
   public static func make(fix: Fix?, installed: Bool, outcome: OutcomeLookup) -> SavingLine? {
     guard installed else {
       if let estimate = fix?.estimate, let hours = WeeklyHours.of(estimate) {
-        return SavingLine(text: BuildCopy.savesEstimated(Decimals.oneDecimal(hours)) + " · " + BuildCopy.measuredAfter)
+        return SavingLine(text: BuildCopy.savesEstimated(Decimals.hours(hours)) + " · " + BuildCopy.measuredAfter)
       }
       return SavingLine(text: BuildCopy.measuredAfter)
     }
@@ -370,8 +380,8 @@ public struct SavingLine: Equatable, Sendable {
       case .onTrack, .partial, .under:
         guard let ratio = o.ratio?.value, let estimated = o.estimatedMinutesPerWeek?.value, ratio.isFinite, estimated.isFinite
         else { return SavingLine(text: BuildCopy.notMeasured) }
-        return SavingLine(text: BuildCopy.savedMeasured(Decimals.oneDecimal(ratio * estimated / 60),
-                                                        estimated: Decimals.oneDecimal(estimated / 60)))
+        return SavingLine(text: BuildCopy.savedMeasured(Decimals.hours(ratio * estimated / 60),
+                                                        estimated: Decimals.hours(estimated / 60)))
       case .unmeasured, .unknown:
         return SavingLine(text: BuildCopy.notMeasured)
       }

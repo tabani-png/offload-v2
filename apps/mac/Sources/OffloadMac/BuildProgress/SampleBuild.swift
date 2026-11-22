@@ -140,7 +140,7 @@ extension BuildDetail {
     ]
     let headline = s.ready ? BuildCopy.headlineReady : (s.failing ? BuildCopy.headlineFixing : BuildCopy.headlineBuilding)
     let dot: StatusDot = s.ready ? .done : (s.failing ? .needsYou : .working)
-    let saving = BuildCopy.savesEstimated(Decimals.oneDecimal(SampleBuild.estimateHoursPerWeek)) + " · " + BuildCopy.measuredAfter
+    let saving = BuildCopy.savesEstimated(Decimals.hours(SampleBuild.estimateHoursPerWeek)) + " · " + BuildCopy.measuredAfter
     return BuildDetail(
       title: BuildCopy.title(SampleBuild.name), headline: headline, headlineNote: nil, dot: dot,
       meter: BudgetMeter(seconds: s.seconds, spentUSD: s.costUSD, capUSD: SampleBuild.capUSD), steps: steps, attempts: [],
