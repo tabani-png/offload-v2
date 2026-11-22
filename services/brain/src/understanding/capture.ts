@@ -7,6 +7,8 @@ import { withTenant, type TenantContext } from "@offload/db";
 import type { CaptureObservation, CaptureText } from "./types.ts";
 
 export const UNDERSTANDING_CONSUMER = "workflow:understanding";
+/** Attempts after which a failing event is no longer returned by pendingEvents (its code stays in last_error_code). */
+export const MAX_ATTEMPTS = 5;
 /** Durable workflows run as this principal with role `service` (DATA_MODEL section 3). */
 const PRINCIPAL = "durable";
 
@@ -24,13 +26,17 @@ export interface MemberRef {
 }
 
 export interface CaptureStore {
-  /** Undelivered `observations.ingested` events of a tenant, oldest first. */
-  pendingEvents(tenantId: string, limit: number): Promise<IngestedEvent[]>;
+  /** Undelivered `observations.ingested` events of a tenant with fewer than `maxAttempts` attempts (default
+   * MAX_ATTEMPTS), oldest first. */
+  pendingEvents(tenantId: string, limit: number, maxAttempts?: number): Promise<IngestedEvent[]>;
+  /** Runs `fn` while holding the event's claim (a session advisory lock, released on return or when the connection
+   * dies). Another consumer holding it gives `{ locked: false }` at once: one event never runs twice at a time. */
+  withEventLock<T>(tenantId: string, eventId: string, fn: () => Promise<T>): Promise<{ locked: true; value: T } | { locked: false }>;
   getEvent(tenantId: string, eventId: string): Promise<IngestedEvent | null>;
   isDelivered(tenantId: string, eventId: string): Promise<boolean>;
   /** Records one attempt; `error` (a code, never text) null marks the event delivered. */
   recordAttempt(tenantId: string, eventId: string, error: string | null): Promise<void>;
-  /** The member exists in this tenant and has not departed. */
+  /** The member exists in this tenant and is neither departed nor frozen (as the resolvers, DATA_MODEL section 3). */
   memberExists(m: MemberRef): Promise<boolean>;
   /** The member's first workspace (opportunities need one). */
   workspaceOf(m: MemberRef): Promise<string | null>;
@@ -53,17 +59,33 @@ const eventOf = (tenantId: string, r: Row): IngestedEvent => ({
 
 export function pgCaptureStore(pool: WithTenantPool): CaptureStore {
   return {
-    pendingEvents: (tenantId, limit) =>
+    pendingEvents: (tenantId, limit, maxAttempts = MAX_ATTEMPTS) =>
       withTenant(pool, service(tenantId), async (tx) =>
         (await tx.query(
           `select e.id, e.payload, e.created_at from events_outbox e
             where e.type = 'observations.ingested'
               and not exists (select 1 from outbox_deliveries d where d.tenant_id = e.tenant_id and d.event_id = e.id
-                              and d.consumer = $1 and d.delivered_at is not null)
+                              and d.consumer = $1 and (d.delivered_at is not null or d.attempts >= $3))
             order by e.created_at, e.id limit $2`,
-          [UNDERSTANDING_CONSUMER, Math.max(1, Math.min(limit, 1000))],
+          [UNDERSTANDING_CONSUMER, Math.max(1, Math.min(limit, 1000)), maxAttempts],
         )).rows.map((r) => eventOf(tenantId, r)),
       ),
+    withEventLock: async (tenantId, eventId, fn) => {
+      const key = `${UNDERSTANDING_CONSUMER}:${tenantId}:${eventId}`;
+      // A plain session (no transaction is held open, so the network guard and the no-I/O rule are kept).
+      const c = await pool.connect();
+      try {
+        const got = (await c.query("select pg_try_advisory_lock(hashtextextended($1, 0)) as ok", [key])).rows[0]?.ok === true;
+        if (!got) return { locked: false as const };
+        try {
+          return { locked: true as const, value: await fn() };
+        } finally {
+          await c.query("select pg_advisory_unlock(hashtextextended($1, 0))", [key]);
+        }
+      } finally {
+        c.release();
+      }
+    },
     getEvent: (tenantId, eventId) =>
       withTenant(pool, service(tenantId), async (tx) => {
         const r = (await tx.query("select id, payload, created_at from events_outbox where id = $1 and type = 'observations.ingested'", [eventId])).rows[0];
@@ -86,7 +108,7 @@ export function pgCaptureStore(pool: WithTenantPool): CaptureStore {
         );
       }),
     memberExists: (m) =>
-      withTenant(pool, asMember(m), async (tx) => (await tx.query("select 1 from members where id = $1 and state <> 'departed'", [m.memberId])).rows.length > 0),
+      withTenant(pool, asMember(m), async (tx) => (await tx.query("select 1 from members where id = $1 and state not in ('departed', 'frozen')", [m.memberId])).rows.length > 0),
     workspaceOf: (m) =>
       withTenant(pool, asMember(m), async (tx) => {
         const r = (await tx.query("select workspace_id from workspace_members where member_id = $1 order by workspace_id limit 1", [m.memberId])).rows[0];

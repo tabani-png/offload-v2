@@ -8,5 +8,5 @@ export { cosine, EMBED_DIMS, localEmbedder, type Embedder } from "./embed.ts";
 export { induceTasks, INDUCE, type InduceOptions } from "./induce.ts";
 export { routerSpanLabeler, type LabelItem, type SpanLabel, type SpanLabeler } from "./labeler.ts";
 export { buildUnderstandingWindow, type WindowDeps, type WindowInput } from "./window.ts";
-export { pgCaptureStore, UNDERSTANDING_CONSUMER, type CaptureStore, type IngestedEvent, type MemberRef } from "./capture.ts";
+export { MAX_ATTEMPTS as UNDERSTANDING_MAX_ATTEMPTS, pgCaptureStore, UNDERSTANDING_CONSUMER, type CaptureStore, type IngestedEvent, type MemberRef } from "./capture.ts";
 export { drainUnderstanding, MAX_ANALYSIS_DAYS, runUnderstanding, understandingWorkflow, type UnderstandingDeps, type UnderstandingResult, type UnderstandingStatus } from "./job.ts";
