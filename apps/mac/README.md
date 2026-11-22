@@ -52,3 +52,13 @@ Settings keys: `ai.offload.review.day`, `ai.offload.review.time`, `ai.offload.re
 `ai.offload.review.offered`. The screen offers the notification once; clicking it opens the main window on this week's review
 (`WeeklyReviewWindowOpener` on the menu bar label). Tests:
 `Tests/OffloadMacTests/M312/`.
+
+Build progress (slice m3-13): `Sources/OffloadMac/BuildProgress/` is the Builds screen. `BuildDetail.swift` decides what
+one build shows in pure code (`StepMapping` from the build loop's stages onto five rows, `HeadlineMap`, `AttemptRow`,
+`HeldOutResult`, `BudgetMeter` and `Money` with half-up cents, `SavingLine`); `SampleBuild.swift` is the labelled
+sample (`SampleTimeline.state(at:)`, the mockup's 92 ticks); `BuildRecordStore.swift` keeps the builds started on this
+Mac (the API has no list route); `BuildProgressModel.swift` reads the builds API through m3-10's `BuildsClient` in
+`.cloud` (poll every 2 s while live, backoff to 60 s, the OK, build plan step with the opportunity polled every 5 s for
+at most 10 minutes, the two exact-hash approvals posted only from their buttons, the outcome after install) and plays
+the sample in `.local`; `BuildCopy.swift` holds every string. The hand-off from Today and Weekly review
+(`navigation.pendingBuild`) is read once when Builds appears. Tests: `Tests/OffloadMacTests/M313/`.
