@@ -20,6 +20,13 @@ export interface IngestedEvent {
   payload: { device_id?: string; member_id?: string; seq?: number; accepted?: number; first_ts?: string; last_ts?: string };
 }
 
+export interface TsRange {
+  /** The import space the rows belong to; null for live rows. */
+  importId: string | null;
+  min: number;
+  max: number;
+}
+
 export interface MemberRef {
   tenantId: string;
   memberId: string;
@@ -42,8 +49,9 @@ export interface CaptureStore {
   memberExists(m: MemberRef): Promise<boolean>;
   /** The member's first workspace (opportunities need one). */
   workspaceOf(m: MemberRef): Promise<string | null>;
-  /** min/max `ts` of the member's rows whose partition `day` is in [fromDay, toDay] (UTC dates). */
-  tsRangeOfDays(m: MemberRef, fromDay: string, toDay: string): Promise<{ min: number; max: number } | null>;
+  /** min/max `ts` of the member's rows whose partition `day` is in [fromDay, toDay] (UTC dates), one range per
+   * `import_id` (null = live rows). An old import and recent live rows are separate ranges, never one long range. */
+  tsRangesOfDays(m: MemberRef, fromDay: string, toDay: string): Promise<TsRange[]>;
   /** Every observation and text of the member with `from <= ts < to`, read by `ts`. */
   read(m: MemberRef, from: number, to: number): Promise<{ observations: CaptureObservation[]; texts: CaptureText[] }>;
 }
@@ -132,11 +140,15 @@ export function pgCaptureStore(pool: WithTenantPool, opts: CaptureStoreOptions =
         const r = (await tx.query("select workspace_id from workspace_members where member_id = $1 order by workspace_id limit 1", [m.memberId])).rows[0];
         return r === undefined ? null : String(r["workspace_id"]);
       }),
-    tsRangeOfDays: (m, fromDay, toDay) =>
-      withTenant(pool, asMember(m), async (tx) => {
-        const r = (await tx.query("select min(ts) as mn, max(ts) as mx from observations where member_id = $1 and day between $2::date and $3::date", [m.memberId, fromDay, toDay])).rows[0];
-        return r === undefined || r["mn"] === null ? null : { min: ms(r["mn"]), max: ms(r["mx"]) };
-      }),
+    tsRangesOfDays: (m, fromDay, toDay) =>
+      withTenant(pool, asMember(m), async (tx) =>
+        (await tx.query(
+          `select import_id, min(ts) as mn, max(ts) as mx from observations
+            where member_id = $1 and day between $2::date and $3::date
+            group by import_id order by min(ts)`,
+          [m.memberId, fromDay, toDay],
+        )).rows.map((r): TsRange => ({ importId: r["import_id"] === null ? null : String(r["import_id"]), min: ms(r["mn"]), max: ms(r["mx"]) })),
+      ),
     read: (m, from, to) =>
       withTenant(pool, asMember(m), async (tx) => {
         const range = [m.memberId, new Date(from).toISOString(), new Date(to).toISOString()];

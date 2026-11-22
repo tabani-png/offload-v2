@@ -12,6 +12,7 @@ import { runMemberUpdate, type MemberUpdateInput } from "../store/job.ts";
 import * as repo from "../store/repository.ts";
 import type { RunInTenant, TenantContext } from "../store/tenant.ts";
 import { MAX_ATTEMPTS, type CaptureStore, type IngestedEvent, type MemberRef } from "./capture.ts";
+import type { CaptureObservation, CaptureText } from "./types.ts";
 import type { Embedder } from "./embed.ts";
 import type { SpanLabeler } from "./labeler.ts";
 import { buildUnderstandingWindow } from "./window.ts";
@@ -76,17 +77,20 @@ function daysBetween(first: string, last: string): string[] {
   return out;
 }
 
-/** The ts range an event touched: first_ts/last_ts when present, else the member's rows ingested on the event's UTC
- * day or the LIVE_LATE_DAYS days before it (live rows: day = UTC date of ts, up to 7 days late; imported rows: day =
- * the ingest date). */
-async function rangeOf(capture: CaptureStore, ref: MemberRef, ev: IngestedEvent): Promise<{ min: number; max: number } | null> {
+/** The ts ranges an event touched: first_ts/last_ts when present, else one range per import space (and one for live
+ * rows) over the member's rows ingested on the event's UTC day or the LIVE_LATE_DAYS days before it (live rows: day =
+ * UTC date of ts, up to 7 days late; imported rows: day = the ingest date). Separate ranges keep an old import from
+ * being cut off by the 31-day cap of one range that also holds today's live rows. */
+async function rangesOf(capture: CaptureStore, ref: MemberRef, ev: IngestedEvent): Promise<Array<{ min: number; max: number }>> {
   const a = Date.parse(ev.payload.first_ts ?? "");
   const b = Date.parse(ev.payload.last_ts ?? "");
-  if (Number.isFinite(a) && Number.isFinite(b)) return { min: Math.min(a, b), max: Math.max(a, b) };
+  if (Number.isFinite(a) && Number.isFinite(b)) return [{ min: Math.min(a, b), max: Math.max(a, b) }];
   const day = new Date(ev.createdAt).toISOString().slice(0, 10);
   const earliest = new Date(ev.createdAt - LIVE_LATE_DAYS * DAY_MS).toISOString().slice(0, 10);
-  return capture.tsRangeOfDays(ref, earliest, day);
+  return capture.tsRangesOfDays(ref, earliest, day);
 }
+
+const rowKey = (r: { device_id: string; object_id: string }) => `${r.device_id}\u0000${r.object_id}`;
 
 export async function runUnderstanding(deps: UnderstandingDeps, ev: IngestedEvent): Promise<UnderstandingResult> {
   const claim = await deps.capture.withEventLock(ev.tenantId, ev.eventId, () => runClaimed(deps, ev));
@@ -113,15 +117,34 @@ async function runClaimed(deps: UnderstandingDeps, ev: IngestedEvent): Promise<U
       return result("paused", ev);
     }
     const tz = profile.timezone;
-    const range = await rangeOf(capture, ref, ev);
-    if (range === null) {
+    const ranges = await rangesOf(capture, ref, ev);
+    if (ranges.length === 0) {
       await capture.recordAttempt(ev.tenantId, ev.eventId, null);
       return result("empty", ev);
     }
-    const days = daysBetween(dayOf(range.min, tz), dayOf(range.max, tz));
-    const from = Date.parse(`${days[0]}T00:00:00Z`) - TZ_MARGIN_MS;
-    const to = Date.parse(`${addDays(days[days.length - 1]!, 1)}T00:00:00Z`) + TZ_MARGIN_MS;
-    const rows = await capture.read(ref, from, to);
+    // Each range becomes whole days in the member's timezone, capped at MAX_ANALYSIS_DAYS ending at its last day, and
+    // is read by ts; rows read twice (overlapping ranges) count once.
+    const candidate = new Set<string>();
+    const observations = new Map<string, CaptureObservation>();
+    const texts = new Map<string, CaptureText>();
+    for (const r of ranges) {
+      const ds = daysBetween(dayOf(r.min, tz), dayOf(r.max, tz));
+      for (const d of ds) candidate.add(d);
+      const from = Date.parse(`${ds[0]}T00:00:00Z`) - TZ_MARGIN_MS;
+      const to = Date.parse(`${addDays(ds[ds.length - 1]!, 1)}T00:00:00Z`) + TZ_MARGIN_MS;
+      const got = await capture.read(ref, from, to);
+      for (const o of got.observations) observations.set(rowKey(o), o);
+      for (const t of got.texts) texts.set(rowKey(t), t);
+    }
+    // Only days that hold observations are analysed: a day without rows here is never rebuilt from nothing (its live
+    // rows may be past the raw TTL while an import widened the range).
+    const withRows = new Set([...observations.values()].map((o) => dayOf(o.ts, tz)));
+    const days = [...candidate].filter((d) => withRows.has(d)).sort();
+    if (days.length === 0) {
+      await capture.recordAttempt(ev.tenantId, ev.eventId, null);
+      return result("empty", ev);
+    }
+    const rows = { observations: [...observations.values()], texts: [...texts.values()] };
     const labeler = deps.labelerFor?.(ref);
     const window = await buildUnderstandingWindow(
       { timezone: tz, days, observations: rows.observations, texts: rows.texts },
