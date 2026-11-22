@@ -215,6 +215,7 @@ extension M314 {
     c.app.onboarding.reconsentNeeded()
     #expect(c.modeLines == [ModeLines.local, ModeLines.importAfterSending])
   }
+}
 
 /// An in-memory Keychain that counts reads and writes.
 final class CountingSecrets: SecretStore, @unchecked Sendable {
