@@ -8,21 +8,51 @@
 // 4. The updater (m3-03), before any scene as before, with an UpdatePreparation over that same capture and uploader.
 // 5. The recordings import with the sink the launch facts allow (the uploader when sending, else m3-10's on-device
 //    sink when it exists) and the real masker; no importer until m3-10's on-device text reading exists.
-// 6. m3-10's analysis hook (`CompositionSeams.analysis`) gets the live events and the Never watch list and may supply
-//    the recordings model; it runs again after AppModel exists. The offer rule (ImportOffer) is applied last.
+// 6. m3-10's analysis hook (`CompositionSeams.analysis`) runs once, before AppModel: it gets the live events, the Never
+//    watch list, the import masker and the store's ledger, and may supply the recordings model and build AppModel from
+//    the composition's parts. Its `afterLaunch` runs once AppModel exists. The offer rule (ImportOffer) is applied last.
 // 7. AppModel: reads both permissions, checks the notice version, then starts capture and the uploader per LaunchPlan.
 import AppKit
 import Foundation
 import OffloadImport
 import OffloadStore
 
-/// What the composition hands the analysis (m3-10's `LocalAnalysis.live(neverWatch:events:mode:)`): the one Never watch
-/// list and the live events of this Mac's capture, so the merged Today reads real data (review 4, finding 1).
+/// What the composition hands the analysis (m3-10's `LocalAnalysis.live(neverWatch:events:mode:)` and
+/// `OnDeviceRecordings.make`): the one Never watch list, the live events of this Mac's capture, and the import's real
+/// masker and ledger, so the merged Today reads real data and the on-device import masks with the capture's key and
+/// forgets on "Start fresh" (reviews 4 and 5, finding 1).
 @MainActor public struct AnalysisInputs {
   public let neverWatch: NeverWatchStore
   /// The capture runtime's events (StoreEventSource over the encrypted day store).
   public let events: any LocalEventSource
   public let uploadBackend: UploadBackend
+  /// PR #13's masker with the capture's pseudonym key, loaded on first use (`ready()` before an import space opens).
+  public let importMasker: ImportMaskerAdapter
+  /// The store's ledger: "Start fresh" resets the file and the entries an importer holds.
+  public let importLedger: ResettableImportLedger
+}
+
+/// Every argument of this slice's `AppModel(...)` call. `make()` is that call; the analysis can make its own call with
+/// these parts plus its parameters (m3-10's `backends:`, `insights:`, `onDeviceRecordings:`), and the composition still
+/// owns the result (review 5, finding 1).
+@MainActor public struct AppModelParts {
+  public let options: LaunchOptions
+  public let bundlePath: String
+  public let bufferReadable: Bool
+  public let store: OnboardingStore
+  public let services: OnboardingServices
+  public let probe: PermissionProbe
+  public let events: any LocalEventSource
+  public let sampleWeek: SampleWeekFlag
+  public let currentNoticeVersion: String?
+  public let uploadsAvailable: Bool
+
+  /// This slice's call.
+  public func make() -> AppModel {
+    AppModel(options: options, bundlePath: bundlePath, bufferReadable: bufferReadable, store: store, services: services,
+             probe: probe, events: events, sampleWeek: sampleWeek, currentNoticeVersion: currentNoticeVersion,
+             uploadsAvailable: uploadsAvailable)
+  }
 }
 
 /// What the analysis gives back.
@@ -33,20 +63,24 @@ import OffloadStore
   /// True when that model imports on this Mac (m3-10's on-device import): the offer rule then treats it as the
   /// on-device sink.
   public var onDeviceImport: Bool
-  /// Runs once AppModel exists (m3-10's `app.startLocalAnalysis(rules:)`). Any offer rule it sets is replaced by the
-  /// composition's (one rule, ImportOffer).
+  /// Builds the app model from the composition's parts (m3-10 adds its parameters). Nil: `parts.make()`.
+  public var makeApp: (@MainActor (AppModelParts) -> AppModel)?
+  /// Runs once AppModel exists (m3-10's `app.startLocalAnalysis(rules:)`, m3-12's `app.weeklyReview.start()`). Any
+  /// offer rule it sets is replaced by the composition's (one rule, ImportOffer).
   public var afterLaunch: (@MainActor (AppModel) -> Void)?
 
   public init(recordings: RecordingsImportModel? = nil, onDeviceImport: Bool = false,
+              makeApp: (@MainActor (AppModelParts) -> AppModel)? = nil,
               afterLaunch: (@MainActor (AppModel) -> Void)? = nil) {
     self.recordings = recordings
     self.onDeviceImport = onDeviceImport
+    self.makeApp = makeApp
     self.afterLaunch = afterLaunch
   }
 }
 
 /// Where the sibling UI slices plug in (m3-10 on-device OCR, local store and analysis; m3-11 to m3-13 screens on top of
-/// it). All nil in this slice. SPEC Scope changes, "Integration with m3-10 to m3-13", has the merge steps.
+/// it). All nil in this slice. `slices/m3-14-mac-app-integration/MERGE.md` has the merge steps, file by file.
 public struct CompositionSeams {
   /// On-device text reading for the composition's own recordings import.
   public var textRecognizer: (any TextRecognizer)?
@@ -145,17 +179,20 @@ public struct CompositionSeams {
     importChoice = choice
     var sink: (any ImportSink)? = seams.onDeviceImportSink
     if choice == .uploader, let uploads { sink = UploaderImportSink(queue: uploads) }
+    // One masker for every import: the capture's pseudonym key, loaded on first use.
+    let importMasker = capture.importMasker()
     var ledger: (any RecordingLedger)?
     var importer: RecordingImporter?
     if seams.textRecognizer != nil, sink != nil {
       // The store's one ledger, so "Start fresh" resets the instance the importer holds (review 4, finding 3).
       ledger = env.store.importLedger
-      importer = ImportComposition.importer(recognizer: seams.textRecognizer, masker: capture.importMasker(), sink: sink,
+      importer = ImportComposition.importer(recognizer: seams.textRecognizer, masker: importMasker, sink: sink,
                                             ledger: env.store.importLedger, neverWatch: neverWatch,
                                             protected: [env.store.home])
     }
     let plug = seams.analysis?(AnalysisInputs(neverWatch: neverWatch, events: capture.events,
-                                              uploadBackend: env.uploadBackend))
+                                              uploadBackend: env.uploadBackend, importMasker: importMasker,
+                                              importLedger: env.store.importLedger))
     importerReady = importer != nil || plug?.recordings?.canImport == true
 
     let sampleWeek = SampleWeekFlag()
@@ -165,11 +202,12 @@ public struct CompositionSeams {
       connections: UnavailableConnectionService(), loginItem: env.loginItem, relauncher: env.relauncher,
       sampleWeek: sampleWeek, recordings: plug?.recordings ?? recordings(importer, sink, ledger, neverWatch)
     )
-    app = AppModel(
+    let parts = AppModelParts(
       options: env.options, bundlePath: env.bundlePath, bufferReadable: env.bufferReadable, store: env.onboardingStore,
       services: services, probe: env.probe, events: capture.events, sampleWeek: sampleWeek,
       currentNoticeVersion: env.currentNoticeVersion, uploadsAvailable: uploads != nil
     )
+    app = plug?.makeApp?(parts) ?? parts.make()
     // Row 11.6 "Start fresh" deletes the unreadable buffer before setup starts over.
     let store = env.store
     app.onStartFresh = { try? store.discard() }
@@ -192,7 +230,7 @@ public struct CompositionSeams {
     let s = app.onboarding.state
     let sendingNow = uploadBackend.allowsUploads && s.sending && !s.reconsentPending
     return ModeLines.lines(local: !sendingNow, importerReady: importerReady,
-                           importOffered: app.recordings?.isOffered ?? false)
+                           importOffered: app.recordings?.isOffered ?? false, choice: importChoice)
   }
 
   /// The app as shipped: real permission checks, the Keychain, the store under Application Support/Offload, Sparkle.
