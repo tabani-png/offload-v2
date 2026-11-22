@@ -37,6 +37,17 @@ describe("p45a approvals", () => {
     expect(await codeOf(a.claim({ tenant_id: TENANT, approval_id, token, bound: BOUND, kind: "build", subject_id: "build-1" }, T0 + 1))).toBe("ok");
   });
 
+  test("GATE: a claim must name exactly the bound keys: an extra key is hash_mismatch", async () => {
+    const a = new MemoryApprovals();
+    const { approval_id, token } = await mintBuild(a);
+    for (const extra of [{ zz_extra: "1" }, { aa_extra: "1" }]) {
+      expect(await codeOf(a.claim({ tenant_id: TENANT, approval_id, token, bound: { ...BOUND, ...extra } }, T0 + 1))).toBe("hash_mismatch");
+    }
+    const { cap_usd: _cap, ...fewer } = BOUND;
+    expect(await codeOf(a.claim({ tenant_id: TENANT, approval_id, token, bound: fewer }, T0 + 1))).toBe("hash_mismatch");
+    expect((await a.get(TENANT, approval_id))!.claimed_at).toBeNull();
+  });
+
   test("GATE: a claimed approval cannot be claimed again (approval_used)", async () => {
     const a = new MemoryApprovals();
     const { approval_id, token } = await mintBuild(a);

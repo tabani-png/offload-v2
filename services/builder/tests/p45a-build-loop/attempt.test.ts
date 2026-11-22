@@ -2,6 +2,7 @@
 // fake provider): the claim comes first, tries stop on a stalled artifact, a changed check file ends the build
 // tampered, the worker sandbox holds no secret and no held-out check.
 import { describe, expect, test } from "bun:test";
+import { feedbackText } from "../../src/attempt.ts";
 import { harness, TENANT, text } from "./setup.ts";
 
 const SECRET_NAMES = /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH|DATABASE_URL/i;
@@ -44,6 +45,23 @@ describe("p45a attempt", () => {
     expect(attempts).toHaveLength(1);
     expect(attempts[0]!.outcome).toBe("tamper");
     expect(h.provider.sandboxes.every((s) => s.destroyed)).toBe(true);
+  });
+
+  test("TAMPER: a check file changed before the first try ends the build as tampered, with no worker turn", async () => {
+    const h = harness([{}], { config: { fanout_workers: 3 } });
+    const real = h.provider.putFiles.bind(h.provider);
+    h.provider.putFiles = async (s, m, f) => {
+      await real(s, m, f);
+      if (m === "check" && h.provider.sandboxes.find((x) => x.id === s.id)!.spec.role === "worker") h.provider.tamper(s.id, "accept.test.ts", "// swapped\n");
+    };
+    const { build_id } = await h.okAndRun();
+    expect((await h.store.get(TENANT, build_id))!.state).toBe("tampered");
+    expect(h.worker.turns).toHaveLength(0);
+    expect((await h.store.attempts(TENANT, build_id))[0]!.outcome).toBe("tamper");
+  });
+
+  test("TDD: feedback to the next try never carries a proof line (or its nonce)", () => {
+    expect(feedbackText("1 fail\nOFFLOAD_PROOF {\"nonce\":\"abc\"}\nexpected a-b")).toBe("1 fail\nexpected a-b");
   });
 
   test("TDD: the attempt claim happens once, before the first try, and the instructions are in the prompt", async () => {

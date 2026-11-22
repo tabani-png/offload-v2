@@ -6,6 +6,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DockerProvider, spawnExecutor, type Executor } from "../../src/sandbox/docker.ts";
+import { HARNESS_TS } from "../../src/harness.ts";
 import { cloudProvider, sandboxProviderFromEnv } from "../../src/sandbox/cloud.ts";
 import { SandboxInfraError, type SandboxSpec } from "../../src/sandbox/provider.ts";
 import { runShards } from "../../src/shards.ts";
@@ -186,6 +187,23 @@ describe("p45a docker provider", () => {
     expect(existsSync(dirs.root)).toBe(false);
     expect(calls.some((c) => c.argv.join(" ") === `/usr/bin/docker ps -aq --filter label=offload.sandbox=${sb.id}`)).toBe(true);
     expect(calls.some((c) => c.argv.join(" ") === "/usr/bin/docker rm -f c0ffee beef01")).toBe(true);
+  });
+
+  test("SANDBOX: an artifact file over the size limit is refused, not copied into verification", async () => {
+    const { p } = fake();
+    const sb = await p.create(SPEC);
+    writeFileSync(join(p.paths(sb).work, "huge.bin"), new Uint8Array(4 * 1024 * 1024 + 1));
+    await expect(p.getFiles(sb, "work")).rejects.toThrow(/too large/);
+  });
+
+  test("SANDBOX: the docker CLI gets PATH and HOME only, never the builder's environment", async () => {
+    const r = await spawnExecutor(["env"], { timeout_ms: 10_000 });
+    const names = r.stdout.split("\n").filter((l) => l.includes("=")).map((l) => l.slice(0, l.indexOf("="))).sort();
+    expect(names).toEqual(["HOME", "PATH"]);
+  });
+
+  test("SANDBOX: the harness runs bun test with --no-install, --no-env-file and the check folder's own bunfig", () => {
+    for (const flag of ['"--no-install"', '"--no-env-file"', '"--config=" + join(CHECK, "bunfig.toml")']) expect(HARNESS_TS).toContain(flag);
   });
 
   test("SANDBOX: the provider is chosen by OFFLOAD_SANDBOX_PROVIDER; the cloud provider is a stub that fails as infra", async () => {

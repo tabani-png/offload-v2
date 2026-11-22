@@ -218,6 +218,31 @@ describe("p45a hardening", () => {
     expect(b.stages.at(-1)!.note).toContain("a check wrote into the workspace");
   });
 
+  test("TEETH: a check that could not run on the empty workspace stops the build before any worker", async () => {
+    // no proof with this run's nonce: the check never really ran (it hung, or bun could not start it)
+    const h = harness([{}], { verdict: ({ work }) => (work.size === 0 ? { pass: false, noProof: true } : { pass: true }) });
+    const { build_id } = await h.okAndRun();
+    const b = (await h.store.get(TENANT, build_id))!;
+    expect(h.worker.turns).toHaveLength(0);
+    expect(b.state).toBe("failed");
+    expect(b.stages.at(-1)!.note).toContain("could not run the checks");
+  });
+
+  test("LOCK: a stale recovery between two tries stops the attempt; its spend is infra, never billed to a cap", async () => {
+    const h = harness([{ perTry: [{ "slug.ts": "// bad\n" }, { "slug.ts": "// good\n" }], delayMs: 40, spent_usd: 0.2 }]);
+    const r = await ok(h);
+    const old = runBuild(h.deps, { tenant_id: TENANT, build_id: r.build_id, token: r.token });
+    while (h.worker.turns.length === 0) await new Promise((x) => setTimeout(x, 2));
+    h.clock.now = T0 + h.deps.config.stale_after_ms + 60_000;
+    freshHeldOut(h);
+    await ok(h); // recovers the old build while its first try runs
+    await old;
+    expect(h.worker.turns.filter((t) => t.ordinal === 1)).toHaveLength(1); // the beat before try 2 stopped it
+    const entries = h.store.entries.filter((e) => e.build_id === r.build_id);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.every((e) => e.scope === "infra")).toBe(true);
+  });
+
   test("BUDGET: a cap too small for one worker ends the build capped before any sandbox or worker (nothing is spent)", async () => {
     // cap $0.90: minus the $0.30 reserve leaves $0.60, under one $0.70 attempt
     const h = harness([{}], { config: { cap_usd4: 9_000 } });
