@@ -86,7 +86,9 @@ public final class UploaderImportSink: ImportSink, @unchecked Sendable {
 
   /// Checked here, queued in order behind earlier writes.
   public func write(_ observations: [ImportObservation], to space: ImportSpace) throws {
-    guard lock.withLock({ open.contains(space.id) }) else { throw UnknownImportSpace(id: space.id) }
+    guard lock.withLock({ open.contains(space.id) }) else {
+      throw ImportUploadRefusal(reason: "an import space this sink did not open")
+    }
     let objects = try observations.map { try Self.observation($0, in: space) }
     guard !objects.isEmpty else { return }
     let queue = self.queue

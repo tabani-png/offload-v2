@@ -46,6 +46,10 @@ public actor Uploader {
     private let ledger: EgressLedger
     private let time: any TimeSource
     private var lastFlush: Date?
+    /// Import objects handed over while a flush is suspended in a send (m3-14). `flush()` saves its own copy of the
+    /// state after each send, so they are queued when it ends, never in the middle of it.
+    private var importOutbox: [Observation] = []
+    private var flushing = false
 
     public init(config: UploaderConfig, transport: any HTTPTransport, signer: any DeviceSigner, tokens: any TokenProvider, store: DayStore,
                 state: UploadStateStore, ledger: EgressLedger, time: any TimeSource) {
@@ -76,6 +80,11 @@ public actor Uploader {
 
     /// Batches what is new, then sends every pending batch in seq order. Also what quitting the app calls.
     public func flush() async -> FlushReport {
+        flushing = true
+        defer {
+            flushing = false
+            queueOutbox()
+        }
         var report = FlushReport()
         let now = time.now
         lastFlush = now
@@ -316,6 +325,9 @@ extension Uploader {
 
     /// Queues import objects as observation batches under the next seqs. Every object must be an import object and
     /// pass the device detectors again; otherwise nothing is queued (fail closed). Returns how many were queued.
+    /// Every object must be an import object and pass the device detectors again; otherwise nothing is queued (fail
+    /// closed). Queued under the next seqs as ordinary observation batches; while a flush is running they wait in memory
+    /// and are queued when it ends. Returns how many were accepted.
     @discardableResult
     public func enqueueImport(_ objects: [Observation]) throws -> Int {
         guard !objects.isEmpty else { return 0 }
@@ -323,6 +335,16 @@ extension Uploader {
             guard Self.isImportObject(o) else { throw ImportUploadError.notAnImportObject }
             try egress.inspect(o)
         }
+        if flushing {
+            importOutbox.append(contentsOf: objects)
+        } else {
+            try queueImportBatches(objects)
+        }
+        return objects.count
+    }
+
+    /// Load, append, save with no suspension in between, so no flush can interleave.
+    private func queueImportBatches(_ objects: [Observation]) throws {
         var state = try stateStore.load()
         let now = time.now
         var index = 0
@@ -338,7 +360,12 @@ extension Uploader {
             index += n
         }
         try stateStore.save(state)
-        return objects.count
+    }
+
+    /// Queues what arrived during a flush; on failure it stays for the next flush.
+    private func queueOutbox() {
+        guard !importOutbox.isEmpty else { return }
+        if (try? queueImportBatches(importOutbox)) != nil { importOutbox = [] }
     }
 
     private static func isImportObject(_ o: Observation) -> Bool {

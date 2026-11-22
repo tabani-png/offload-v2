@@ -87,7 +87,7 @@ extension M314 {
     let queue = FakeImportQueue()
     let sink = UploaderImportSink(queue: queue)
     let space = try await sink.openImport(sourceKind: .videos)
-    #expect(space == ImportSpace(id: "imp_m314", sourceKind: .videos))
+    #expect(space == ImportSpace(id: M314Fixture.importID, sourceKind: .videos))
     #expect(await queue.opened == ["videos"])
 
     try sink.write(Self.observations(space.id), to: space)
@@ -112,9 +112,9 @@ extension M314 {
     let queue = FakeImportQueue()
     let sink = UploaderImportSink(queue: queue)
     let unknown = ImportSpace(id: "imp_never_opened", sourceKind: .screenshots)
-    #expect(throws: UnknownImportSpace.self) { try sink.write(Self.observations(unknown.id), to: unknown) }
+    #expect(throws: ImportUploadRefusal.self) { try sink.write(Self.observations(unknown.id), to: unknown) }
     let space = try await sink.openImport(sourceKind: .screenwatch)
-    #expect(throws: ImportUploadRefusal.self) { try sink.write(Self.observations("imp_other"), to: space) }
+    #expect(throws: ImportUploadRefusal.self) { try sink.write(Self.observations(M314Fixture.otherImportID), to: space) }
     await sink.drain()
     #expect(await queue.queued.isEmpty)
   }
@@ -126,6 +126,6 @@ extension M314 {
     let space = try await sink.openImport(sourceKind: .videos)
     try await sink.forget(space)
     #expect(await queue.forgotten == [space.id])
-    #expect(throws: UnknownImportSpace.self) { try sink.write(Self.observations(space.id), to: space) }
+    #expect(throws: ImportUploadRefusal.self) { try sink.write(Self.observations(space.id), to: space) }
   }
 }

@@ -23,9 +23,13 @@ enum M314Fixture {
   static let apiBase = URL(string: "https://api.offload.test")!
   static let cloud = BackendMode.cloud(apiBase: apiBase, deviceID: "dev_m314")
 
-  /// Wed 11 Nov 2026 15:00 UTC.
+  /// Fri 13 Nov 2026 15:00 UTC.
   static let t0 = Date(timeIntervalSince1970: 1_794_582_000)
   static let utc = TimeZone(identifier: "UTC")!
+
+  /// Import space ids are UUIDs in the contract (`import_id`), as the server returns them.
+  static let importID = "6f1d3c2a-8b4e-4c1f-9a2d-3e5f7a9b1c0d"
+  static let otherImportID = "2b7e9f14-5c3a-4d8e-b1f6-0a4c8e2d6f93"
 
   static func ms(_ date: Date) -> Int64 { Timestamp.millis(date) }
 
@@ -77,7 +81,7 @@ actor FakeImportQueue: ImportUploadQueue {
   private(set) var forgotten: [String] = []
   let importID: String
 
-  init(importID: String = "imp_m314") { self.importID = importID }
+  init(importID: String = M314Fixture.importID) { self.importID = importID }
 
   func openImport(sourceKind: String) async throws -> String {
     opened.append(sourceKind)

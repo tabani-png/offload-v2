@@ -68,7 +68,7 @@ import OffloadUploader
     return made
   }
 
-  /// Sends what is pending now (the app calls this on quit). The queue is on disk, so a skipped flush loses nothing.
+  /// Sends what is pending now. Not called on quit yet (the queue is on disk, so the next launch sends it).
   public func flush() async {
     guard running, let uploader = try? uploader() else { return }
     _ = await uploader.flush()
@@ -91,12 +91,15 @@ import OffloadUploader
 }
 
 extension UploadRuntime: ImportUploadQueue {
+  /// Refused while paused (no consent on record, or a new notice waits): nothing leaves then.
   public func openImport(sourceKind: String) async throws -> String {
-    try await uploader().openImport(sourceKind: sourceKind)
+    guard running else { throw ImportUploadRefusal(reason: "uploads are paused") }
+    return try await uploader().openImport(sourceKind: sourceKind)
   }
 
   public func enqueueImport(_ objects: [Observation]) async throws -> Int {
-    try await uploader().enqueueImport(objects)
+    guard running else { throw ImportUploadRefusal(reason: "uploads are paused") }
+    return try await uploader().enqueueImport(objects)
   }
 
   public func forgetImport(id: String) async throws {

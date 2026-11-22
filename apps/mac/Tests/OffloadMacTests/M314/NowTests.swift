@@ -87,7 +87,7 @@ extension M314 {
     let s = try M314DayStore()
     let t0 = M314Fixture.t0
     try s.focus(t0.addingTimeInterval(-3 * 60), "com.apple.Notes", "Notes")
-    try s.focus(t0.addingTimeInterval(-2 * 60), "com.apple.Photos", "Photos", source: .import, importID: "imp_1")
+    try s.focus(t0.addingTimeInterval(-2 * 60), "com.apple.Photos", "Photos", source: .import, importID: M314Fixture.importID)
     let events = s.source.events(from: M314Fixture.ms(t0.addingTimeInterval(-10 * 60)), to: M314Fixture.ms(t0))
     #expect(events.map(\.appName) == ["Notes"])
   }

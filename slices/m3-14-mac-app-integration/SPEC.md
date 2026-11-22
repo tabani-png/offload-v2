@@ -77,7 +77,8 @@ running observer, and imports go through the uploader when this Mac is signed in
   on-device text reading, as today). `UploaderImportSink: ImportSink` opens an import space with `POST /v1/imports`,
   converts every `ImportObservation` through the closed `Observation` schema, refuses any object that is not
   `source = "import"` with this space's `import_id`, and queues them in the uploader (detectors again, next seqs, same
-  retry and egress ledger as live batches); forget is `POST /v1/me/forget` scope `import`. All three calls go
+  retry and egress ledger as live batches; objects handed over while a flush is suspended wait in the uploader and are
+  queued when it ends, so a flush never overwrites them); the upload runtime refuses import calls while paused; forget is `POST /v1/me/forget` scope `import`. All three calls go
   through the uploader (ADR 0035: no second way out). New on `OffloadUploader.Uploader` (an additive extension in
   `Uploader.swift`): `openImport(sourceKind:)`, `enqueueImport(_:)`, `forgetImport(id:)`.
 - **Seams for m3-10** (on-device OCR, local analysis store, Today/Weekly/Builds navigation; sibling branch):
@@ -144,7 +145,9 @@ fakes and temp folders only.
 On-device OCR (`TextRecognizer`), the local analysis store, Today/Weekly/Builds navigation (m3-10, sibling branch).
 Sign-in in the app (the enrollment UI; `UnavailableAccountService` stays). The server's `POST /v1/imports` and forget
 scope `import` (the API half; until it lands, opening an import space in `.cloud` fails closed and Import says the
-import space could not be opened). Reveals for imported text (the import masker keeps no reveal map yet).
+import space could not be opened). Reveals for imported text (the import masker keeps no reveal map yet). Flushing the upload queue on quit or before an
+update (the queue is on disk; the next launch sends it). Switching the import sink mid-session: it is chosen at launch,
+so after "Start sending" on an enrolled Mac the uploader-backed import starts with the next launch.
 
 ## Verify
 `bash slices/m3-14-mac-app-integration/verify.sh`: scope on every platform (only commits whose subject starts with
