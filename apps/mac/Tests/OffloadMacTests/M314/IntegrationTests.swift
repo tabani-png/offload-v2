@@ -85,8 +85,11 @@ extension M314 {
     }
     let p = try #require(parts)
     #expect(c.app === built)
-    #expect((p.services.capture as AnyObject) === c.capture)
-    #expect((p.services.uploader as AnyObject) === c.uploads)
+    // Identity as ObjectIdentifier: `===` between an AnyObject and a concrete class inside #expect crashes Swift 6.3's
+    // SILGen (CI 2).
+    #expect(ObjectIdentifier(p.services.capture as AnyObject) == ObjectIdentifier(c.capture))
+    let uploads = try #require(c.uploads)
+    #expect(ObjectIdentifier(p.services.uploader as AnyObject) == ObjectIdentifier(uploads))
     #expect(p.services.neverWatch === c.neverWatch)
     #expect((p.events as? StoreEventSource)?.handle === c.capture.store)
     #expect(p.uploadsAvailable)
@@ -109,6 +112,6 @@ extension M314 {
     defer { c.capture.stop() }
     #expect(wiring.importer != nil)
     let ledger = try #require(wiring.ledger)
-    #expect((ledger as AnyObject) === c.capture.context.importLedger)
+    #expect(ObjectIdentifier(ledger as AnyObject) == ObjectIdentifier(c.capture.context.importLedger))
   }
 }

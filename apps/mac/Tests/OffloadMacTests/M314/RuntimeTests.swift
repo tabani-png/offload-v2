@@ -52,7 +52,7 @@ extension M314 {
     // The updater gets the composition's update preparation, which drives this same capture runtime.
     let prep = try #require(wiring.lifecycleForUpdates as? UpdatePreparation)
     #expect(prep.capture === c.capture)
-    #expect((c.app.onboarding.services.capture as AnyObject) === c.capture)
+    #expect(ObjectIdentifier(c.app.onboarding.services.capture as AnyObject) == ObjectIdentifier(c.capture))
     // Screen 2 was resolved before this launch: capture started at launch, on this Mac only.
     #expect(c.capture.isRunning)
     #expect(c.app.isCapturing)
@@ -86,7 +86,7 @@ extension M314 {
       Issue.record("no upload runtime in cloud mode")
       return
     }
-    #expect((c.app.onboarding.services.uploader as AnyObject) === uploads)
+    #expect(ObjectIdentifier(c.app.onboarding.services.uploader as AnyObject) == ObjectIdentifier(uploads))
     #expect(uploads.isRunning)
     #expect(c.importChoice == .uploader)
     #expect(c.app.launchPlan == LaunchPlan(startUpdater: true, startCapture: true, startUploader: true, importSink: .uploader))

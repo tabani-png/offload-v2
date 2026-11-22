@@ -75,7 +75,7 @@ extension M314 {
     #expect(wiring.neverWatch === c.neverWatch)
     #expect(c.app.neverWatch === c.neverWatch)
     #expect(c.app.onboarding.services.neverWatch === c.neverWatch)
-    #expect((c.capture.neverWatch as AnyObject) === c.neverWatch)
+    #expect(ObjectIdentifier(c.capture.neverWatch as AnyObject) == ObjectIdentifier(c.neverWatch))
 
     // "Don't watch" from the menu bar reaches both readers.
     c.neverWatch.add([Exclusion(kind: .host, value: "bank.example")])
