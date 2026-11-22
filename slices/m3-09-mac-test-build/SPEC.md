@@ -12,7 +12,7 @@ parallel_group: M3-C
 owns: [.github/workflows/mac-artifact.yml, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Tests/OffloadMacTests/M309/**, scripts/tests/m3-09-mac-test-build/**]
 verify: bash slices/m3-09-mac-test-build/verify.sh
 min_tests: 46
-paths_in_scope: [.github/workflows/mac-artifact.yml, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Tests/OffloadMacTests/M309/**, apps/mac/README.md, docs/DEPLOYMENT.md, scripts/tests/m3-09-mac-test-build/**, slices/m3-09-mac-test-build/**]
+paths_in_scope: [.github/workflows/mac-artifact.yml, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Tests/OffloadMacTests/M309/**, apps/mac/README.md, docs/DEPLOYMENT.md, scripts/tests/m3-09-mac-test-build/**, slices/m3-09-mac-test-build/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, NOTICE, .github/workflows/ci.yml, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Tests/OffloadMacTests/M303/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift]
 red_tests: [PLIST, STAMP, ASSEMBLE, ADHOC, SMOKE, PINNED, ARTIFACT, GUIDE, VERSION]
 ---
@@ -152,8 +152,8 @@ workflow run on GitHub (needs operator items O4 and O12).
   `Sources/OffloadMacApp/OffloadApp.swift` to `Sources/OffloadMac/App/OffloadApp.swift` (no `@main`); m3-03's entry
   answers `--self-check`, then `--version` (m3-09), then starts it. m3-03's placeholder AppKit menu became
   `App/AppUpdates.swift` (`UpdateMenu`: a line per permission lost in an update, then "Check for Updates…" or the
-  status line, shown before Quit by `MenuBarContent`; tests `M304` `ShellUpdatesTests.swift`). `paths_in_scope` names
-  `apps/mac/Sources/OffloadMac/App/**` instead of `apps/mac/Sources/OffloadMacApp/**`.
+  status line, shown before Quit by `MenuBarContent`; tests `M304` `ShellUpdatesTests.swift`). `paths_in_scope` adds
+  `apps/mac/Sources/OffloadMac/App/**` and keeps `apps/mac/Sources/OffloadMacApp/**` for the earlier commits.
   `--version` is answered in `OffloadMac.swift` after `--self-check`, not in `Sources/OffloadMacApp/`. The bundle
   now links Sparkle.framework, so `build-app.sh assemble` copies `Sparkle.framework` from beside the binary into
   `Contents/Frameworks` and `sign` signs its helpers and the framework inside-out before the app (still ad hoc,

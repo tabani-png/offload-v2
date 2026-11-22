@@ -12,7 +12,7 @@ parallel_group: M3-C
 owns: [apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Tests/OffloadMacTests/M305/**]
 verify: bash slices/m3-05-recordings-import/verify.sh
 min_tests: 60
-paths_in_scope: [apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/Onboarding/Services.swift, apps/mac/Sources/OffloadMac/Onboarding/OnboardingModel.swift, apps/mac/Sources/OffloadMac/Onboarding/OnboardingView.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/README.md, docs/ONBOARDING.md, docs/ARCHITECTURE.md, docs/GLOSSARY.md, docs/SECURITY_PRIVACY.md, slices/m3-04-mac-onboarding/SPEC.md, slices/m3-05-recordings-import/**]
+paths_in_scope: [apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/Onboarding/Services.swift, apps/mac/Sources/OffloadMac/Onboarding/OnboardingModel.swift, apps/mac/Sources/OffloadMac/Onboarding/OnboardingView.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/README.md, docs/ONBOARDING.md, docs/ARCHITECTURE.md, docs/GLOSSARY.md, docs/SECURITY_PRIVACY.md, slices/m3-04-mac-onboarding/SPEC.md, slices/m3-05-recordings-import/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift, apps/mac/Tests/OffloadMacTests/M304/**]
 red_tests: [NAMES, GATE, LEDGER, FRAMES, MENUBAR, INGEST, MASK, EXCLUDE, APART, SCREENWATCH, SCREENSHOTS, FOLDER, REFUSE, PROGRESS, SINK, SCREEN, COPY]
 ---
@@ -257,5 +257,5 @@ forget scope `import`); the analysis anchored to an import's last day (cloud); `
   `Sources/OffloadMacApp/OffloadApp.swift` to `Sources/OffloadMac/App/OffloadApp.swift` (no `@main`); m3-03's entry
   answers `--self-check`, then `--version` (m3-09), then starts it. m3-03's placeholder AppKit menu became
   `App/AppUpdates.swift` (`UpdateMenu`: a line per permission lost in an update, then "Check for Updates…" or the
-  status line, shown before Quit by `MenuBarContent`; tests `M304` `ShellUpdatesTests.swift`). `paths_in_scope` names
-  `apps/mac/Sources/OffloadMac/App/**` instead of `apps/mac/Sources/OffloadMacApp/**`.
+  status line, shown before Quit by `MenuBarContent`; tests `M304` `ShellUpdatesTests.swift`). `paths_in_scope` adds
+  `apps/mac/Sources/OffloadMac/App/**` and keeps `apps/mac/Sources/OffloadMacApp/**` for the earlier commits.
