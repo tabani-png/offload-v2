@@ -161,4 +161,6 @@ state (none references an import yet); the analysis anchored to an import's last
   was not an index condition under RLS and its test only checked that it existed. Fixed with a generated `import_id`
   column, red test first (`d9110bc`). Nits: dispatcher claims must stay short (commented in `forget.ts`); the race
   test copies `outbox_claim`'s locking instead of calling it.
-- [ ] CI run (the gate for `done`); status stays `in_progress` until then
+- [x] after the box restore (2026-11-22): history intact; on the recreated empty database `verify.sh` PASS (20 slice
+  tests, 461 in the full suite) and `SLICE_UPSTREAM=<merge-base> scripts/verify-all.sh` green at `554f93f`
+- [ ] CI run and a reviewer pass on the review-2 fix (the gate for `done`); status stays `in_progress` until then
