@@ -137,18 +137,22 @@ Scope changes). `human_gated: true`: the owner checks it against his own importe
   Return presses the primary button. Picking "Leave it alone" makes the primary button "Leave it alone", which posts
   `leave_alone`. The keys hint lists the numbers there are ("1 / 2 / 3 / 4 to pick · ↵ to build").
 - **Cloud days**: `previousDay`/`nextDay` step one calendar day, never past today; a 404 shows "Nothing recorded for
-  this day yet." The week record's 404 leaves the repeats empty; any other error fails the screen with one sentence.
+  this day yet." Left on today, Today follows the calendar past midnight; a day the person stepped to stays. Without a
+  brain client (a hand-built `Backends` only), `.cloud` fails with "Sign in again to see Today." (review 2). The week record's 404 leaves the repeats empty; any other error fails the screen with one sentence.
 - **Importing**: `.importing(file:of:)` while m3-05's phase is reading; `of == 0` while local insights recount the
   days of an import that just finished, or while they count with nothing shown yet ("counting on this Mac · Today
   updates when it's done"). Live capture's minute-by-minute recount of today shows no line (review 1). Whatever was
   already counted stays below the line.
 - **Menu bar line**: `TodayMenuLine(app:)` (a view in `TodayLive/`) draws the model's `menuLine`; `OffloadApp.swift`
-  gains that one line above m3-04's menu content. `refreshMenuLine()` keeps it true without Today open, at most once a
-  minute: in `.cloud` it reads today's day record (at launch, when the menu shows the line, and with Today's own reads;
-  a failed read clears the line, as the screen shows nothing rather than old numbers); in `.local` it recounts today
-  only while live capture runs.
+  gains that one line above m3-04's menu content. The shared model keeps it true on its own clock, `menuTick()`, at
+  launch, every minute for the app's life and on `NSCalendarDayChanged` (the menu bar's `.menu` style does not re-run
+  a view's `.task`): a new day is published at once, so a line for yesterday goes away; in `.cloud` it reads today's
+  day record (at most once a minute, at once on a new day; a failed read clears the line, as the screen shows nothing
+  rather than old numbers) and a cached record of another day is never shown as today's; in `.local` it recounts
+  today only while live capture runs (review 2).
 - **How it was counted** (review 1): the headline, the subtitle items, each "What you did" duration, each repeat's
-  count, each kind's minutes and the card's count open to "how: …" on a click (and carry it as a tooltip and an
+  count, each kind's minutes and the card's count open to "how: …" on a click (a cloud card's count is the week
+  task's `instances` when the opportunity names that task; without it the title is plain text, review 2) (and carry it as a tooltip and an
   accessibility hint); an option's saving shows its arithmetic under the option once it is picked. A cloud repeat's
   how line has the instances' and the minutes' arithmetic.
 - **Keys** (review 1): the fix card takes focus by default when Today appears, when it is clicked and when an option is
@@ -163,6 +167,12 @@ keys work, Test plan step 7; (3) the card's count, option savings and cloud repe
 counted; (4) no counting line for live capture's recount; (5) the menu line reads today itself in `.cloud` and is
 cleared on a failed read; (6) tests for both answer failures, OK, build with Leave it alone picked, a stale cloud read
 and the capture tick; (7) one colour per kind of work; (8) this SPEC's paths and `BASE` bullets.
+
+### Review 2 (2026-11-22, logs/m3-11-mac-today-live.review2.md)
+Red tests first (`M311Review2Tests.swift`), then: (1, major) the menu line never shows another day's record as
+today and is kept true by the model's `menuTick` (minute clock and day change), and Today in `.cloud` follows the
+calendar past midnight unless a day was picked; (2) the cloud card's count opens to the week task's instances, else
+the title is plain text; (3) `.cloud` without a brain client fails with Sign in again.
 
 ## Red tests (write these first, run them, see them fail)
 Folder `apps/mac/Tests/OffloadMacTests/M311/`, Swift Testing, every test `@Test("TAG: ...")` inside
