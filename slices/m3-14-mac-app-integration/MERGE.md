@@ -1,69 +1,39 @@
 # Merging m3-10 to m3-13 onto m3-14 (for the orchestrator)
 
-Written from `git merge-tree` against `w1/ui-analysis` 0e7fd00, `w1/ui-today` 30243fe, `w1/ui-weekly` a1675c9 and
-`w1/ui-builds` 8911059 (2026-11-22), and from a rehearsal of the m3-10 merge in a throwaway worktree (not committed to
-any branch). After the rehearsal, these checks passed on the merged tree:
+Refreshed 2026-11-22, review 6. Written from `git merge-tree` of this branch against `w1/ui-analysis` fc4574c,
+`w1/ui-today` 158e89e, `w1/ui-weekly` debac36 and `w1/ui-builds` c070ab7. All four were rebased onto main, and the
+merge base is now a97f748. The conflict lists after m3-10 come from an m3-10 merge resolved as below in a throwaway
+worktree with rerere off (committed to no branch, then removed).
 
-- a structural check of all 201 Swift files: strings and comments stripped, braces, parens and brackets balanced;
-- no type declared twice in OffloadMac;
-- one `@main`;
-- no `AppModel(` / `AppUpdates(` / `CaptureRuntime(` / `UploadRuntime(` outside `Composition/`;
-- no unqualified `HTTPTransport`, `URLSessionTransport`, `JCS`, `JSONValue` or `Figure` in a file that also imports
-  OffloadUploader or OffloadContracts.
+If the sibling tips move, re-run `git merge-tree --write-tree --name-only HEAD <branch>` before following this. It
+writes nothing and records nothing. If you merge in a worktree instead, use `git -c rerere.enabled=false`.
 
-None of this is a compile. The mac CI job on the merged branch is the check that counts.
-
-Disable rerere for the merge (`git -c rerere.enabled=false merge ...`) unless you mean to record these resolutions.
+None of this is a compile. Run the mac CI job on the merged branch.
 
 ## Order
 
 1. This branch (`w1/mac-integration`, m3-14).
 2. m3-10 (`w1/ui-analysis`).
-3. m3-11, m3-12, m3-13. These three carry an older copy of m3-10, so after step 2 they also conflict inside m3-10's own
-   files: `Analysis/`, `Navigation/`, `OnDevice/`, `M310/` tests, m3-10's SPEC, `STATUS-ui-analysis.md`. Rebase each
-   onto the current `w1/ui-analysis` first (their owners' call), or take the `w1/ui-analysis` side in those files.
-   The m3-14 part of their conflicts is only the two hook files and ONBOARDING (below).
+3. m3-11 (`w1/ui-today`), m3-12 (`w1/ui-weekly`), m3-13 (`w1/ui-builds`), in any order. None of them contains m3-10's
+   branch, but after step 2 each conflicts only in the file named in its section (m3-13 in none).
 
-## m3-10 (`w1/ui-analysis`): conflicting files and their resolution
+## m3-10 (`w1/ui-analysis`): three conflicting files
 
-| File | Resolution |
-|---|---|
-| `apps/mac/Sources/OffloadMac/OffloadMac.swift` | **This branch.** m3-10's side is the pre-rebase PR #7 entry (`OffloadMacTodo`, inline `--version`). |
-| `App/AppUpdates.swift` | **This branch** (`init(capture:)`). m3-10's side builds `CaptureNotStarted()`. |
-| `Onboarding/Services.swift` | **This branch** (comments only). |
-| `App/OffloadApp.swift` | **This branch**, then three edits from m3-10 (see below). |
-| `Shell/AppModel.swift` | **This branch**, plus m3-10's additions (see below); drop m3-10's `AppModel.live()`. |
-| `Composition/AppComposition.swift` | No textual conflict. Edit `live()` (see below), or nothing m3-10 needs reaches the app. |
-| `apps/mac/README.md`, `docs/ARCHITECTURE.md`, `docs/GLOSSARY.md`, `docs/SECURITY_PRIVACY.md`, `STATUS.md` | Keep both sides' text. In `docs/ONBOARDING.md` section 8, keep this branch's offer rule (on this Mac past screen 2; through the uploader while sending) and m3-10's other lines. |
+Everything else merges on its own, including:
+- `OffloadMac.swift`, `App/AppUpdates.swift` and `Onboarding/Services.swift`, which end with this branch's text;
+- m3-10's `AppWindowView` / `SettingsWindowView` swap and its menu item's sidebar hand-off in `App/OffloadApp.swift`;
+- m3-10's init assignments and `insights.exclusionsChanged()` in `Shell/AppModel.swift`.
 
-`App/OffloadApp.swift`: keep this branch's `OffloadApp.init` (the composition root, `updates`, `modeLines`) and its
-`MenuBarOpener` (mode lines as `Text`, optional updates). Then:
+| File | Conflict | Resolution |
+|---|---|---|
+| `App/OffloadApp.swift` | One comment above `if app.recordings?.isOffered == true` | This branch's comment (the offer rule is the composition's `ImportOffer`). |
+| `Shell/AppModel.swift`, stored properties | This branch's `launchPlan` vs m3-10's `navigation`, `backends`, `insights`, `onDeviceRecordings` | Keep both blocks. |
+| `Shell/AppModel.swift`, init signature | `uploadsAvailable: Bool = true` vs m3-10's four parameters | This branch's line, then m3-10's: `currentNoticeVersion: String? = nil, uploadsAvailable: Bool = true, navigation: NavigationModel? = nil, backends: Backends = .local, insights: InsightsModel? = nil, onDeviceRecordings: OnDeviceRecordings? = nil`. |
+| `Shell/AppModel.swift`, `live()` | This branch's comment vs m3-10's `AppModel.live()` | This branch's comment. Drop m3-10's `live()`; its wiring moves to `AppComposition.live()` (below). |
+| `docs/ONBOARDING.md` section 8 | The offer-rule bullet | This branch's bullet (on this Mac past screen 2; through the uploader while sending). Keep m3-10's other new lines, which merge on their own. |
 
-- In the `"main"` window, replace `MainWindowView(app: app)` with `AppWindowView(app: app)` (m3-10's sidebar).
-- In the `"settings"` window, replace `OffloadSettingsView(app: app)` with `SettingsWindowView(app: app)`.
-- In `MenuBarOpener`, inside `if app.recordings?.isOffered == true { Button(RecordingsCopy.menuItem) { ... } }`, take
-  m3-10's body:
-
-```swift
-if app.route == .today {
-  app.navigation.selection = .recordings
-  openWindow(id: "main")
-} else {
-  app.navigation.requestSettings()
-  openWindow(id: "settings")
-}
-```
-
-`Shell/AppModel.swift`: keep this branch's file. It keeps `launchPlan`, the LaunchPlan block, `uploadsAvailable`,
-`onStartFresh`, and has no `live()`. Add from m3-10:
-
-- the four stored properties `navigation`, `backends`, `insights`, `onDeviceRecordings`;
-- the init parameters `navigation: NavigationModel? = nil, backends: Backends = .local, insights: InsightsModel? = nil,
-  onDeviceRecordings: OnDeviceRecordings? = nil`, after `uploadsAvailable: Bool = true`, and their four assignments
-  before `let onboarding = ...`;
-- `insights.exclusionsChanged()` at the end of `dontWatch(_:)`.
-
-`Composition/AppComposition.swift` `live()`, as rehearsed:
+Then edit `Composition/AppComposition.swift` `live()`. There is no textual conflict, but without this edit nothing m3-10
+needs reaches the app:
 
 ```swift
 public static func live(arguments: [String] = ProcessInfo.processInfo.arguments,
@@ -87,57 +57,61 @@ public static func live(arguments: [String] = ProcessInfo.processInfo.arguments,
 }
 ```
 
-This gives m3-10 the capture's live events (`inputs.events`, so Today reads real data) and the one Never watch list.
-Its app model gets `backends`, `insights` and `onDeviceRecordings`, and `startLocalAnalysis` runs after launch. The
-composition then applies its one offer rule, `ImportOffer`, over the `RecordingsOffer` rule that m3-10's
+This gives m3-10:
+- the capture's live events (`inputs.events`), so Today reads real data;
+- the one Never watch list;
+- an app model with `backends`, `insights` and `onDeviceRecordings`;
+- `startLocalAnalysis` after launch.
+
+The composition then applies its one offer rule, `ImportOffer`, over the `RecordingsOffer` rule that m3-10's
 `wireRecordingsOffer()` set.
 
-### The import path after the merge (needs a small change in m3-10's code)
+### Decisions for m3-10's SPEC (not drop-in changes)
 
-The import the owner uses after the merge is m3-10's `OnDeviceRecordings`. As built, it uses its own
-`InterimTextMasker`, its own pseudonym key file and its own `FileRecordingLedger`. To keep reviews 4 and 5 true on
-that path (the real masker with the capture's key, no import space without the key, a ledger "Start fresh" resets):
+- **Masker and ledger on the import path.** After the merge, the import the owner uses is m3-10's `OnDeviceRecordings`.
+  - It masks with `InterimTextMasker(key:names:appNames:)`, which adds person-name masking through a NaturalLanguage
+    finder (m3-10 SPEC, Known limits and the MASK tests) that m3-02's `TextMasker` does not have.
+  - Its `ledger` is typed `FileRecordingLedger`, and `discardUnfinished` takes that type.
+  - Swapping in m3-14's `ImportMaskerAdapter` and `ResettableImportLedger` (both offered in `AnalysisInputs`) would
+    drop that name masking and change those types.
+  - So the choice belongs to m3-10's SPEC: keep the interim masker, or add the finder to the real one. Either way,
+    "Start fresh" should also clear m3-10's ledger.
+- **Writes before consent.** The analysis hook runs at every launch. m3-10's `LocalAnalysis.live` →
+  `OnDeviceRecordings.make` then creates its folder (`OnDeviceFiles.ensureFolder`) and its `LocalPseudonymKey` file
+  before screen 1. Nothing leaves the Mac, but it differs from m3-14's capture, which writes nothing before screen 2.
+  Record it in m3-10's SPEC, or make those two writes lazy, so they happen at the first import.
 
-- `OnDeviceRecordings.make` takes `masker: ImportMaskerAdapter?` and `ledger: (any RecordingLedger)?`.
-  - When `masker` is given, it uses that masker and wraps its sink in `MaskerCheckedSink(sink:masker:)`.
-  - When `ledger` is given, it uses that ledger instead of `FileRecordingLedger(file: paths.ledger)`.
-- `LocalAnalysis.live` passes `inputs.importMasker` and `inputs.importLedger` (add the two parameters).
-- m3-10's own tests keep their fakes (both parameters default to nil).
+## m3-11 (`w1/ui-today`), after m3-10
 
-If m3-10 keeps the interim masker for its person-name finder, record that in m3-10's SPEC. In that case "Start fresh"
-also has to clear m3-10's ledger.
+| File | Conflict | Resolution |
+|---|---|---|
+| `App/OffloadApp.swift` | `MenuBarOpener.body`: this branch's mode-lines block vs m3-11's `TodayMenuLine(app: app)` | Keep both: the mode-lines block (`let lines = modeLines()`, `ForEach`, `Divider`) first, then `TodayMenuLine(app: app)`, then `MenuBarContent(...)`. |
 
-## m3-11 (`w1/ui-today`)
+## m3-12 (`w1/ui-weekly`), after m3-10
 
-After m3-10 is in, the m3-14 parts:
+| File | Conflict | Resolution |
+|---|---|---|
+| `Shell/AppModel.swift`, stored properties | `launchPlan` vs m3-12's `lazy var weeklyReview` | Keep both. |
+| `Shell/AppModel.swift`, `live()` | This branch's comment vs m3-12's copy of `AppModel.live()` | This branch's comment; drop `live()`. Move its one new line, `app.weeklyReview.start()`, into the same `afterLaunch` in `AppComposition.live()`: `afterLaunch: { app in app.startLocalAnalysis(rules: local.rules); app.weeklyReview.start() }`. |
 
-- `App/OffloadApp.swift`: in `MenuBarOpener.body`, add `TodayMenuLine(app: app)` after this branch's mode-lines block
-  (`ForEach(lines ...) / Divider()`) and before `MenuBarContent(...)`.
-- `Shell/AppModel.swift`: m3-11 adds nothing beyond m3-10's lines. Keep the merged file.
-- `docs/ONBOARDING.md`: keep both.
+m3-12's `.modifier(WeeklyReviewWindowOpener(hub: app.weeklyReview))` on `MenuBarLabel(app: app)` merges on its own.
+Keep it there. Add nothing to `AppWindowView`: the menu bar label always exists, while the main window is usually closed
+when the notification is clicked.
 
-## m3-12 (`w1/ui-weekly`)
+## m3-13 (`w1/ui-builds`), after m3-10
 
-- `Shell/AppModel.swift`: add m3-12's `public private(set) lazy var weeklyReview: WeeklyReviewHub = WeeklyReviewHub(app: self)`.
-- `Composition/AppComposition.swift` `live()`: m3-12's `app.weeklyReview.start()` was in the dropped `AppModel.live()`.
-  Put it in the same `afterLaunch`: `afterLaunch: { app in app.startLocalAnalysis(rules: local.rules); app.weeklyReview.start() }`.
-- `App/OffloadApp.swift`: add `.modifier(WeeklyReviewWindowOpener(hub: app.weeklyReview))` to `AppWindowView(app: app)`
-  in the `"main"` window.
-- `docs/ONBOARDING.md`: keep both.
+No conflict.
 
-## m3-13 (`w1/ui-builds`)
-
-- No m3-14 change beyond m3-10's. `App/OffloadApp.swift` and `Shell/AppModel.swift` conflict only on m3-10's own lines,
-  so keep the merged file.
-
-## After each merge
+## After the merges
 
 ```
-bash scripts/verify-all.sh                       # Linux: lints, bun suite, slice scopes
-python3 -I <structural check> apps/mac/**/*.swift  # optional; the m3-14 author's script, any brace checker works
-# macOS (the mac CI job): swift build && swift test (M302, M303, M304, M305, M309, M310..M314)
+bash scripts/verify-all.sh   # Linux: lints, bun suite, slice scopes
+# macOS (the mac CI job): swift build && swift test (M302, M303, M304, M305, M309, M310 to M314)
 ```
 
-M314's ENTRY tests stay true after these steps: one `@main`, AppModel built only in `Composition/`, other modules'
-types qualified in `Composition/`. M310's tests build `AppModel(...)` directly with their own arguments, and those
-still compile, because m3-14's `uploadsAvailable` comes before m3-10's parameters and is defaulted.
+These stay true after the steps above:
+- M314's ENTRY tests: one `@main`, AppModel built only in `Composition/`, other modules' types qualified in
+  `Composition/`.
+- M310's tests build `AppModel(...)` with labelled arguments that skip the defaulted ones (`sampleWeek:`, then
+  `backends:`, `insights:`, `onDeviceRecordings:`), so they compile with m3-14's `uploadsAvailable` placed before
+  m3-10's parameters.

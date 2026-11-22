@@ -11,7 +11,7 @@ size: M
 parallel_group: M3-D
 owns: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Tests/OffloadMacTests/M314/**]
 verify: bash slices/m3-14-mac-app-integration/verify.sh
-min_tests: 56
+min_tests: 58
 paths_in_scope: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Sources/OffloadMac/CaptureRuntime.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/Onboarding/Services.swift, apps/mac/Sources/OffloadMac/Updates/CaptureLifecycle.swift, apps/mac/Sources/OffloadUploader/Uploader.swift, apps/mac/Sources/OffloadUploader/DeviceKey.swift, apps/mac/Sources/OffloadUploader/ImportOutbox.swift, apps/mac/Sources/OffloadUploader/Tokens.swift, apps/mac/Sources/OffloadUploader/PseudonymKeyStore.swift, apps/mac/Package.swift, docs/ONBOARDING.md, apps/mac/Tests/OffloadMacTests/M314/**, apps/mac/README.md, docs/ARCHITECTURE.md, slices/m3-14-mac-app-integration/**, STATUS-ui-integ.md]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadContracts/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Tests/OffloadMacTests/M302/**, apps/mac/Tests/OffloadMacTests/M303/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**]
 red_tests: [ENTRY, LAUNCH, CAPTURE, UPLOAD, EXCLUDE, NOW, IMPORT]
@@ -349,3 +349,33 @@ passing and every tag present, then the full `swift test`. On Linux it prints SK
   added CI notes for this slice to the integration branch's status file, `STATUS-ui-integ.md`, under this slice's
   subject prefix. That file is now in `paths_in_scope`. It is the orchestrator's status file for this branch, and this
   slice's commits only add notes about this slice's CI runs there.
+- **Finding 2:** `MERGE.md` was refreshed against the current sibling tips (fc4574c, 158e89e, debac36, c070ab7; merge
+  base a97f748). m3-10 now conflicts only in `OffloadApp.swift` (one comment), `AppModel.swift` and ONBOARDING.
+  After m3-10, m3-11 conflicts only in `OffloadApp.swift`, m3-12 only in `AppModel.swift`, and m3-13 in nothing.
+  Other changes:
+  - The wrong m3-12 step is fixed: the window opener stays on `MenuBarLabel`, and `weeklyReview.start()` moves into
+    `afterLaunch`.
+  - The masker and ledger swap on m3-10's import path is stated as a decision for m3-10's SPEC (its person-name
+    finder, its `FileRecordingLedger`-typed API), not a drop-in change.
+  - The plan records that m3-10's `OnDeviceRecordings.make` writes its folder and key file at every launch, before
+    screen 1.
+  The m3-10 merge was resolved in a throwaway worktree with rerere off; the shared rr-cache gained no entries.
+- **Finding 3 (note):** a test build from this branch alone has capture, the now line, Never watch and Sparkle, but no
+  recordings import, Today, Weekly review or Build progress. Those need the m3-10 to m3-13 merge (`MERGE.md`) on an
+  integration branch, with the mac job run there.
+- **Finding 4:** when capture was asked to start and could not (`CaptureRuntime.lastError`, for example a Keychain
+  that refused on an ad hoc build), the menu's first line is "Not watching: Offload could not open its storage on this
+  Mac. Quit and open it again". The error itself is never shown. Test first. **Outside this slice's paths, for the
+  owner or m3-09:**
+  - `apps/mac/TestBuild/INSTALL_AND_TEST.md` should say that the ad hoc test build may ask for the login password
+    for Offload's Keychain items on its first launch after each new download, and that Deny turns watching off. This
+    is expected, not verified on a Mac: the legacy file keychain checks the code signature, and each ad hoc build has a
+    new one.
+  - Its lines 64 to 66 are stale: the Never watch exclusions now take effect with capture, and Today's live line fills
+    from the local day store.
+- **Finding 5:** the Contract's menu lines list all four lines in order; `apps/mac/README.md` says the masker and the
+  uploader-backed sink are wired by m3-14, and OCR and the local store come with m3-10.
+- **Finding 6 (for the orchestrator):** CI ran `swift test` green (run 45054615546; every M314 test passed by name) but
+  not this slice's `verify.sh` on macOS. When `status` goes to `done`, add a "Swift slice
+  m3-14-mac-app-integration" step next to the m3-02 and m3-03 ones in `ci.yml` (outside this slice's paths), or run
+  `REQUIRE_MAC=1 bash slices/m3-14-mac-app-integration/verify.sh` on a Mac and paste the output.
