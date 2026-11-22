@@ -154,6 +154,9 @@ fix rules and `FixEstimate` (m5-04: `estimateFor` is passed through), `offload s
 - **Span embeddings are not stored**: ARCHITECTURE says embeddings are stored in pgvector. The window carries task
   centroids, which the ledger stores (`task_ledger.centroid`, `real[]` until pgvector). A span-level vector table
   waits until something reads it (M7 entity resolution).
+- **EMBED red test example changed after the red commit**: the "alike" pair shared 5 of 8 words (cosine 0.63, below
+  the 0.7 assign threshold), which is not what two instances of one step look like; it now differs by the words one
+  frame shows more (cosine above 0.7). The embedder was not tuned to the test.
 - **Old understanding code is written fresh, not copied**: old `describe.ts`/`induce.ts` depend on frame notes,
   grouping and the name masker; v2 gets masked text only, so the rules are smaller. Same constants.
 

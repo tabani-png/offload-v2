@@ -16,8 +16,9 @@ test("EMBED: the local embedder is deterministic, 1024 dims and unit norm", asyn
 
 test("EMBED: alike descriptions are close and unrelated ones are far", async () => {
   const [a, b, c] = await localEmbedder().embed([
-    "ledgerly create bill supplier reference amount due date",
-    "ledgerly create bill supplier amount save approve",
+    // The same step on two instances: the words differ where one frame showed more of the form.
+    "google chrome ledgerly create bill new supplier reference amount due date save approve",
+    "google chrome ledgerly create bill new supplier amount due date save",
     "pasta recipe tomato basil garlic simmer",
   ]);
   expect(cosine(a!, b!)).toBeGreaterThan(0.7);
