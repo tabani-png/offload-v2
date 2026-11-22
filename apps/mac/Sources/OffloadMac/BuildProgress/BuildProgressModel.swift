@@ -714,43 +714,27 @@ public final class BuildProgressModel: ObservableObject {
   }
 
   /// Leaves the plan without building.
-  /// Not now (the glossary's answer `not_now`, asked again in 4 weeks) is offered while the plan waits or is ready;
-  /// never while OK, build is on its way, and not once the plan stopped (review3.md finding 4, review4.md finding 3).
-  public var canSetAside: Bool {
-    guard !isLocal, client != nil, let phase = plan?.phase else { return false }
-    switch phase {
-    case .starting, .stopped: return false
-    default: return true
-    }
-  }
-
-  /// Close only hides a plan that already stopped (its kept plan is already dropped); nothing is posted.
+  /// Close hides the plan on this Mac in every phase but starting (OK, build on its way) and posts nothing. The
+  /// opportunity is already past `open`, and `not_now` is allowed only from `open` (ARCHITECTURE section 7), so there
+  /// is no documented answer to send (review5.md finding 1; an API gap, see the SPEC). Synchronous, so it cannot race
+  /// OK, build (review5.md finding 2).
   public var canClosePlan: Bool {
-    if case .stopped? = plan?.phase { return true }
-    return false
-  }
-
-  /// Not now: posts `answer: not_now` for the opportunity, then closes the plan. Only from the button.
-  public func setAside() async {
-    guard canSetAside, let client, let current = plan else { return }
-    do {
-      _ = try await client.answerOpportunity(id: current.opportunityID, answer: .notNow, optionID: nil)
-      guard plan?.opportunityID == current.opportunityID else { return }
-      plan = nil
-      planTask?.cancel()
-      planTask = nil
-      notice = BuildCopy.setAsideDone
-    } catch {
-      guard plan?.opportunityID == current.opportunityID else { return }
-      plan?.message = words(error)
-    }
+    guard !busy, let phase = plan?.phase else { return false }
+    if case .starting = phase { return false }
+    return true
   }
 
   public func closePlan() {
-    guard canClosePlan else { return }
+    guard canClosePlan, let phase = plan?.phase else { return }
     plan = nil
     planTask?.cancel()
     planTask = nil
+    // A stopped plan already said why; any other plan may still be designed on Offload.
+    if case .stopped = phase {
+      notice = nil
+    } else {
+      notice = BuildCopy.closedHere
+    }
   }
 
   // MARK: Install (deploy approval)

@@ -375,12 +375,8 @@ struct PlanPanelView: View {
             .opacity(ActionLook.opacity(enabled: model.canOKBuild))
         }
       }
-      // Not now posts the glossary's answer while the plan waits or is ready; Close only hides a stopped plan
-      // (review3.md finding 4, review4.md finding 3).
-      if model.canSetAside {
-        Button(BuildCopy.notNow) { Task { await model.setAside() } }
-          .buttonStyle(SecondaryButtonStyle())
-      } else if model.canClosePlan {
+      // Close hides the plan on this Mac in every phase but starting; nothing is posted (review5.md finding 1).
+      if model.canClosePlan {
         Button(BuildCopy.close) { model.closePlan() }
           .buttonStyle(SecondaryButtonStyle())
       }

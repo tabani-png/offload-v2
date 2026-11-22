@@ -81,7 +81,6 @@ public enum BuildCopy {
   public static let cancelBuild = "Cancel build"
   public static let removeFromList = "Remove from list"
   public static let okBuild = "OK, build"
-  public static let notNow = "Not now"
   public static let installNeedsCloud = "Installing needs the cloud."
   public static let installNeedsEnrollment = "Installing needs this Mac to be enrolled."
   public static let buildNeedsEnrollment = "Building needs this Mac to be enrolled."
@@ -119,7 +118,7 @@ public enum BuildCopy {
   /// A build this Mac did not record (the API has no list route) cannot be listed (review4.md finding 4).
   public static let alreadyBuilt = "This suggestion is already being built or was built. A build this Mac didn't record isn't listed here."
   public static let designStopped = "Designing this fix stopped and needs you. Nothing is built until then."
-  public static let setAsideDone = "Set aside. Offload asks about it again in 4 weeks."
+  public static let closedHere = "Closed on this Mac. Offload may still finish designing it."
   public static let close = "Close"
   public static let lastBuildFailed = "Its last build didn't pass. Nothing was installed."
   public static let starting = "Starting the build…"
@@ -247,10 +246,10 @@ public enum BuildCopy {
       matchesDetail, heldOutPassed, heldOutFailed, readyToShip, readyToShipDetail, installedDetail, sampleRowName,
       sampleRowLine, replay, unnamed, headlineQueued, headlineBuilding, headlineVerifying, headlineFixing, headlineReady,
       headlineFailed, headlineCapped("$4.00"), headlineTampered, headlineCancelled, headlineInfraFailed, workersTitle, frozenLabel,
-      heldOutLabel, notRun, install, seeWhatChanged, whatItWillDo, cancelBuild, removeFromList, okBuild, notNow,
+      heldOutLabel, notRun, install, seeWhatChanged, whatItWillDo, cancelBuild, removeFromList, okBuild,
       installNeedsCloud, installNeedsEnrollment, buildNeedsEnrollment, installChanged, definitionMissing, readFirst,
       measuredAfter, notMeasured, measuredLater, planTitle, answering, designing, stillDesigning, planChanged,
-      alreadyRunning, noFixYet, setAside, alreadyBuilt, designStopped, setAsideDone, close, lastBuildFailed, starting, noBuilds, offline, gone, checking, opportunityNeedsCloud,
+      alreadyRunning, noFixYet, setAside, alreadyBuilt, designStopped, closedHere, close, lastBuildFailed, starting, noBuilds, offline, gone, checking, opportunityNeedsCloud,
     ]
     let built: [String] = [
       fingerprint("7c41e2"), attemptsPassing(2, of: 3), failedFixing(1), otherStage("recovered", state: "failed"),
