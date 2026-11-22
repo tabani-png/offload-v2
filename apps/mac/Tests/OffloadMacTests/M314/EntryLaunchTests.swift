@@ -185,7 +185,7 @@ extension M314 {
     #expect(ModeLines.lines(local: false, importerReady: true, importOffered: false) == [ModeLines.importAfterSending])
     #expect(ModeLines.lines(local: false, importerReady: true, importOffered: true) == [])
     #expect(ModeLines.local == "Local mode: nothing leaves this Mac")
-    // PRODUCT copy rules: an unbuilt feature carries a "coming" label; no em dashes, no dry-run terms.
+    // PRODUCT copy rules: an unbuilt feature carries a "coming" label; no em dashes, no ADR 0016 terms.
     #expect(ModeLines.importComing.lowercased().contains("coming"))
     for line in [ModeLines.local, ModeLines.importComing, ModeLines.importAfterSending] {
       #expect(!line.contains("\u{2014}") && !line.lowercased().contains("dry"))

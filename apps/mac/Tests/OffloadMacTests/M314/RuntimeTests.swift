@@ -195,7 +195,8 @@ extension M314 {
     #expect(id == M314Uploads.importID)
     let objects = M314.importObjects(id)
     try uploads.stageImport(objects)
-    let report = await (try uploads.uploader()).flush()
+    let uploader = try uploads.uploader()
+    let report = await uploader.flush()
     #expect(report.sentObjects == objects.count)
     let opens = server.requests.filter { $0.url.path == "/v1/imports" }
     #expect(opens.map { $0.headers["Authorization"] } == ["Bearer member-tok"])

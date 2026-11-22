@@ -11,8 +11,8 @@ size: M
 parallel_group: M3-D
 owns: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Tests/OffloadMacTests/M314/**]
 verify: bash slices/m3-14-mac-app-integration/verify.sh
-min_tests: 38
-paths_in_scope: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Sources/OffloadMac/CaptureRuntime.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/Onboarding/Services.swift, apps/mac/Sources/OffloadMac/Updates/CaptureLifecycle.swift, apps/mac/Sources/OffloadUploader/Uploader.swift, apps/mac/Sources/OffloadUploader/DeviceKey.swift, apps/mac/Sources/OffloadUploader/ImportOutbox.swift, apps/mac/Package.swift, apps/mac/Tests/OffloadMacTests/M314/**, apps/mac/README.md, docs/ARCHITECTURE.md, slices/m3-14-mac-app-integration/**]
+min_tests: 47
+paths_in_scope: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Sources/OffloadMac/CaptureRuntime.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/Onboarding/Services.swift, apps/mac/Sources/OffloadMac/Updates/CaptureLifecycle.swift, apps/mac/Sources/OffloadUploader/Uploader.swift, apps/mac/Sources/OffloadUploader/DeviceKey.swift, apps/mac/Sources/OffloadUploader/ImportOutbox.swift, apps/mac/Sources/OffloadUploader/Tokens.swift, apps/mac/Package.swift, docs/ONBOARDING.md, apps/mac/Tests/OffloadMacTests/M314/**, apps/mac/README.md, docs/ARCHITECTURE.md, slices/m3-14-mac-app-integration/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadContracts/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Tests/OffloadMacTests/M302/**, apps/mac/Tests/OffloadMacTests/M303/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**]
 red_tests: [ENTRY, LAUNCH, CAPTURE, UPLOAD, EXCLUDE, NOW, IMPORT]
 ---
@@ -72,21 +72,32 @@ running observer, and imports go through the uploader when this Mac is signed in
   returns events with `from < ts <= to` plus the last focus before `from` (looked up at most one stored day back),
   and `captureStartedAt()` is the earliest stored observation. Before capture has started it reads nothing.
 - **Recordings import** (`Composition/ImportComposition.swift`): `ImportMaskerAdapter: ImportTextMasker` over
-  `OffloadMasker.TextMasker` (the same masker and pseudonym key as live capture). `ImportComposition.importer(...)`
-  returns a `RecordingImporter` only when a `TextRecognizer` and a sink exist, else nil (Import then says it needs
-  on-device text reading, as today). `UploaderImportSink: ImportSink` opens an import space with `POST /v1/imports`,
+  `OffloadMasker.TextMasker` (the same masker and pseudonym key as live capture, fail closed). `ImportComposition.
+  importer(...)` returns a `RecordingImporter` only when a `TextRecognizer` and a sink exist, else nil.
+  `UploaderImportSink: ImportSink` opens an import space through `ImportUploadQueue.openImport` (`POST /v1/imports`),
   converts every `ImportObservation` through the closed `Observation` schema, refuses any object that is not
-  `source = "import"` with this space's `import_id`, and queues them in the uploader (detectors again, next seqs, same
-  retry and egress ledger as live batches; objects handed over while a flush is suspended wait in the uploader and are
-  queued when it ends, so a flush never overwrites them); the upload runtime refuses import calls while paused; forget is `POST /v1/me/forget` scope `import`. All three calls go
-  through the uploader (ADR 0035: no second way out). New on `OffloadUploader.Uploader` (an additive extension in
-  `Uploader.swift`): `openImport(sourceKind:)`, `enqueueImport(_:)`, `forgetImport(id:)`.
+  `source = "import"` with this space's `import_id`, and hands them to `ImportUploadQueue.stageImport`, which is
+  synchronous and durable: the objects are checked (import objects only, device detectors) and sealed in
+  `ImportOutbox` (`import-outbox.enc`, `OffloadUploader`) before `write` returns, or `write` throws and m3-05's
+  importer leaves the file unrecorded. `OffloadUploader.Uploader(importOutbox:memberTokens:)` batches the outbox inside
+  `flush()` in the synchronous step that saves its queue (next seqs, same retry and egress ledger as live batches; a
+  detector hit stops that flush like a live one and sets the object aside), and offers `openImport(sourceKind:)` and
+  `forgetImport(id:)`: signed POSTs to the one host with a **member**-audience token (`DeviceSession(audience:
+  .member)`; API.md section 1, Auth) and JCS bodies, each written to the egress ledger. `UploadRuntime` refuses to open
+  or stage while paused; forgetting (a delete request) is allowed. It builds the uploader through
+  `UploadRuntime.Network` (`.live`: URLSession and one `DeviceSession` per audience; tests inject a scripted transport).
+- **Offer rule** (`Composition/ModeLines.swift`, `ImportOffer`): the composition replaces m3-04's "while sending"
+  `offerCheck`. Through the uploader: offered while the person is sending with no new notice waiting (ONBOARDING
+  section 8). On this Mac: offered whenever m3-10's on-device sink exists, in Local mode too (see Scope changes).
+- **Menu lines** (`ModeLines`, `AppComposition.modeLines`, read each time the menu draws): "Local mode: nothing leaves
+  this Mac" whenever nothing is uploaded (GLOSSARY: signed out or without upload consent), then why the import is not
+  offered ("Recordings import is coming: it needs on-device text reading" without an importer; "Recordings import
+  starts after Start sending" otherwise). Plain text items.
 - **Seams for m3-10** (on-device OCR, local analysis store, Today/Weekly/Builds navigation; sibling branch):
   `CompositionSeams { textRecognizer, onDeviceImportSink }` passed to `AppComposition.live(seams:)`. With both nil
-  (this slice) the import is built without an importer and Local mode offers no import, exactly as before. m3-10
-  plugs its recognizer and its local sink in there and reads `BackendMode` from `AppComposition.backend`.
-- No new dependency. No `Package.swift` change in this slice's commits (the merge commit only rewrites its header
-  comment, which still said the library targets were empty).
+  (this slice) there is no importer and Local mode offers no import. m3-10 plugs its recognizer and its local sink in
+  there (the import is then offered in Local mode) and reads `BackendMode` from `AppComposition.backend`.
+- No new dependency. `Package.swift` changes only in its header comment (merge commit and 7dfa249).
 
 ## Design note
 The app has one composition root, `AppComposition`, so the order of launch is visible in one place:
@@ -207,3 +218,31 @@ passing and every tag present, then the full `swift test`. On Linux it prints SK
   went with the rewrite. The merge's `packages/contracts/package.json` script line and
   `packages/contracts/scripts/gen-swift.ts` are PR #13's own m3-02 work (common.md forbids this slice editing
   `packages/**`); the owner needs to accept them as part of merging #13's history.
+
+### Review 2 (2026-11-22)
+- **Finding 1 (major, import calls used a device-audience token):** `DeviceSession` takes an audience
+  (`Tokens.swift`, added to `paths_in_scope`); `UploadRuntime` makes one session per audience and the uploader signs
+  `/v1/imports` and `/v1/me/forget` with the member one (no member provider: `ImportUploadError.noMemberToken`, nothing
+  sent). Request bodies are `JCS.encode`d. Tests assert the bearer per route and that every body is its own JCS form.
+- **Finding 2 (major, the m3-10 seam alone offered nothing):** the offer rule moved into the composition
+  (`ImportOffer`, live), and the menu lines are computed from the live state, so they never go quiet while the import is
+  hidden. **Divergence from ONBOARDING section 8** (the import shows only while signed in and sending): with an
+  on-device sink the import is offered in Local mode, because the owner's goal for the test build (2026-11-22) is to
+  read `~/screenwatch` and recordings on the Mac, and that import sends nothing. ONBOARDING section 8 now says so.
+  The uploader-backed import keeps the section 8 rule.
+- **Finding 3 (major, the runtime's own uploader untested):** `UploadRuntime.Network` is injectable; a test stages
+  through the runtime, flushes the runtime's own uploader over a scripted transport, and sees the import objects in a
+  batch (device token), the open with the member token, and the shared outbox empty.
+- **Finding 4:** the Contract above describes the outbox, the member token and the menu; the `enqueueImport` and
+  `Package.swift` sentences are gone.
+- **Finding 5:** `exclusions.json` is written 0600. **Divergence from SECURITY_PRIVACY section 6** (the Never watch list
+  moves into the sealed store with m3-02): the observer's reloader (PR #13) reads plain JSON, so a plain 0600 copy
+  of bundle ids, hosts and title words sits next to the sealed store; moving the reloader onto a sealed file is an
+  m3-02 follow-up. SECURITY_PRIVACY is outside this slice's paths; the owner or the m3-02 follow-up updates it.
+- **Finding 6:** `bufferReadable()` reads the master key without creating one; a Keychain error counts as readable.
+- **Finding 7:** "Start fresh" also deletes the import ledger (`StoreContext.importLedgerFile`).
+- **Finding 8:** the lines say "coming", render as `Text`, and Local mode follows the GLOSSARY (an enrolled Mac before
+  "Start sending" says Local mode).
+- **Finding 9:** `CaptureRuntime.tickOnce()` holds the tick body and is tested. The 86d31c9 ordering (paused refusal
+  before its test) is history; its test came in 3a6c895.
+- **Finding 10:** an import detector hit now stops that flush like a live one (set aside, counted, nothing sent).
