@@ -70,6 +70,13 @@ extension M314 {
     #expect(cloud.importer != nil)
   }
 
+  /// The same objects as contract observations (what the sink hands to the uploader).
+  static func importObjects(_ importID: String) -> [Observation] {
+    observations(importID).map { o in
+      (try? JSONDecoder().decode(Observation.self, from: JSONEncoder().encode(o)))!
+    }
+  }
+
   static func observations(_ importID: String) -> [ImportObservation] {
     let ids = OffloadImport.ULIDGenerator()
     let t0 = M314Fixture.t0
@@ -88,12 +95,12 @@ extension M314 {
     let sink = UploaderImportSink(queue: queue)
     let space = try await sink.openImport(sourceKind: .videos)
     #expect(space == ImportSpace(id: M314Fixture.importID, sourceKind: .videos))
-    #expect(await queue.opened == ["videos"])
+    #expect(queue.opened == ["videos"])
 
     try sink.write(Self.observations(space.id), to: space)
     try sink.write([], to: space)
-    await sink.drain()
-    let queued = await queue.queued
+    // Staged before write returns: nothing is left in flight.
+    let queued = queue.staged
     #expect(queued.count == 1)
     let objects = try #require(queued.first)
     #expect(objects.map(\.kind) == ["focus", "text_snapshot", "idle_start"])
@@ -115,8 +122,7 @@ extension M314 {
     #expect(throws: ImportUploadRefusal.self) { try sink.write(Self.observations(unknown.id), to: unknown) }
     let space = try await sink.openImport(sourceKind: .screenwatch)
     #expect(throws: ImportUploadRefusal.self) { try sink.write(Self.observations(M314Fixture.otherImportID), to: space) }
-    await sink.drain()
-    #expect(await queue.queued.isEmpty)
+    #expect(queue.staged.isEmpty)
   }
 
   @Test("IMPORT: forgetting an import goes through the uploader")
@@ -125,7 +131,41 @@ extension M314 {
     let sink = UploaderImportSink(queue: queue)
     let space = try await sink.openImport(sourceKind: .videos)
     try await sink.forget(space)
-    #expect(await queue.forgotten == [space.id])
+    #expect(queue.forgotten == [space.id])
     #expect(throws: ImportUploadRefusal.self) { try sink.write(Self.observations(space.id), to: space) }
+  }
+
+  @Test("IMPORT: a refused hand-off fails the write, so nothing is half queued")
+  func refusedHandOffFailsTheWrite() async throws {
+    let queue = FakeImportQueue()
+    let sink = UploaderImportSink(queue: queue)
+    let space = try await sink.openImport(sourceKind: .videos)
+    queue.refuseStaging = true
+    #expect(throws: ImportUploadRefusal.self) { try sink.write(Self.observations(space.id), to: space) }
+    #expect(queue.staged.isEmpty)
+    queue.refuseStaging = false
+    try sink.write(Self.observations(space.id), to: space)
+    #expect(queue.staged.count == 1)
+  }
+
+  @Test("IMPORT: when the uploader refuses a file, the importer does not record it, so the next import reads it again")
+  func importerDoesNotRecordARefusedFile() async throws {
+    let root = M305Files.folder()
+    defer { M305Files.remove(root) }
+    M305Files.screenwatchDay(root, "2026-09-01", start: (9, 0), minutes: 10, apps: M305Files.watchApps)
+    let queue = FakeImportQueue()
+    queue.refuseStaging = true
+    var fakes = M305Importer()
+    fakes.customSink = UploaderImportSink(queue: queue)
+    let refused = await fakes.run(root)
+    #expect((refused.report?.failed ?? 0) > 0)
+    #expect(fakes.ledger.entries.isEmpty)
+    #expect(queue.staged.isEmpty)
+
+    queue.refuseStaging = false
+    let accepted = await fakes.run(root)
+    #expect(accepted.report?.filesRead == 1)
+    #expect(fakes.ledger.entries.count == 1)
+    #expect(!queue.staged.isEmpty)
   }
 }

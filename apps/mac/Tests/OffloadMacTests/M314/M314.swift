@@ -74,26 +74,40 @@ enum M314State {
   }
 }
 
-/// The uploader side of an import, recorded.
-actor FakeImportQueue: ImportUploadQueue {
-  private(set) var opened: [String] = []
-  private(set) var queued: [[Observation]] = []
-  private(set) var forgotten: [String] = []
+/// The uploader side of an import, recorded. `stageImport` is synchronous, like the real one: when it throws, the
+/// sink's `write` throws and the importer does not record the file.
+final class FakeImportQueue: ImportUploadQueue, @unchecked Sendable {
+  private let lock = NSLock()
+  private var openedKinds: [String] = []
+  private var stagedBatches: [[Observation]] = []
+  private var forgottenIDs: [String] = []
+  private var refusing = false
   let importID: String
 
   init(importID: String = M314Fixture.importID) { self.importID = importID }
 
+  var opened: [String] { lock.withLock { openedKinds } }
+  var staged: [[Observation]] { lock.withLock { stagedBatches } }
+  var forgotten: [String] { lock.withLock { forgottenIDs } }
+  /// While true, staging throws (paused uploads, a detector hit, a store error).
+  var refuseStaging: Bool {
+    get { lock.withLock { refusing } }
+    set { lock.withLock { refusing = newValue } }
+  }
+
   func openImport(sourceKind: String) async throws -> String {
-    opened.append(sourceKind)
+    lock.withLock { openedKinds.append(sourceKind) }
     return importID
   }
 
-  func enqueueImport(_ objects: [Observation]) async throws -> Int {
-    queued.append(objects)
-    return objects.count
+  func stageImport(_ objects: [Observation]) throws {
+    try lock.withLock {
+      if refusing { throw ImportUploadRefusal(reason: "refused in the test") }
+      stagedBatches.append(objects)
+    }
   }
 
-  func forgetImport(id: String) async throws { forgotten.append(id) }
+  func forgetImport(id: String) async throws { lock.withLock { forgottenIDs.append(id) } }
 }
 
 /// Reads no text. Stands in for m3-10's on-device OCR.
@@ -114,7 +128,7 @@ final class M314LocalSink: ImportSink, @unchecked Sendable {
   var sink: (any ImportSink)?
   var neverWatch: NeverWatchStore?
   var recordingsBuilt = 0
-  var captureForUpdates: (any CaptureLifecycle)?
+  var lifecycleForUpdates: (any CaptureLifecycle)?
 }
 
 @MainActor enum M314App {
@@ -126,7 +140,7 @@ final class M314LocalSink: ImportSink, @unchecked Sendable {
     secrets: MemorySecretStore = MemorySecretStore(), wiring: M314Wiring = M314Wiring()
   ) -> AppComposition {
     let env = CompositionEnvironment(
-      backend: backend, home: home, secrets: secrets, onboardingStore: InMemoryOnboardingStore(state: state),
+      backend: backend, store: StoreContext(home: home, secrets: secrets), onboardingStore: InMemoryOnboardingStore(state: state),
       probe: probe, options: LaunchOptions(), bundlePath: "/Applications/Offload.app", bufferReadable: bufferReadable,
       currentNoticeVersion: currentNoticeVersion, loginItem: FakeLoginItem(), relauncher: FakeRelauncher(),
       account: FakeAccount(), consent: FakeConsent(), timers: false
@@ -141,7 +155,7 @@ final class M314LocalSink: ImportSink, @unchecked Sendable {
         return nil
       },
       updates: { capture in
-        wiring.captureForUpdates = capture
+        wiring.lifecycleForUpdates = capture
         return nil
       }
     )

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import OffloadMac
+import OffloadStore
 
 // One entry point and the launch decisions (SPEC: Contract, "One entry point", "BackendMode", "LaunchPlan").
 
@@ -150,4 +151,61 @@ extension M314 {
     #expect(fakes.capture.starts == 2)
     #expect(cloud.launchPlan == LaunchPlan(startUpdater: true, startCapture: true, startUploader: true, importSink: .uploader))
   }
+
+  @Test("LAUNCH: the live backend reads the Keychain only when an API base and a device id are both set")
+  func liveBackend() throws {
+    let suite = "m314-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let secrets = CountingSecrets()
+    let info: [String: Any] = [BackendMode.apiBaseInfoKey: "https://api.offload.test"]
+    // The test build: no API base in Info.plist.
+    #expect(BackendMode.live(info: [:], defaults: defaults, secrets: secrets) == .local)
+    #expect(BackendMode.live(info: nil, defaults: defaults, secrets: secrets) == .local)
+    // An API base without enrollment.
+    #expect(BackendMode.live(info: info, defaults: defaults, secrets: secrets) == .local)
+    #expect(secrets.reads == 0)
+    // Enrolled id but no device key: still local, after one look at the Keychain.
+    defaults.set("dev_1", forKey: BackendMode.deviceIDDefaultsKey)
+    #expect(BackendMode.live(info: info, defaults: defaults, secrets: secrets) == .local)
+    #expect(secrets.reads > 0)
+    try secrets.write(Data(repeating: 1, count: 32), account: "device-key")
+    #expect(BackendMode.live(info: info, defaults: defaults, secrets: secrets)
+            == .cloud(apiBase: URL(string: "https://api.offload.test")!, deviceID: "dev_1"))
+    // Nothing was created by asking.
+    #expect(secrets.writes == 1)
+  }
+
+  @Test("LAUNCH: Local mode and the missing recordings import are said in the menu, never hidden")
+  @MainActor func modeIsLabelled() {
+    #expect(ModeLines.lines(backend: .local, importReady: false) == [ModeLines.local, ModeLines.importNotReady])
+    #expect(ModeLines.lines(backend: .local, importReady: true) == [ModeLines.local])
+    #expect(ModeLines.lines(backend: M314Fixture.cloud, importReady: false) == [ModeLines.importNotReady])
+    #expect(ModeLines.lines(backend: M314Fixture.cloud, importReady: true) == [])
+    #expect(ModeLines.local == "Local mode: nothing leaves this Mac")
+    for line in [ModeLines.local, ModeLines.importNotReady] {
+      #expect(!line.contains("\u{2014}") && !line.lowercased().contains("dry"))
+    }
+    // This build (no on-device text reading yet): the composition shows both lines.
+    let c = M314App.composition(state: M314State.watchingLocally)
+    defer { c.capture.stop() }
+    #expect(c.modeLines == [ModeLines.local, ModeLines.importNotReady])
+    let ready = M314App.composition(state: M314State.watchingLocally,
+                                    seams: CompositionSeams(textRecognizer: M314Recognizer(), onDeviceImportSink: M314LocalSink()))
+    defer { ready.capture.stop() }
+    #expect(ready.modeLines == [ModeLines.local])
+  }
+}
+
+/// An in-memory Keychain that counts reads and writes.
+final class CountingSecrets: SecretStore, @unchecked Sendable {
+  private let lock = NSLock()
+  private var items: [String: Data] = [:]
+  private var readCount = 0
+  private var writeCount = 0
+  var reads: Int { lock.withLock { readCount } }
+  var writes: Int { lock.withLock { writeCount } }
+  func read(account: String) throws -> Data? { lock.withLock { readCount += 1; return items[account] } }
+  func write(_ data: Data, account: String) throws { lock.withLock { writeCount += 1; items[account] = data } }
+  func delete(account: String) throws { lock.withLock { items[account] = nil } }
 }

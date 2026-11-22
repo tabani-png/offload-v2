@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import OffloadMac
+import OffloadContracts
 import OffloadStore
 
 // The capture and upload runtimes and how the composition root hands them out (SPEC: "CaptureRuntime",
@@ -40,12 +41,14 @@ extension M314 {
   }
 
   @Test("CAPTURE: the composition gives the updater and the app the same capture runtime")
-  @MainActor func oneCapture() {
+  @MainActor func oneCapture() throws {
     let wiring = M314Wiring()
     let home = M314Fixture.tempHome()
     let c = M314App.composition(state: M314State.watchingLocally, home: home, wiring: wiring)
     defer { c.capture.stop() }
-    #expect(wiring.captureForUpdates.map { $0 as AnyObject } === c.capture)
+    // The updater gets the composition's update preparation, which drives this same capture runtime.
+    let prep = try #require(wiring.lifecycleForUpdates as? UpdatePreparation)
+    #expect(prep.capture === c.capture)
     #expect((c.app.onboarding.services.capture as AnyObject) === c.capture)
     // Screen 2 was resolved before this launch: capture started at launch, on this Mac only.
     #expect(c.capture.isRunning)
@@ -94,5 +97,81 @@ extension M314 {
     defer { changed.capture.stop() }
     #expect(changed.uploads?.isRunning == false)
     #expect(changed.importChoice == .onDevice)
+  }
+
+  @Test("UPLOAD: before an update, capture stops and the uploader pauses")
+  @MainActor func updateStopsBoth() throws {
+    let wiring = M314Wiring()
+    let c = M314App.composition(backend: M314Fixture.cloud, state: M314State.sending, currentNoticeVersion: "1",
+                                wiring: wiring)
+    defer {
+      c.capture.stop()
+      c.uploads?.pause()
+    }
+    let uploads = try #require(c.uploads)
+    #expect(c.capture.isRunning && uploads.isRunning)
+    let prep = try #require(wiring.lifecycleForUpdates)
+    prep.prepareForUpdate()
+    #expect(!c.capture.isRunning)
+    #expect(!uploads.isRunning)
+    // Local mode: there is no uploader to pause, and capture still stops.
+    let local = M314Wiring()
+    let l = M314App.composition(state: M314State.watchingLocally, wiring: local)
+    try #require(local.lifecycleForUpdates).prepareForUpdate()
+    #expect(!l.capture.isRunning)
+  }
+
+  @Test("UPLOAD: a paused upload runtime refuses to open or stage an import; a running one stages on this Mac")
+  @MainActor func pausedRefusesImports() async throws {
+    let uploads = UploadRuntime(apiBase: M314Fixture.apiBase, deviceID: "dev_m314",
+                                context: StoreContext(home: M314Fixture.tempHome(), secrets: MemorySecretStore()), turns: false)
+    let objects = M314.importObjects(M314Fixture.importID)
+    await #expect(throws: ImportUploadRefusal.self) { try await uploads.openImport(sourceKind: "videos") }
+    #expect(throws: ImportUploadRefusal.self) { try uploads.stageImport(objects) }
+    #expect(try uploads.outbox.staged().isEmpty)
+    uploads.start()
+    defer { uploads.pause() }
+    try uploads.stageImport(objects)
+    #expect(try uploads.outbox.staged().map(\.id) == objects.map(\.id))
+    uploads.pause()
+    #expect(throws: ImportUploadRefusal.self) { try uploads.stageImport(objects) }
+  }
+
+  @Test("CAPTURE: capture and the uploader share one store context (one key ring, one day store)")
+  @MainActor func oneStore() throws {
+    let c = M314App.composition(backend: M314Fixture.cloud, state: M314State.sending, currentNoticeVersion: "1")
+    defer {
+      c.capture.stop()
+      c.uploads?.pause()
+    }
+    let uploads = try #require(c.uploads)
+    #expect(uploads.context === c.capture.context)
+    #expect(c.capture.store.current === c.capture.context.dayStore)
+  }
+
+  @Test("CAPTURE: the buffer is unreadable when its day keys no longer open, and Start fresh deletes it")
+  @MainActor func unreadableBufferAndStartFresh() throws {
+    let home = M314Fixture.tempHome()
+    #expect(StoreContext(home: home, secrets: MemorySecretStore()).bufferReadable())
+    let secrets = MemorySecretStore()
+    let context = StoreContext(home: home, secrets: secrets)
+    try context.layout.ensureDirectories()
+    let at = M314Fixture.t0
+    try context.dayStore.append(.focus(ObservationFocus(id: M314Fixture.id(at), ts: Timestamp.format(at),
+                                                        appBundleId: "com.apple.Notes", appName: "Notes")))
+    #expect(StoreContext(home: home, secrets: secrets).bufferReadable())
+    // Restored without the Keychain: the master key is gone, the day files stay.
+    let restored = StoreContext(home: home, secrets: MemorySecretStore())
+    #expect(!restored.bufferReadable())
+
+    // The app routes to "Start fresh"; choosing it deletes the unreadable buffer, then capture can start again.
+    let wiring = M314Wiring()
+    let c = M314App.composition(state: M314State.watchingLocally, bufferReadable: false, home: home,
+                                secrets: MemorySecretStore(), wiring: wiring)
+    #expect(c.app.route == .startFresh)
+    #expect(!c.capture.isRunning)
+    c.app.startFresh()
+    #expect(c.capture.context.bufferReadable())
+    #expect(c.capture.context.dayStore.storedDays().isEmpty)
   }
 }
