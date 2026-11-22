@@ -179,6 +179,17 @@ describe("p43a rollups", () => {
     expect(await writeWeekSentence(r, undefined, async () => "You spent forty hours this week, twice the usual.")).toEqual({ sentence: weekSentence(r), source: "code" });
   });
 
+  test("NARRATIVE: non-ASCII digits are read after NFKC; other number characters are refused", async () => {
+    const rec = { blocks: figure(3, "count", "3 focus blocks", []), hours: figure(12, "hours", "12 h", []) };
+    expect(checkNarrative("You spent \uff11\uff12 hours at the desk.", rec).ok).toBe(true);
+    for (const s of ["You spent \uff14\uff10 hours this week.", "You spent \u0664\u0660 hours this week.", "You spent \u00bd your time in meetings.", "You hit 12\u00b2 emails.", "You had \u2462 focus blocks."]) {
+      expect({ s, ok: checkNarrative(s, rec).ok }).toEqual({ s, ok: false });
+    }
+    const r = week(WEEKS[3]);
+    const probe = "You spent \uff14\uff10 hours at the desk, \u00bd of it in meetings.";
+    expect(await writeWeekSentence(r, undefined, async () => probe)).toEqual({ sentence: weekSentence(r), source: "code" });
+  });
+
   test("NARRATIVE: a refused model sentence is replaced by the code sentence", async () => {
     const r = week(WEEKS[3]);
     const code = weekSentence(r);

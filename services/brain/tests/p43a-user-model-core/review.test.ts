@@ -33,6 +33,7 @@ describe("p43a review", () => {
       [{ iso_week: W, subject_key: "k_0123456789ab", question_kind: "opportunity", answer: "other_goal" }, "schema_invalid"],
       [{ iso_week: W, subject_key: "k_0123456789ab", question_kind: "opportunity", answer: "keep", extra: 1 }, "schema_invalid"],
       [[1, 2], "schema_invalid"],
+      [{ iso_week: W, subject_key: "k_0123456789ab", question_kind: "opportunity", answer: "never", goal_id: "g_0123456789" }, "schema_invalid"],
       [{ iso_week: W, subject_key: "k_0123456789ab", question_kind: "opportunity", answer: "keep", goal_id: "g_9999999999" }, "invalid_request"],
       [{ iso_week: "2026-W46", subject_key: "k_0123456789ab", question_kind: "opportunity", answer: "keep" }, "invalid_request"],
     ];
@@ -46,6 +47,15 @@ describe("p43a review", () => {
     const a = (week: string, ans: ReviewAnswer["answer"], at: string): ReviewAnswer => ({ iso_week: week, subject_key: "k_0123456789ab", question_kind: "opportunity", answer: ans, goal_id: null, answered_at: at });
     const latest = latestAnswers([a(W, "keep", "2026-11-06T10:00:00.000Z"), a(W, "never", "2026-11-06T11:00:00.000Z"), a("2026-W44", "not_now", "2026-10-30T10:00:00.000Z"), a(W, "build", "2026-11-06T09:00:00.000Z")]);
     expect(latest.map((x) => [x.iso_week, x.answer])).toEqual([["2026-W44", "not_now"], [W, "never"]]);
+  });
+
+  test("REVIEW: an open opportunity that scores 0 (declined earlier) is not asked about", () => {
+    const week = L.weeks.get(W)!;
+    const opps = [
+      { task_key: k("Outreach emails"), name: "Outreach emails", rank: 1, state: "open", score: 0 },
+      { task_key: k("Slack replies"), name: "Slack replies", rank: 2, state: "open", score: 0.4 },
+    ];
+    expect(buildWeekReview({ week, goals: [], opportunities: opps, answers: [] }).questions.map((q) => q.name)).toEqual(["Slack replies"]);
   });
 
   test("REVIEW: the week review has the checked sentence, Figure tiles, the goals and at most 4 open questions", () => {

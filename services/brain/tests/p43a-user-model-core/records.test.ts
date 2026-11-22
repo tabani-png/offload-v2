@@ -176,6 +176,8 @@ describe("p43a day records", () => {
     expect(hasLeak(raw)).toBe(true);
     expect(safeName(raw)).toBe("Review and");
     expect(hasLeak("Work in www.notion.so")).toBe(false);
+    // Non-ASCII digits and number characters are digits too.
+    expect(safeName("\uff31\uff14 report for \u0663 clients \u2460")).toBe("Q report for clients");
     const t = w.tasks[0]!;
     const leaky: UnderstandingWindow = { ...w, tasks: [{ ...t, appName: "Mail dana@fund.example" }] };
     const o = observeWindow(leaky, resolveTaskKeys([], leaky).keys)[0]!;

@@ -93,6 +93,11 @@ describe("p43a profile", () => {
       { industry: "two\nlines" },
       null,
       ["goals"],
+      { goals: [{ text: "Ship", extra: 1 }] },
+      { goals: ["tab\there"] },
+      { goals: ["Grow\u0085signups"] },
+      { goals: ["Ship\u200bv2"] },
+      { role: "Found\u2028er" },
     ];
     for (const body of bad) expect({ body, ok: applyProfilePatch(defaultProfile(), body, T(0)).ok }).toEqual({ body, ok: false });
     const fine = applyProfilePatch(defaultProfile(), { goals: ["x".repeat(80), "Update README.md for v2.0", "Learn Node.js"], keyframes_to_cloud: true, own_name_to_models: "keep", review_slot: { day: "mon", time: "08:30" } }, T(0));
@@ -134,5 +139,8 @@ describe("p43a user_context", () => {
     expect(block.endsWith("</user_context>")).toBe(true);
     expect(userContextBlock(undefined)).toBe("");
     expect(sanitizeUserContext({ goals: ["a", "b", "c", "d"] })!.goals!.length).toBe(3);
+    // C1 controls, format characters and line or paragraph separators are not kept either.
+    const odd = sanitizeUserContext({ role: "Found\u2028er", goals: ["Grow\u0085signups", "Ship\u200bv2"] })!;
+    for (const s of [odd.role!, ...(odd.goals ?? [])]) expect(/[\p{Cc}\p{Cf}\u2028\u2029]/u.test(s)).toBe(false);
   });
 });
