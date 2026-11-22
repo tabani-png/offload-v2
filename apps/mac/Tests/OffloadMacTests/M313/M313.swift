@@ -380,8 +380,9 @@ enum M313F {
 @MainActor
 enum M313M {
   static func cloud(_ client: M313Client, store: MemoryBuildRecordStore = MemoryBuildRecordStore(),
+                    plans: MemoryPlanRecordStore = MemoryPlanRecordStore(),
                     sleeper: M313Sleeper = M313Sleeper(), now: M313Now = M313Now()) -> BuildProgressModel {
-    let model = BuildProgressModel(mode: M313F.cloudMode, client: client, store: store, sleeper: sleeper,
+    let model = BuildProgressModel(mode: M313F.cloudMode, client: client, store: store, plans: plans, sleeper: sleeper,
                                    now: { now.date }, timeZone: M313F.utc)
     model.activate()
     return model

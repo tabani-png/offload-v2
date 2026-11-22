@@ -38,9 +38,12 @@ extension M313 {
 
     let (failing, failingClient, _) = await M313M.selected(M313F.fanningOut)
     failingClient.script("cancel", .error(M313F.server(409, "state_conflict", "the build already ended")))
+    failingClient.script("build", .value(M313F.readyAs(.failed)))
     await failing.cancel()
     #expect(failing.notice == "It changed on Offload. Showing the latest.")
-    #expect(failing.detail?.headline == "One check failed. Fixing it.")
+    // "Showing the latest" reads the latest (review2.md finding 2).
+    #expect(failingClient.calls.last == "build \(M313F.buildID)")
+    #expect(failing.detail?.headline == "It didn't pass. Nothing was installed.")
   }
 
   @Test("CANCEL: posts POST /v1/builds/{id}/cancel with no body and no signature")

@@ -55,7 +55,7 @@ extension M313 {
     #expect(model.builds.first?.line == "This build is no longer available.")
     #expect(model.builds.first?.canRemove == true)
     #expect(model.detail == nil)
-    model.remove(buildID: M313F.buildID)
+    await model.remove(buildID: M313F.buildID)
     #expect(model.builds.isEmpty)
     #expect(store.records().isEmpty)
     #expect(model.emptyLine == "No builds yet. Press OK, build on a suggested fix in Today.")
