@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { ObservationSchema } from "../../src/index.ts";
-import { AppCueTableSchema, appCueTable } from "@offload/contracts/src/app-cues.ts";
+import { AppCueTableSchema, appCueTable } from "../../src/app-cues.ts";
 import { focus } from "../m1-02-contracts-ingest/fixtures.ts";
 
 // m3-05c-import-signals: the app cue table the Mac applies to recordings without a menu bar, published for the cloud
