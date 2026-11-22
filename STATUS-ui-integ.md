@@ -12,3 +12,4 @@ One line per slice step: slice | decision | tests | reviewer verdict.
   the frontend batch before M314.swift, M314ExcludeTests, NowTests, RuntimeTests and UploaderImportTests were
   SIL-checked; they were read for the same patterns by hand, but CI 3 is their first full compile.
 - 2026-11-22 13:26 integ | CI green on f0ab0ae9e383bc137c8537d373ce78e9af8bb670 | runs: mac-artifact=success, ci=success
+- 2026-11-22 13:42 m3-14-mac-app-integration | extra review to round 7 | reviewer: VERDICT: PASS
