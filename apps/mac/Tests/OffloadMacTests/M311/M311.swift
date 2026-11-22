@@ -193,8 +193,8 @@ enum M311Cloud {
         focusMinutes: fig(90, "minutes", "active time in 2 focus blocks = 90 min"),
         meetingMinutes: fig(45, "minutes", "3 meeting spans = 45 min")),
       byKind: [
-        KindMinutes(kind: "build", minutes: fig(200, "minutes", "active time of 10 build spans = 200 min")),
-        KindMinutes(kind: "review", minutes: fig(120, "minutes", "active time of 6 review spans = 120 min")),
+        KindMinutes(kind: "code", minutes: fig(200, "minutes", "active time of 10 code spans = 200 min")),
+        KindMinutes(kind: "docs", minutes: fig(120, "minutes", "active time of 6 docs spans = 120 min")),
         KindMinutes(kind: "email", minutes: fig(60, "minutes", "active time of 5 email spans = 60 min")),
       ],
       byApp: [AppMinutes(app: "com.apple.dt.Xcode", minutes: fig(200, "minutes", "200 min in Xcode"))],
@@ -251,6 +251,8 @@ final class M311Brain: BrainClient, @unchecked Sendable {
   private var _weekCalls: [String] = []
   var dayResult: @Sendable (String) throws -> DayRecord
   var weekResult: @Sendable (String) throws -> WeekRecord
+  /// Runs before a day is answered (a test steps to another day while a read is out).
+  private var beforeDay: (@Sendable (String) async -> Void)?
 
   init(day: @escaping @Sendable (String) throws -> DayRecord = { M311Cloud.day($0) },
        week: @escaping @Sendable (String) throws -> WeekRecord = { M311Cloud.week($0) }) {
@@ -283,6 +285,18 @@ final class M311Brain: BrainClient, @unchecked Sendable {
     lock.unlock()
   }
 
+  func setBeforeDay(_ f: @escaping @Sendable (String) async -> Void) {
+    lock.lock()
+    beforeDay = f
+    lock.unlock()
+  }
+
+  private func hook() -> (@Sendable (String) async -> Void)? {
+    lock.lock()
+    defer { lock.unlock() }
+    return beforeDay
+  }
+
   private func dayFn() -> @Sendable (String) throws -> DayRecord {
     lock.lock()
     defer { lock.unlock() }
@@ -293,6 +307,7 @@ final class M311Brain: BrainClient, @unchecked Sendable {
   func updateProfile(_ patch: BrainProfilePatch) async throws -> BrainProfile { throw APIError.notFound }
   func dayRecord(day: String) async throws -> DayRecord {
     note(day: day)
+    if let hook = hook() { await hook(day) }
     return try dayFn()(day)
   }
   func weekRecord(isoWeek: String) async throws -> WeekRecord {
@@ -309,8 +324,13 @@ final class M311Builds: BuildsClient, @unchecked Sendable {
   private var _calls = 0
   private var _answers: [(String, OpportunityAnswer, String?)] = []
   let open: [Opportunity]
+  /// When set, every answer fails with it.
+  let answerFailure: APIError?
 
-  init(open: [Opportunity] = [M311Cloud.opportunity("opp_1", rank: 1)]) { self.open = open }
+  init(open: [Opportunity] = [M311Cloud.opportunity("opp_1", rank: 1)], answerFailure: APIError? = nil) {
+    self.open = open
+    self.answerFailure = answerFailure
+  }
 
   var calls: Int {
     lock.lock()
@@ -336,6 +356,7 @@ final class M311Builds: BuildsClient, @unchecked Sendable {
   }
   func opportunity(id: String) async throws -> Opportunity { throw APIError.notFound }
   func answerOpportunity(id: String, answer: OpportunityAnswer, optionID: String?) async throws -> Opportunity {
+    if let answerFailure { throw answerFailure }
     lock.lock()
     _answers.append((id, answer, optionID))
     lock.unlock()
@@ -418,4 +439,11 @@ extension TodayLiveModel {
     if case .ready(let c) = state { return c }
     return nil
   }
+}
+
+/// A LocalAnswerStore whose writes fail (a full disk, a locked file).
+struct M311FailingAnswers: LocalAnswerStore {
+  struct WriteFailed: Error {}
+  func answers() -> [LocalReviewAnswer] { [] }
+  func record(_ answer: LocalReviewAnswer) throws { throw WriteFailed() }
 }

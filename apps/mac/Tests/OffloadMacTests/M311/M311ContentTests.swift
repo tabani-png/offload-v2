@@ -349,7 +349,7 @@ extension M311 {
     #expect(c.headline == "7 h 40 m of work.")
     #expect(c.subtitleItems.map(\.text) == ["2 focus blocks", "38 switches an hour"])
     #expect(c.grid == nil)
-    #expect(c.kinds.map(\.kind) == ["Build", "Review", "Email"])
+    #expect(c.kinds.map(\.kind) == ["Code", "Docs", "Email"])
     #expect(c.kinds.map(\.duration) == ["3 h 20 m", "2 h", "1 h"])
     #expect(c.kinds.map(\.colorHex) == Array(DayGrid.palette.prefix(3)))
     #expect(c.did.map(\.name) == ["Reconcile invoices", "Review agent PRs"])
@@ -365,7 +365,7 @@ extension M311 {
     #expect(c.repeats.map(\.name) == ["Review agent PRs", "Reconcile invoices", "Customer follow-up"])
     #expect(c.repeats.map(\.count) == ["6× · 3.1 h", "3× · 1 h", "5× · 0.8 h"])
     #expect(c.repeats.allSatisfy { $0.strip == nil })
-    #expect(c.repeats.first?.how == "how: sum of the task's minutes = 186.0 min")
+    #expect(c.repeats.first?.how == "how: sum of the task's instances = 6.0 · sum of the task's minutes = 186.0 min")
   }
 
   @Test("CLOUD: zero active minutes builds no content")
