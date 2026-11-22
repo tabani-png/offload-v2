@@ -30,3 +30,13 @@ screenwatch archive on the Mac (stable file gate, recording names, fingerprint l
 app shows the folder summary and Import says it cannot read yet. `Sources/OffloadMac/Recordings/` holds screen 11's
 body, Settings, Recordings ("Recordings…" in the menu bar item) and the floating progress panel. Tests:
 `Tests/OffloadMacTests/M305/`.
+
+Recordings analysed on this Mac (slice m3-10): `Sources/OffloadMac/OnDevice/` makes the import real in the test build
+(Vision OCR, the interim masker with a local pseudonym key, `LocalImportSink` under
+`Application Support/Offload/OnDevice/`, the default recordings folders, `OnDeviceRecordings.make`);
+`Sources/OffloadMac/Analysis/` counts local insights in code (days, sessions, focus blocks, the things you repeat,
+local ranking, the weekly review answers kept on this Mac, `InsightsStore`, `InsightsModel`); `Sources/OffloadMac/Backend/`
+holds backend mode and the brain and builds clients (`.local` by default: no client exists); `Sources/OffloadMac/Navigation/`
+holds the sidebar shell (Today, Weekly review, Builds, Recordings, Settings), the Sample data label and the launch
+wiring. `TodayLive/`, `WeeklyReview/` and `BuildProgress/` start as placeholders owned by m3-11, m3-12 and m3-13.
+Tests: `Tests/OffloadMacTests/M310/`.

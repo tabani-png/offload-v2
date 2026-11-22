@@ -69,7 +69,8 @@ The full end-to-end sequence is in [section 19](#19-end-to-end-observe-to-measur
 
 Swift 6, SwiftUI, SwiftPM, macOS 14+ ([ADR 0024](adr/0024-client-stacks.md)). Capture, on-device masking, upload, UI,
 and an attended actuator for device steps ([ADR 0007](adr/0007-cloud-brain-thin-mac-client.md),
-[ADR 0025](adr/0025-execution-placement-and-mac-actuator.md)). It does no understanding, ranking or building.
+[ADR 0025](adr/0025-execution-placement-and-mac-actuator.md)). It does no understanding, ranking or building, except
+the **local insights** it counts in code in `.local` backend mode (below, slice m3-10).
 
 SwiftPM targets (empty markers today): `OffloadContracts` (generated types, JCS), `OffloadObserver`, `OffloadMasker`,
 `OffloadStore`, `OffloadUploader`, `OffloadImport`, `OffloadActuator`, and the app target `OffloadMac`. The observer
@@ -132,6 +133,24 @@ Parts:
   matched against the frame's OCR text (hosts, titles, private-window markers); app names come from the menu bar only
   when it is one and the masker leaves the name unchanged. Masked observations go to an `ImportSink`
   (`POST /v1/imports`, then the uploader with the `import_id`; forget scope `import`), slice m3-05.
+- **Backend mode** (m3-10): `.local` by default; `.cloud` only with an `https` API base URL (`UserDefaults`
+  `ai.offload.api.baseURL`) and a member token, which exists only after enrollment. In `.local` the brain and builds
+  clients do not exist, so no request can be built; in `.cloud` the screens read the brain (`/v1/profile`,
+  `/v1/records/…`, `/v1/review/…`) and builds (`/v1/opportunities`, `/v1/fixes/…`, `/v1/builds/…`) APIs over one
+  ephemeral session that refuses redirects, every request to the configured host only.
+- **Local insights** (m3-10, `.local` backend mode): the owner asked on 2026-11-22 for recordings to be analysed on
+  the Mac in the test build, so the import runs fully on the Mac: Vision OCR (`VisionTextRecognizer`), an **interim
+  masker** (`InterimTextMasker`, until m3-02's `OffloadMasker.TextMasker`), and `LocalImportSink`, which keeps an
+  import's masked observations in `Application Support/Offload/OnDevice/imports/<import_id>.jsonl` without the text
+  itself (only its hash), pixels, file names or paths. Local insights count, in code only, active time per day and per
+  app, sessions, focus blocks, switches, top apps and sites (host only) and the **things you repeat** (2 to 4 steps
+  of app, title shape and host, on 2 or more days, 3 or more times) with minutes per week, a confidence label and
+  evidence; they rank them with this section's factors done locally (minutes per week, persistence over 8 ISO weeks,
+  goal weight, confidence, decline penalty from the weekly review answers kept on this Mac). Every number is a
+  `Figure` with its arithmetic ([ADR 0003](adr/0003-numbers-come-from-code.md)); no model is called and nothing is
+  sent. Never watch is applied when insights are read, so a new entry applies without a new import. Only an import's
+  days are recomputed when it finishes or is removed. This diverges from [ADR 0007](adr/0007-cloud-brain-thin-mac-client.md)
+  for the test build; in `.cloud` mode the screens read the brain instead.
 - **Updates**: Sparkle with EdDSA signatures on a Developer ID signed, notarized app with a locked bundle id
   ([ADR 0024](adr/0024-client-stacks.md), [DEPLOYMENT.md](DEPLOYMENT.md)).
 
