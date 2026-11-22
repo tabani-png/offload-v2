@@ -9,7 +9,7 @@ to the end of the table.
 Milestones are the ones in [ROADMAP.md](ROADMAP.md).
 
 Status key: **open** (building on the default), **partly decided** (some parts answered, the rest open with
-defaults), **Decided 2026-11-14 (owner)** (answered in the owner's own words, quoted under the question), **answered**
+defaults), **Decided <date> (owner)** (answered in the owner's own words, quoted under the question), **answered**
 (settled by evidence or a standing rule).
 
 Owner answers on 2026-11-14 (decision pass D): OQ-13 (plan split), OQ-16 (b) (Apple enrolment), and three new entries
@@ -17,6 +17,8 @@ for answers that had no question yet: OQ-27 (public repo), OQ-28 (masked text to
 also changed the defaults of OQ-25 (a public repo should not use a self-hosted runner for PR jobs) and the urgency of
 OQ-11. OQ-11 was then answered the same day: MIT core, Offload Enterprise License for `ee/`
 ([ADR 0038](adr/0038-license-mit-core-commercial-ee.md)).
+
+Owner answer on 2026-11-22: OQ-30 (n8n), decided; it opened OQ-32 (n8n's written license confirmation).
 
 | # | Question | Status | Default or decision | Blocks |
 |---|---|---|---|---|
@@ -39,17 +41,18 @@ OQ-11. OQ-11 was then answered the same day: MIT core, Offload Enterprise Licens
 | [OQ-04](#oq-04-keyframes-to-the-cloud) | Masked keyframes to the cloud | open | opt-in, off by default | M5 |
 | [OQ-20](#oq-20-brand-logos-in-the-app) | Third-party brand logos in the app | open | monograms until reviewed | M5 (onboarding connect step) |
 | [OQ-31](#oq-31-masked-text-fields-in-build-sandboxes) | Masked text fields (mail bodies, notes) in build sandboxes | open | yes, only fields the brief marks `parse_text`, masked like screen text | M5 (m5-11 span tokenisation); until then text-parsing fixes rely on checks |
+| [OQ-32](#oq-32-written-license-confirmation-from-n8n) | Written license confirmation from n8n (export, push, hosted) | open | (b) export now; push built but off until n8n answers; hosted not built | M5 (switching m5-12 push on) |
 | [OQ-23](#oq-23-may-the-mac-client-run-deployed-fixes-locally) | Mac client runs device steps of deployed fixes | open | typed commands only, attended, per-step approval, from M6 | M6 |
 | [OQ-09](#oq-09-graduation-threshold) | Graduation threshold | open | 5 clean runs + your OK | M6 |
 | [OQ-14](#oq-14-optional-graphiti-adapter-and-graph-backend-licenses) | graphiti adapter in distribution | open | not shipped by default | M7 |
 | [OQ-13](#oq-13-plan-contents-and-prices) | Plan contents and prices | partly decided: split | single-player core free, multiplayer paid via Pro (decided); prices open | M8 (prices, billing) |
 | [OQ-15](#oq-15-monitoring-law-features-for-teams) | Per-person team features | open | Enterprise only, off by default | M8/M9 |
 | [OQ-18](#oq-18-which-cortexa) | Which Cortexa did you mean | open | cortexa.network | none |
-| [OQ-30](#oq-30-n8n-in-offload) | n8n in Offload | open | never hosted or shipped; your own n8n workflows only as MCP tools; no export | none (an n8n export would wait on it) |
 | [OQ-27](#oq-27-publish-the-repository-publicly) | Publish the repository publicly | Decided 2026-11-14 (owner) | public, as `tabani-png/offload-v2`; the operator pushes | none (operator pushes after the checklist) |
 | [OQ-28](#oq-28-masked-screen-text-to-the-cloud) | Masked screen text to the cloud | Decided 2026-11-14 (owner) | yes; pixels stay on the Mac by default | none |
 | [OQ-29](#oq-29-hosting-offload-cloud-and-self-host) | Hosting: Offload Cloud and self-host | Decided 2026-11-14 (owner) | both, at feature parity ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)) | none |
 | [OQ-11](#oq-11-license-for-the-core-and-for-ee) | License for core and `ee/` | Decided 2026-11-14 (owner) | MIT core + Offload Enterprise License for `ee/` (draft, legal review pending) ([ADR 0038](adr/0038-license-mit-core-commercial-ee.md)) | none (legal review before the first paid customer) |
+| [OQ-30](#oq-30-n8n-in-offload) | n8n in Offload | Decided 2026-11-22 (owner) | "Build worflow automation as an expert n8n engineer": workflow design rules, n8n export to your own n8n with optional push, own engine stays default, hosted n8n gated on OQ-32 | none |
 | [OQ-19](#oq-19-what-is-fable-52-and-should-it-shape-the-architecture) | What is Fable 5.2 | answered | Claude Fable 5.2, dev-time only (architecture and review) | none |
 
 ## OQ-16: Mac distribution and signing
@@ -406,26 +409,76 @@ Status: open.
 
 ## OQ-30: n8n in Offload
 
-Status: open. Raised 2026-11-22 by your ask ("maybe even through like n8n"); research in
-[workflow engines 2026-11](research/workflow-engines-2026-11.md), decision in
-[ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md).
+Status: **Decided 2026-11-22 (owner). Resolved.** Raised 2026-11-22 by your ask ("maybe even through like n8n");
+research in [workflow engines 2026-11](research/workflow-engines-2026-11.md), decision in
+[ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md) (still proposed).
 - **Question**: How far should Offload go with n8n? n8n's Sustainable Use License FAQ does not allow letting users
   have workflows built for them on n8n "via a custom UI, our API, MCP, or an AI agent acting on the user's behalf"
   without an Enterprise or OEM agreement, and n8n holds credentials itself, which bypasses Offload's gate and broker.
-- **Options**:
-  (a) n8n is never hosted, shipped or written to by Offload. A user may connect workflows they built in their own n8n
-  as MCP tools (n8n's MCP Server Trigger); their commits always ask.
-  (b) (a), plus "Export to your n8n": Offload turns a verified fix into n8n workflow JSON that the user imports into
-  their own n8n, labelled plainly as running outside Offload's gate, approvals and hours-saved measurement. Only
-  after n8n confirms in writing (license@n8n.io) that a third-party product may do this. You also decide whether the
-  export is core or `ee/`.
-  (c) Negotiate an n8n OEM or Enterprise agreement and run n8n for users. Not recommended: it still fails the
-  backend conformance suite (credentials and commits outside the broker and gate) and adds n8n and Redis to every
-  deploy.
-- **Recommended default**: (a). Nothing is built for (b) until you ask for it and n8n has answered.
-- **Blocks**: nothing now; an n8n export task would wait on it.
-- **Affects**: [ADR 0010](adr/0010-mcp-first-connectors.md), [ADR 0033](adr/0033-pinned-connector-resolution-and-launch-catalog.md),
+- **Options** (as asked): (a) never hosted, shipped or written to; your own n8n workflows only as MCP tools.
+  (b) (a), plus "Export to your n8n". (c) An n8n OEM or Enterprise agreement and n8n run by Offload for users.
+- **Answer** (owner's words, spelling kept): "Build worflow automation as an expert n8n engineer".
+- **Decision**: option (b), with three parts, and option (c) gated:
+  1. **Expert n8n practice becomes design rules.** The fix designer, the native routine definition and the n8n
+     export all follow eight workflow design rules: explicit triggers; small, single-purpose steps (nodes); error
+     workflows and error branches; per-step retries and timeouts; idempotent writes with dedupe keys; credentials by
+     reference only; pinned-data test runs; held-out acceptance checks that pass before activation. Each rule is a
+     lint rule with an issue code, so a definition or export that breaks one is refused
+     ([ADR 0039 section 3.4](adr/0039-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules);
+     slice [m5-10](../slices/m5-10-workflow-backend/SPEC.md), tag `RULES`).
+  2. **n8n export.** Offload turns a verified build into import-ready n8n workflow JSON that you run in your own n8n:
+     checked against Offload's schema of the n8n workflow file and a pinned node catalog (node types and
+     `typeVersion`s), with `pinData` from the tokenised fixtures and credentials as names you map on import. If you
+     connect your own n8n (an API key you give, kept by the credential broker), Offload can push it there, only under
+     a deploy approval whose hash binds the exact JSON
+     ([ADR 0039 section 9](adr/0039-routine-definition-v2-and-execution-backends.md#9-the-n8n-export);
+     slice [m5-12](../slices/m5-12-n8n-export/SPEC.md)). An exported workflow runs outside Offload's gate, item
+     journal, broker and hours-saved measurement, and the export card says so in words.
+  3. **Offload's own engine stays the default runtime.** "Offload builds and runs it inside n8n for you" (n8n hosted
+     by Offload) stays **gated** until n8n confirms the license position in writing; that is
+     [OQ-32](#oq-32-written-license-confirmation-from-n8n) and operator item O17.
+- **What it means for builders**: build the native backend and the design rules first (m5-10); build the export
+  after (m5-12). Neither hosts, ships or links n8n code; n8n node source is still never copied. The export is core
+  (MIT) under the rule that single-player features are core ([OPEN_CORE.md](OPEN_CORE.md#2-feature-split)); say if
+  you want it in `ee/` instead.
+- **Why the export differs from what the FAQ forbids**, in short (full reading in
+  [research section 3.1](research/workflow-engines-2026-11.md#31-n8n), checked 2026-11-22): the FAQ's limits bind a
+  licensee whose product runs on its own n8n ("Allow external end users to build or configure their own workflows
+  through your product"). In the export, Offload runs no n8n at all; you run your own self-hosted n8n under your own
+  license, for your own business. The push through your instance's API is closer to the FAQ's words ("our API ...
+  an AI agent acting on the user's behalf"), so it carries residual risk, recorded in OQ-32.
+- **Affects**: [ADR 0010](adr/0010-mcp-first-connectors.md), [ADR 0032](adr/0032-deploy-approval-binds-definition.md),
+  [ADR 0033](adr/0033-pinned-connector-resolution-and-launch-catalog.md),
+  [ADR 0034](adr/0034-credential-broker-and-key-providers.md),
   [ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md), [OPEN_CORE.md](OPEN_CORE.md).
+
+## OQ-32: Written license confirmation from n8n
+
+Status: open. Raised 2026-11-22 as the follow-up to [OQ-30](#oq-30-n8n-in-offload). **Owner action: ask n8n**
+(operator item O17).
+- **Question**: Will n8n confirm in writing (license@n8n.io, the contact its license FAQ gives "For licensing
+  questions") how the Sustainable Use License applies to three things?
+  1. **Export** (being built, m5-12): Offload generates n8n workflow JSON that a user imports into their own
+     self-hosted n8n.
+  2. **Push** (being built, m5-12, off until the user connects their instance): Offload calls the user's own n8n
+     public API with the user's own API key, after the user approves the exact JSON, to create and optionally publish
+     that workflow. Also: does the same hold for a user's n8n Cloud instance, which the FAQ says has "its own terms"?
+  3. **Hosted** (gated, not built): "Offload builds and runs it inside n8n for you" on n8n that Offload runs. What
+     agreement (OEM or Enterprise) and price would it need?
+- **Options**: (a) push is on for any user who connects their n8n, and we ask in parallel; (b) push is built but
+  ships switched off (`n8n_push` off) until n8n answers in writing, while the export file ships now; (c) hold both
+  export and push until n8n answers.
+- **Recommended default**: (b). The export file carries the least risk; push is built and tested, so switching it on
+  after the answer is a config change, and the risk is never live before the answer. Hosted stays unbuilt until the
+  answer and an agreement.
+- **Residual risk, stated plainly**: the FAQ's test is "who controls the workflow logic", and it is
+  "medium-neutral ... (UI, n8n API, MCP, or an AI agent acting for the user)". A reader at n8n could say the push lets
+  Offload's users configure workflows through Offload by API and an AI agent. Our reading is that the limits bind the
+  licensee of the n8n instance, and in the push the licensee is the user, building for their own business. That
+  reading is ours, not n8n's, and not legal advice. n8n Cloud's own terms were not found on 2026-11-22.
+- **Blocks**: switching push on for users (m5-12 ships it off); any hosted n8n path.
+- **Affects**: [ADR 0039 section 9](adr/0039-routine-definition-v2-and-execution-backends.md#9-the-n8n-export),
+  [research section 7](research/workflow-engines-2026-11.md#7-license-risks-stated-plainly).
 
 ## OQ-27: Publish the repository publicly
 
