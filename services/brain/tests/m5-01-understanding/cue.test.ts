@@ -53,3 +53,25 @@ test("CUE: a stand-in span with no text and no cue joins no task", async () => {
   expect(w.spans).toHaveLength(2);
   expect(w.tasks).toEqual([]);
 });
+
+test("CUE: a host needs a URL-bar shape: OCR words joined by a period are not hosts, and body lines name no app", () => {
+  for (const t of ["Meeting with Mr.Smith at noon", "Approved by J.Doe", "Thanks for the update.Regards", "Total due.Pay now", "see section 4.Overview", "thanks for the update.regards"]) {
+    expect(cueOf(t)).toEqual({});
+  }
+  // A URL bar: a scheme, www., or a lowercase host on a chrome line.
+  expect(cueOf("https://billing.example.com/inv")).toEqual({ host: "billing.example.com" });
+  expect(cueOf("app.ledgerly.example New bill")).toEqual({ host: "app.ledgerly.example" });
+  expect(cueOf("Weekly notes\nagenda items\nsee app.ledgerly.example later")).toEqual({});
+  // An app name opening line 3 or later is body text.
+  expect(cueOf("Weekly notes\nagenda items\nMail merge steps")).toEqual({});
+});
+
+test("CUE: a period-joined name in OCR text never becomes a span's or a task's host", async () => {
+  const r = rng(6);
+  const text = "Call notes with Mr.Smith about the invoice dispute";
+  const b = merge([0, 1].map((i) => recordingObservations({ start: utc(DAY) + (9 + i) * 3_600_000, segments: [{ ...NOISE[0]!, frames: [text, text] }] }, r)));
+  const w = await buildUnderstandingWindow({ timezone: "UTC", days: [DAY], observations: b.observations, texts: b.texts });
+  expect(w.spans.map((s) => s.host)).toEqual(["", ""]);
+  expect(w.tasks.map((t) => t.host)).toEqual(w.tasks.map(() => ""));
+  expect(JSON.stringify(w)).not.toMatch(/smith/i);
+});

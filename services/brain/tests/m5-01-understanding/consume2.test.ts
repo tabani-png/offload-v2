@@ -85,6 +85,12 @@ t("CONSUME: a failing event records its code, is rethrown, does not block the dr
   for (let i = 0; i < MAX_ATTEMPTS; i++) await drainUnderstanding(deps, { tenantId: a.tenantId });
   expect((await delivery(bad)).attempts).toBe(MAX_ATTEMPTS);
   expect(await db.deps.capture.pendingEvents(a.tenantId, 10)).toEqual([]);
+  // The durable path keeps the cap too: an exhausted event is not run again (nothing is read).
+  const before = fails;
+  const capped = await runUnderstanding(deps, bad);
+  expect([capped.status, capped.error]).toEqual(["failed", "attempts_exhausted"]);
+  expect(fails).toBe(before);
+  expect((await delivery(bad)).attempts).toBe(MAX_ATTEMPTS);
 });
 
 t("CONSUME: first_ts and last_ts in the event narrow the analysed days", async () => {
@@ -123,4 +129,37 @@ t("CONSUME: label route calls carry the event's tenant and member", async () => 
   await runUnderstanding(deps, await emitIngested(db, a, a.owner, a.devices.owner));
   await runUnderstanding(deps, await emitIngested(db, b, b.owner, b.devices.owner));
   expect(calls.map((c) => [c.tenant_id, c.member_id])).toEqual([[a.tenantId, a.owner], [b.tenantId, b.owner]]);
+});
+
+t("CONSUME: a live batch uploaded days late is analysed on its own days", async () => {
+  const a = db.fx.a;
+  const late = daysAgo(3);
+  // Live rows keep partition day = the UTC date of ts (DATA_MODEL section 5), here 3 days before the event.
+  await insertCapture(db, a, a.owner, a.devices.owner, invoiceImport([late], { perDay: 2, noise: false, source: "live" }), late);
+  const r = await runUnderstanding(db.deps, await emitIngested(db, a, a.owner, a.devices.owner));
+  expect(r.status).toBe("updated");
+  expect(r.days).toEqual([late]);
+});
+
+t("CONSUME: an event of a frozen member reads nothing", async () => {
+  const a = db.fx.a;
+  await insertCapture(db, a, a.member, a.devices.member, invoiceImport(DAYS, { perDay: 1, noise: false }), todayUtc());
+  await db.fx.admin.query("update members set state = 'frozen' where id = $1", [a.member]);
+  try {
+    expect((await runUnderstanding(db.deps, await emitIngested(db, a, a.member, a.devices.member))).status).toBe("unknown_member");
+  } finally {
+    await db.fx.admin.query("update members set state = 'active' where id = $1", [a.member]);
+  }
+});
+
+t("CONSUME: the analysed days are the member's timezone days", async () => {
+  const a = db.fx.a;
+  const ctx = { tenantId: a.tenantId, memberId: a.owner, principalId: a.owner, tenantRole: "owner" };
+  await db.deps.runBrain(ctx, (tx) => repo.saveProfile(tx, { ok: true, profile: { ...defaultProfile(), timezone: "America/New_York" }, added: [], archived: [] }));
+  const r2 = rng(78);
+  // 02:00 UTC on DAYS[1] is 21:00 on DAYS[0] in New York.
+  await insertCapture(db, a, a.owner, a.devices.owner, recordingObservations({ start: Date.parse(`${DAYS[1]}T02:00:00Z`), segments: [NOISE[0]!] }, r2), todayUtc());
+  const r = await runUnderstanding(db.deps, await emitIngested(db, a, a.owner, a.devices.owner));
+  expect(r.status).toBe("updated");
+  expect(r.days).toEqual([DAYS[0]!]);
 });

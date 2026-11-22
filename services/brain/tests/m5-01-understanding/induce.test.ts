@@ -131,3 +131,20 @@ test("INDUCE: a shared person pseudonym links steps only within 20 min", async (
   expect(await pair(5)).toBe(1);
   expect(await pair(180)).toBe(2);
 });
+
+test("INDUCE: back-to-back repetitions without docs split where the first step comes round again", async () => {
+  const r = rng(35);
+  const A: Segment = { app: app("com.apple.mail", "Mail", "Orders inbox"), seconds: 60, frames: ["Order from customer"] };
+  const B: Segment = { app: { bundle: "com.google.Chrome", name: "Google Chrome", title: "Orders", host: "shop.example" }, seconds: 60, frames: ["Create order shop"] };
+  const b = recordingObservations({ start: utc(DAYS[0]!) + 9 * 3_600_000, source: "live", segments: [A, B, A, B] }, r);
+  const w = await win(b, [DAYS[0]!]);
+  expect(w.tasks).toHaveLength(1);
+  expect(w.tasks[0]!.instances.map((i) => spanApps(w, i.spanIds).map((a) => (a === "com.apple.mail" ? "A" : "B")).join(""))).toEqual(["AB", "AB"]);
+});
+
+test("INDUCE: a stand-in task cued by its host only is named on that host, not on the stand-in app", async () => {
+  const w = await win(clips(["video.example pasta recipe tomato basil garlic", "video.example pasta recipe tomato basil garlic"], 36), [DAYS[0]!, DAYS[1]!]);
+  expect(w.tasks).toHaveLength(1);
+  expect(w.tasks[0]!.name).toBe("View on video.example");
+  expect(w.tasks[0]!.name).not.toContain("Screen");
+});
