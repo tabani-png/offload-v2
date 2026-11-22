@@ -323,7 +323,7 @@ extension M310 {
     _ = WeeklyReviewScreen(app: app)
     _ = WeeklyReviewSettings(app: app)
     _ = BuildProgressScreen(app: app)
-    _ = RecordingsScreen(app: app)
+    _ = RecordingsShellScreen(app: app)
     _ = SettingsScreen(app: app)
     _ = ShellView(app: app)
     _ = AppWindowView(app: app)

@@ -177,7 +177,7 @@ on a Mac with the m3-09 test build.
     unchanged. `ShellView` presents the Never watch sheet itself (the menu bar entry works on every screen).
   - Screens: `TodayLiveScreen(app:)` (placeholder in `TodayLive/`, shows m3-04's `TodayView` as today; m3-11 owns it),
     `WeeklyReviewScreen(app:)` and `WeeklyReviewSettings(app:)` (placeholders in `WeeklyReview/`; m3-12 owns them),
-    `BuildProgressScreen(app:)` (placeholder in `BuildProgress/`; m3-13 owns it), `RecordingsScreen(app:)` (m3-05's
+    `BuildProgressScreen(app:)` (placeholder in `BuildProgress/`; m3-13 owns it), `RecordingsShellScreen(app:)` (m3-05's
     `RecordingsSettingsView`, the default folder candidates and the local insights done line) and
     `SettingsScreen(app:)` (backend mode in words, the Recordings section, `WeeklyReviewSettings`).
   - `DataProvenance` and `SampleDataLabel`: a screen whose data is `.sample` shows the label **"Sample data: cloud
