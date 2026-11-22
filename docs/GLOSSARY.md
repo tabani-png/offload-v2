@@ -115,6 +115,10 @@ Conventions:
 | Term | Meaning |
 |---|---|
 | **Span** | A continuous focus interval on one app, title and host, idle removed. |
+| **Understanding** | The brain step that turns ingested observations and their masked text into spans, span descriptions, embeddings and tasks (slice m5-01). Runs once per `observations.ingested` event (consumer `workflow:understanding`). |
+| **Understanding window** | What understanding hands the user model for one member and a run of days: spans, tasks and their instances (`UnderstandingWindow`). Masked; no text snapshot content. |
+| **Span description** | Rules-first verb, object, pseudonyms and content words of a span, from its masked title and text; the `label` route may fill a missing verb or object from fixed vocabularies. |
+| **Stand-in app** | The app a recording gets when no macOS menu bar names one (`recording.*`, `screenwatch.screen`, shown as "Screen"). Understanding takes app and host cues from its masked window chrome and URL-bar text. |
 | **Task** | A group of spans with one goal, found by task induction. |
 | **Task instance** | One occurrence of a task. |
 | **Task key** | A stable id for a task across weeks (`k_` + 12 hex). Kept in the **task ledger**. |
