@@ -22,35 +22,43 @@ public struct BuildProgressScreen: View {
     HStack(spacing: 0) {
       BuildsListView(model: model)
       Rectangle().fill(Theme.rule).frame(width: 1).accessibilityHidden(true)
-      ScrollView {
-        VStack(alignment: .leading, spacing: Tokens.Space.s16) {
-          // The label is first, above everything the sample shows, and stays there.
+      VStack(alignment: .leading, spacing: 0) {
+        // The label is first, above everything the sample shows, and stays there: outside the scrolling content
+        // (review4.md finding 5).
+        if model.provenance.label != nil {
           ProvenanceLabel(model.provenance)
-          if let notice = model.notice {
-            Text(notice).textStyle(Tokens.TypeScale.body).foregroundStyle(Theme.ink)
-              .fixedSize(horizontal: false, vertical: true)
-              .accessibilityIdentifier("builds.notice")
-          }
-          if let line = model.connectionLine {
-            Text(line).textStyle(Tokens.TypeScale.callout).foregroundStyle(Theme.ink2)
-              .accessibilityIdentifier("builds.connection")
-          }
-          if let plan = model.plan {
-            PlanPanelView(model: model, plan: plan)
-          }
-          if let detail = model.detail {
-            BuildDetailView(model: model, detail: detail, reduceMotion: reduceMotion)
-            if model.isLocal {
-              Button(BuildCopy.replay) { model.replaySample() }
-                .buttonStyle(SecondaryButtonStyle())
-                .accessibilityIdentifier("builds.replay")
-            }
-          } else if let row = model.builds.first(where: { $0.id == model.selected }), row.canRemove {
-            Text(BuildCopy.gone).textStyle(Tokens.TypeScale.body).foregroundStyle(Theme.ink2)
-          }
+            .padding(.horizontal, Tokens.Space.s32)
+            .padding(.top, Tokens.Space.s24)
         }
-        .padding(Tokens.Space.s32)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        ScrollView {
+          VStack(alignment: .leading, spacing: Tokens.Space.s16) {
+            if let notice = model.notice {
+              Text(notice).textStyle(Tokens.TypeScale.body).foregroundStyle(Theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("builds.notice")
+            }
+            if let line = model.connectionLine {
+              Text(line).textStyle(Tokens.TypeScale.callout).foregroundStyle(Theme.ink2)
+                .accessibilityIdentifier("builds.connection")
+            }
+            if let plan = model.plan {
+              PlanPanelView(model: model, plan: plan)
+            }
+            if let detail = model.detail {
+              BuildDetailView(model: model, detail: detail, reduceMotion: reduceMotion)
+              if model.isLocal {
+                Button(BuildCopy.replay) { model.replaySample() }
+                  .buttonStyle(SecondaryButtonStyle())
+                  .accessibilityIdentifier("builds.replay")
+              }
+            } else if let row = model.builds.first(where: { $0.id == model.selected }), row.canRemove {
+              Text(BuildCopy.gone).textStyle(Tokens.TypeScale.body).foregroundStyle(Theme.ink2)
+            }
+          }
+          .padding(Tokens.Space.s32)
+          .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

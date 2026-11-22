@@ -211,7 +211,8 @@ public struct BuildDetailView: View {
         }
         if let saving = detail.saving { CaptionLine(saving.text) }
       }
-      .opacity(ready || model.installState.installed != nil ? 1 : 0.4)
+      // Faded once: each disabled button is faded by ActionLook, the row is not faded again, so the saving caption
+      // keeps its contrast (review4.md finding 6).
       .offset(y: ready || reduceMotion ? 0 : 4)
       .animation(reduceMotion ? nil : .easeOut(duration: Tokens.Duration.slow), value: ready)
       if let line = model.installLine {
@@ -374,9 +375,13 @@ struct PlanPanelView: View {
             .opacity(ActionLook.opacity(enabled: model.canOKBuild))
         }
       }
-      // In every phase but starting, so a plan no longer wanted can be dropped (review3.md finding 4).
-      if model.canDismissPlan {
-        Button(BuildCopy.notNow) { model.dismissPlan() }
+      // Not now posts the glossary's answer while the plan waits or is ready; Close only hides a stopped plan
+      // (review3.md finding 4, review4.md finding 3).
+      if model.canSetAside {
+        Button(BuildCopy.notNow) { Task { await model.setAside() } }
+          .buttonStyle(SecondaryButtonStyle())
+      } else if model.canClosePlan {
+        Button(BuildCopy.close) { model.closePlan() }
           .buttonStyle(SecondaryButtonStyle())
       }
       if let message = plan.message {
