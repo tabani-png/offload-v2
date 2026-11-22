@@ -66,6 +66,24 @@ if (BROKER && CLIENT) {
   };
   (Bun as any).spawnSync = (a: any, b?: any) => realSync(request(a, b));
   (Bun as any).spawn = (a: any, b?: any) => realSpawn(request(a, b));
+  // Every other way to start a process would run the tool as this (the check's) user, who can read the check. The
+  // linter refuses them (checks.ts); here they throw at run time too (review round 5). Patched through require, before
+  // the check loads, so its imports see the patched functions.
+  const refuse = (what: string) => () => { throw new Error("the check may start the built tool only with Bun.spawn or Bun.spawnSync, not " + what); };
+  const pin = (o: any, k: string, v: unknown) => { try { Object.defineProperty(o, k, { value: v, writable: false, configurable: false }); } catch { try { o[k] = v; } catch {} } };
+  pin(Bun, "$", refuse("Bun.$"));
+  const cp = require("node:child_process");
+  for (const k of ["spawn", "spawnSync", "exec", "execSync", "execFile", "execFileSync", "fork"]) pin(cp, k, refuse("child_process." + k));
+  pin(process, "dlopen", refuse("process.dlopen"));
+  pin(globalThis, "Worker", refuse("Worker"));
+  const gbm = (process as any).getBuiltinModule?.bind(process);
+  if (gbm) {
+    pin(process, "getBuiltinModule", (id: string) => {
+      const name = String(id).replace(/^node:/, "");
+      if (name === "worker_threads" || name === "cluster") refuse(name)();
+      return gbm(id);
+    });
+  }
 }
 plugin({
   name: "offload-check-guard",

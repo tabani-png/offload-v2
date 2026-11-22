@@ -398,21 +398,27 @@ describe("p45a held-out check isolation (review 3 finding 1)", () => {
 
   // review round 5 finding 3: the linter is not the only guard. Under the split, every process API other than the
   // routed Bun.spawn / Bun.spawnSync throws at run time, so a check that slipped past the linter cannot start the tool
-  // as the check's own user (who can read the check).
+  // as the check's own user (who can read the check). (Bun's child_process is built on Bun.spawn, so it reaches the
+  // broker anyway; the guard refuses it outright all the same, and each case pins its refusal.)
   const EDGE = 'expect(String(out).trim()).toBe("zq-7781-unguessable");';
   const BYPASSES: Array<[string, string]> = [
     ["const { $ } = Bun", 'const { $ } = Bun; const out = await $`${process.execPath} run tool.ts edge`.text();'],
     ['Bun["$"]', 'const out = await Bun["$"]`${process.execPath} run tool.ts edge`.text();'],
+    ['$ from "bun"', 'const { $ } = await import("bun"); const out = await $`${process.execPath} run tool.ts edge`.text();'],
     ["process.getBuiltinModule", 'const out = process.getBuiltinModule("node:child_process").execFileSync(process.execPath, ["run", "tool.ts", "edge"]);'],
     ["require(child_process)", 'const out = require("node:child_process").spawnSync(process.execPath, ["run", "tool.ts", "edge"]).stdout;'],
     ["import child_process", 'const out = (await import("node:child_process")).execFileSync(process.execPath, ["run", "tool.ts", "edge"]);'],
+    ["getBuiltinModule(worker_threads)", 'const wt = process.getBuiltinModule("node:worker_threads"); const out = String(wt);'],
   ];
   test.skipIf(!sudoOk)("SHARDS: (privileged) a check that starts the tool outside Bun.spawn/spawnSync (past the linter) cannot pass with a tool that reads the check", async () => {
-    for (const [name, body] of BYPASSES) {
-      const check = `import { expect, test } from "bun:test";\ntest("edge", async () => { ${body} ${EDGE} });\n`;
-      const r = await privileged(check, [file("tool.ts", CHEAT_TOOL)]);
-      expect([name, r.proof?.split, r.proof?.status, r.passed]).toEqual([name, true, "fail", false]);
-    }
+    const got = await Promise.all(
+      BYPASSES.map(async ([name, body]) => {
+        const check = `import { expect, test } from "bun:test";\ntest("edge", async () => { ${body} ${EDGE} });\n`;
+        const r = await privileged(check, [file("tool.ts", CHEAT_TOOL)]);
+        return [name, r.proof?.split, r.proof?.status, r.passed, r.output.includes("only with Bun.spawn or Bun.spawnSync") ? "refused" : "-"];
+      }),
+    );
+    expect(got).toEqual(BYPASSES.map(([name]) => [name, true, "fail", false, "refused"]));
   }, 120_000);
 
   test.skipIf(!sudoOk)("SHARDS: (privileged) the broker refuses a tool command outside the workspace", async () => {

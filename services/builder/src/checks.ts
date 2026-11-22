@@ -86,6 +86,11 @@ const PROCESS_PATTERNS: Array<[RegExp, string]> = [
   [/\bimport\s*\{[^}]*\$[^}]*\}\s*from\s*["']bun["']/, "$ from bun"],
   [/\bnew\s+Worker\s*\(/, "new Worker()"],
   [/\bprocess\s*\.\s*(?:dlopen|binding|_linkedBinding)\b/, "process.dlopen/binding"],
+  // review round 5: the other ways to reach the same APIs (the guard also makes them throw at run time)
+  [/\bgetBuiltinModule\b/, "process.getBuiltinModule"],
+  [/\bBun\s*\[/, "Bun[...]"],
+  [/\}\s*=\s*(?:globalThis\s*\.\s*)?Bun\b/, "destructuring from Bun"],
+  [/[=(,:]\s*(?:globalThis\s*\.\s*)?Bun\s*[;,)\n]/, "an alias of Bun"],
 ];
 
 export function disallowedProcessApi(content: string): string | null {
