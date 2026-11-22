@@ -9,6 +9,10 @@
 #   SLICE_UPSTREAM, the slice was scope-checked when it merged and SLICE_FILES is empty. All-zero means unset.
 # Stacked slices: if slices/$SLICE_ID/SPEC.md is status: done and a commit in BASE..HEAD set it, the range ends at
 #   that commit and uncommitted changes are ignored, so later slices on the same branch are not blamed on it.
+# Squash landings: if that commit also carries another slice whose SPEC it touches and that is in_progress there or
+#   set done in it too (so that slice's own verify.sh scope-checks this commit), the files of that commit inside the
+#   other slice's paths_in_scope and outside its paths_out_of_scope are its, not this slice's, unless this slice also
+#   changed them in an earlier commit of its range. Any other file this slice changed is still counted.
 _slice_status() {  # status in the front-matter of the SPEC text on stdin
   awk 'NR==1 && $0!="---"{exit} NR>1 && $0=="---"{exit} NR>1{print}' \
     | sed -n 's/^status:[[:space:]]*//p' | sed 's/[[:space:]]*$//' | head -1
@@ -21,6 +25,43 @@ _slice_done_commit() {
     [ "$(git show "$c^:$spec" 2>/dev/null | _slice_status)" = "done" ] && continue
     echo "$c"; return 0
   done
+}
+# _slice_globs KEY: the list KEY in the front-matter of the SPEC text on stdin, as verify.sh reads it (** becomes *).
+_slice_globs() {
+  awk 'NR==1 && $0!="---"{exit} NR>1 && $0=="---"{exit} NR>1{print}' \
+    | sed -n "s/^$1:[[:space:]]*//p" | head -1 | tr -d '[]' | tr ',' ' ' | sed 's#\*\*#*#g'
+}
+# _slice_co_landed C: sets SLICE_CO_LANDED (other slice ids landing in commit C, space separated) and
+# SLICE_CO_LANDED_FILES (files changed in C in their paths_in_scope and not in their paths_out_of_scope, sorted).
+_slice_co_landed() {
+  local c="$1" changed other spec st inc exc p g hit out="" ids=""
+  changed="$(git diff-tree --no-commit-id --no-renames --name-only -r "$c" 2>/dev/null)"
+  for other in $(printf '%s\n' "$changed" | sed -n 's#^slices/\([^/]*\)/.*#\1#p' | LC_ALL=C sort -u); do
+    [ "$other" = "$SLICE_ID" ] || [ "$other" = "_template" ] && continue
+    spec="$(git show "$c:slices/$other/SPEC.md" 2>/dev/null)" || continue
+    st="$(printf '%s\n' "$spec" | _slice_status)"
+    case "$st" in
+      in_progress) ;;
+      done) [ "$(git show "$c^:slices/$other/SPEC.md" 2>/dev/null | _slice_status)" = "done" ] && continue ;;
+      *) continue ;;
+    esac
+    inc="$(printf '%s\n' "$spec" | _slice_globs paths_in_scope)"
+    exc="$(printf '%s\n' "$spec" | _slice_globs paths_out_of_scope)"
+    ids="$ids${ids:+ }$other"
+    set -f
+    while IFS= read -r p; do
+      [ -n "$p" ] || continue
+      hit=0
+      for g in $inc; do case "$p" in $g) hit=1 ;; esac; done
+      for g in $exc; do case "$p" in $g) hit=0 ;; esac; done
+      [ $hit -eq 1 ] && out="$out$p
+"
+    done <<< "$changed"
+    set +f
+  done
+  SLICE_CO_LANDED="$ids"
+  SLICE_CO_LANDED_FILES="$(printf '%s' "$out" | grep -v '^$' | LC_ALL=C sort -u)"
+  return 0
 }
 slice_files() {
   SLICE_FILES=""; SLICE_ERROR=""
@@ -61,6 +102,24 @@ slice_files() {
       || { SLICE_ERROR="git log failed"; return 1; }
   else
     committed="$(git diff --no-renames --name-only "$base..$end" 2>/dev/null)" || { SLICE_ERROR="git diff failed"; return 1; }
+  fi
+  if [ "$end" != "HEAD" ]; then
+    local theirs earlier
+    _slice_co_landed "$end"; theirs="$SLICE_CO_LANDED_FILES"
+    if [ -n "$theirs" ]; then
+      if [ -n "$up" ]; then
+        earlier="$(git log --no-merges --no-renames --name-only --format= "$base..$end^" "^$up" 2>/dev/null)"
+      else
+        earlier="$(git diff --no-renames --name-only "$base..$end^" 2>/dev/null)"
+      fi
+      # Drop the other slices' files unless this slice also changed them in an earlier commit.
+      earlier="$(printf '%s\n' "$earlier" | grep -v '^$' | LC_ALL=C sort -u)"
+      theirs="$(LC_ALL=C comm -23 <(printf '%s\n' "$theirs") <(printf '%s\n' "$earlier"))"
+      committed="$(printf '%s\n' "$committed" | grep -v '^$' | LC_ALL=C sort -u)"
+      committed="$(LC_ALL=C comm -23 <(printf '%s\n' "$committed") <(printf '%s\n' "$theirs"))"
+      [ -n "$theirs" ] && echo "scope: that commit also lands $SLICE_CO_LANDED;" \
+        "$(printf '%s\n' "$theirs" | grep -c .) of its path(s) are theirs (checked by their verify.sh), not $SLICE_ID's"
+    fi
   fi
   if [ "$end" = "HEAD" ]; then
     uncommitted="$(git diff --no-renames --name-only HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null)"
