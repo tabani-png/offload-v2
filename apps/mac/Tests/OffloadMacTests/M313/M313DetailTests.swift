@@ -367,7 +367,7 @@ extension M313 {
     #expect(SampleBuild.finalCostUSD == 0.84)
     #expect(SampleBuild.testsWritten == SampleTimeline.workers.reduce(0) { $0 + $1.total })
     #expect(SampleBuild.testsWritten == 47)
-    let allowed: Set<String> = ["6", "12", "0.84", "4.00", "47", "7", "41", "2", "1.4", "4", "8"]
+    let allowed = Set<String>(["6", "12", "0.84", "4.00", "47", "7", "41", "2", "1.4", "4", "8"])
       .union(SampleTimeline.workers.map { "\($0.total)" })
     let found = Self.numbers(detail.allText)
     #expect(found.isSubset(of: allowed), "unexpected numbers: \(found.subtracting(allowed))")
