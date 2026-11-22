@@ -166,6 +166,27 @@ public enum BuildCopy {
     }
   }
 
+  // MARK: Words read by VoiceOver
+
+  public static func dotWord(_ dot: StatusDot) -> String {
+    switch dot {
+    case .waiting: return "waiting"
+    case .working: return "working"
+    case .needsYou: return "needs you"
+    case .done: return "done"
+    case .failedCheck: return "failed"
+    }
+  }
+
+  public static func stepWord(_ status: StepStatus) -> String {
+    switch status {
+    case .waiting: return "waiting"
+    case .working: return "working"
+    case .done: return "done"
+    case .failed: return "failed"
+    }
+  }
+
   // MARK: Errors in words
 
   /// One plain sentence per `APIError`. A `policy_denied` shows the server's message as given (the client has
@@ -229,7 +250,8 @@ public enum BuildCopy {
          "forbidden", "budget_exceeded", "rate_limited", "server_error", "schema_invalid"].map {
       APIError.server(status: 400, code: APIErrorCode(raw: $0), message: "", requestID: nil, ruleID: nil)
     }
-    return fixed + built + states.map { stateWord($0, deployed: false) } + [stateWord(.ready, deployed: true)]
+    let dots: [StatusDot] = [.waiting, .working, .needsYou, .done, .failedCheck]
+    return fixed + built + dots.map(dotWord) + states.map { stateWord($0, deployed: false) } + [stateWord(.ready, deployed: true)]
       + errors.map { sentence(for: $0) }
   }
 

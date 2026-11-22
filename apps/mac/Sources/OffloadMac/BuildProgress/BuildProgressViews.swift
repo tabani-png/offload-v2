@@ -16,15 +16,7 @@ extension StatusDot {
     }
   }
 
-  var accessibilityWord: String {
-    switch self {
-    case .waiting: return "waiting"
-    case .working: return "working"
-    case .needsYou: return "needs you"
-    case .done: return "done"
-    case .failedCheck: return "failed"
-    }
-  }
+  var accessibilityWord: String { BuildCopy.dotWord(self) }
 }
 
 enum BuildProgressColors {
@@ -81,31 +73,37 @@ struct BuildRowView: View {
   let choose: () -> Void
   let remove: () -> Void
 
+  // Remove from list sits beside the row's button, not inside it, so a click and VoiceOver reach it (review 1,
+  // finding 2).
   var body: some View {
-    Button(action: choose) {
-      HStack(alignment: .top, spacing: Tokens.Space.s8) {
-        StatusDotView(dot: row.dot).padding(.top, 5)
-        VStack(alignment: .leading, spacing: Tokens.Space.s4) {
-          Text(row.name).textStyle(Tokens.TypeScale.label).foregroundStyle(Theme.ink).lineLimit(2)
-          Text(row.line).textStyle(Tokens.TypeScale.caption).foregroundStyle(Theme.muted)
-            .fixedSize(horizontal: false, vertical: true)
-          if let started = row.started {
-            Text(started).textStyle(Tokens.TypeScale.caption).foregroundStyle(Theme.muted)
+    VStack(alignment: .leading, spacing: Tokens.Space.s4) {
+      Button(action: choose) {
+        HStack(alignment: .top, spacing: Tokens.Space.s8) {
+          StatusDotView(dot: row.dot).padding(.top, 5)
+          VStack(alignment: .leading, spacing: Tokens.Space.s4) {
+            Text(row.name).textStyle(Tokens.TypeScale.label).foregroundStyle(Theme.ink).lineLimit(2)
+            Text(row.line).textStyle(Tokens.TypeScale.caption).foregroundStyle(Theme.muted)
+              .fixedSize(horizontal: false, vertical: true)
+            if let started = row.started {
+              Text(started).textStyle(Tokens.TypeScale.caption).foregroundStyle(Theme.muted)
+            }
           }
-          if row.canRemove {
-            Button(BuildCopy.removeFromList, action: remove).buttonStyle(SecondaryButtonStyle())
-          }
+          Spacer(minLength: 0)
         }
-        Spacer(minLength: 0)
+        .contentShape(Rectangle())
       }
-      .padding(Tokens.Space.s8)
-      .background(RoundedRectangle(cornerRadius: Tokens.Radius.control).fill(selected ? Color.white : Color.clear))
-      .contentShape(Rectangle())
+      .buttonStyle(.plain)
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel("\(row.name), \(row.line)")
+      .accessibilityAddTraits(selected ? .isSelected : [])
+      if row.canRemove {
+        Button(BuildCopy.removeFromList, action: remove).buttonStyle(SecondaryButtonStyle())
+          .padding(.leading, Tokens.Space.s16)
+      }
     }
-    .buttonStyle(.plain)
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel("\(row.name), \(row.line)")
-    .accessibilityAddTraits(selected ? .isSelected : [])
+    .padding(Tokens.Space.s8)
+    .background(RoundedRectangle(cornerRadius: Tokens.Radius.control).fill(selected ? Color.white : Color.clear))
+    .accessibilityElement(children: .contain)
   }
 }
 
@@ -249,14 +247,7 @@ struct StepRowView: View {
 
   var symbol: String { step.status == .failed ? "xmark" : "checkmark" }
   var tint: Color { step.status == .failed ? BuildProgressColors.failed : Theme.done }
-  var word: String {
-    switch step.status {
-    case .waiting: return "waiting"
-    case .working: return "working"
-    case .done: return "done"
-    case .failed: return "failed"
-    }
-  }
+  var word: String { BuildCopy.stepWord(step.status) }
 }
 
 struct AttemptRowView: View {
@@ -371,7 +362,6 @@ struct PlanPanelView: View {
           Button(BuildCopy.okBuild) { Task { await model.okBuild() } }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!model.canOKBuild)
-            .keyboardShortcut(.defaultAction)
           Button(BuildCopy.notNow) { model.dismissPlan() }
             .buttonStyle(SecondaryButtonStyle())
         }

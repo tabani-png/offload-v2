@@ -217,5 +217,13 @@ sheet?" (m5-06); any change to m3-10's folders.
   - The meter's elapsed time is recomputed on each poll (every 2 s while live), not every second.
   - Views (`BuildProgressViews.swift`, `BuildProgressScreen.swift`) are not unit tested; everything they show comes
     from the tested model and pure types.
+- **Review 1** (an independent Opus read; nothing compiled on Linux): fixed a test that would not compile
+  (`figuresSample` built its allowed numbers as an array); Remove from list moved out of the row's button so a click
+  and VoiceOver reach it; the VoiceOver dot and step words moved into `BuildCopy`; a later hand-off cancels an earlier
+  one before it answers anything; only an offline read says "Can't reach Offload. Retrying." (other failures in their
+  own words); `needs_connection` without apps keeps designing; Return no longer presses OK, build (an approval needs
+  a deliberate click). Left for the owner: the Contract's "the Mac formats them only" for hs-1 numbers versus the
+  measured line computed as `ratio` × `estimated_minutes_per_week` ÷ 60 (Design note), until the outcome carries a
+  measured-per-week Figure.
 - `BASE` is set after m3-10 is `done`, so m3-10's placeholder commit in `BuildProgress/` is not counted against this
   slice's `owns`.

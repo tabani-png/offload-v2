@@ -266,10 +266,15 @@ public final class BuildProgressModel: ObservableObject {
     sampleTask = nil
   }
 
+  /// Checks for cancellation after every wait: a later hand-off cancels this one, which then posts nothing
+  /// (review 1, finding 4).
   private func startCloud(_ pending: BuildRequest?) async {
+    guard !Task.isCancelled else { return }
     await refresh()
+    guard !Task.isCancelled else { return }
     if case .opportunity(let id, let optionID)? = pending {
       await startPlan(opportunityID: id, optionID: optionID)
+      guard !Task.isCancelled else { return }
       restartPlanLoop()
     }
     restartPolling()
@@ -285,7 +290,7 @@ public final class BuildProgressModel: ObservableObject {
     }
     guard let client else { return }
     let records = store.records()
-    var offline = false
+    var failure: (any Error)?
     for record in records {
       do {
         let build = try await client.build(id: record.buildID)
@@ -295,10 +300,10 @@ public final class BuildProgressModel: ObservableObject {
         gone.insert(record.buildID)
         cache[record.buildID] = nil
       } catch {
-        offline = true
+        failure = error
       }
     }
-    connectionLine = offline ? BuildCopy.offline : nil
+    connectionLine = failure.map { connectionWords($0) }
     rebuildRows()
     if selected == nil || !records.contains(where: { $0.buildID == selected }) {
       selected = records.first(where: { !gone.contains($0.buildID) })?.buildID ?? records.first?.buildID
@@ -460,6 +465,7 @@ public final class BuildProgressModel: ObservableObject {
                      line: BuildCopy.answering, message: nil, startedAt: now())
     do {
       let opportunity = try await client.answerOpportunity(id: opportunityID, answer: .build, optionID: optionID)
+      guard plan?.opportunityID == opportunityID else { return }
       await apply(opportunity)
     } catch {
       stopPlan(words(error))
@@ -527,6 +533,11 @@ public final class BuildProgressModel: ObservableObject {
     case .needsConnection where !opportunity.missingConnections.isEmpty:
       p.phase = .needsConnection(opportunity.missingConnections)
       p.line = BuildCopy.connectFirst(opportunity.missingConnections)
+      plan = p
+    case .needsConnection:
+      // No apps named: keep designing, never read the fix while a connection is missing (review 1, finding 6).
+      p.phase = .designing
+      p.line = BuildCopy.designing
       plan = p
     default:
       plan = p
@@ -755,6 +766,13 @@ public final class BuildProgressModel: ObservableObject {
   }
 
   // MARK: Words
+
+  /// "Can't reach Offload. Retrying." only when the Mac is offline; any other failure in its own words (review 1,
+  /// finding 5).
+  private func connectionWords(_ error: any Error) -> String {
+    if let e = error as? APIError, !e.isOffline { return BuildCopy.sentence(for: e) }
+    return BuildCopy.offline
+  }
 
   private func words(_ error: any Error) -> String {
     if let e = error as? APIError { return BuildCopy.sentence(for: e) }
