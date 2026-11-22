@@ -3,7 +3,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { collectFigures } from "../../src/records/figure.ts";
 import { getDayRecord, listOpportunities, loadPropositions, markSourcePurged, resolveFigure, saveEpisodes, saveLedger } from "../../src/store/repository.ts";
 import { applyProfilePatch } from "../../src/profile/profile.ts";
-import { getProfile, saveProfile } from "../../src/store/repository.ts";
+import { randomUUID } from "node:crypto";
+import { applyAnswerToOpportunity, getProfile, getWeekRecord, LeakError, saveProfile, setWeekNarrative } from "../../src/store/repository.ts";
 import { runMemberUpdate } from "../../src/store/job.ts";
 import { MEMBER_ISOLATED_TABLES } from "../../src/store/migrate.ts";
 import { fixtureWeek, mondayNoonAfter, MONDAYS, SEED } from "../fixtures/window.ts";
@@ -131,5 +132,40 @@ describe.skipIf(!HAS_DB)("p43b storage rules", () => {
     await db.run(db.B1, (tx) => runMemberUpdate(tx, { window: ok.window, now: mondayNoonAfter(MONDAYS[0]), workspaceId: db.workspaceB, estimateFor }));
     const m = await db.sql.unsafe(`SELECT count(*)::int AS n FROM ${db.schema}.day_records WHERE member_id = $1`, [db.B1.memberId]);
     expect(m[0].n).toBeGreaterThan(0);
+  });
+
+  test("STORE: setWeekNarrative refuses any link, including host names on code-like suffixes; the stored sentence is unchanged", async () => {
+    const before = (await db.run(db.A1, (tx) => getWeekRecord(tx, "2026-W45")))!.narrative;
+    for (const s of ["A steady week; see evil.example.", "A steady week; try evil.sh for tips.", "A steady week; see 203.0.113.9."]) {
+      const err = await db.run(db.A1, (tx) => setWeekNarrative(tx, "2026-W45", s)).then(() => null, (e: unknown) => e);
+      expect({ s, leak: err instanceof LeakError }).toEqual({ s, leak: true });
+    }
+    expect((await db.run(db.A1, (tx) => getWeekRecord(tx, "2026-W45")))!.narrative).toBe(before);
+  });
+
+  test("STORE: a review answer never moves an opportunity that has left the review states", async () => {
+    const opp = (await db.run(db.A1, (tx) => listOpportunities(tx, "2026-W45")))[0]!;
+    await db.sql.unsafe(`UPDATE ${db.schema}.opportunities SET state = 'chosen' WHERE id = $1`, [opp.id]);
+    const answer = { iso_week: "2026-W45", subject_key: opp.task_key, question_kind: "opportunity" as const, answer: "never" as const, goal_id: null, answered_at: "2026-11-09T12:00:00.000Z" };
+    await db.run(db.A1, (tx) => applyAnswerToOpportunity(tx, answer));
+    const after = (await db.run(db.A1, (tx) => listOpportunities(tx, "2026-W45"))).find((o) => o.id === opp.id)!;
+    expect(after.state).toBe("chosen");
+  });
+
+  test("STORE: the job changes nothing while learning is paused", async () => {
+    const id = randomUUID();
+    const paused = { tenantId: db.A1.tenantId, memberId: id, principalId: id, tenantRole: "owner" };
+    await db.run(paused, async (tx) => {
+      const r = applyProfilePatch(await getProfile(tx), {}, Date.UTC(2026, 9, 1));
+      if (!r.ok) throw new Error(r.message);
+      await saveProfile(tx, { ...r, profile: { ...r.profile, learning_paused: true } });
+    });
+    const fx = fixtureWeek(MONDAYS[0], { seed: SEED });
+    const res = await db.run(paused, (tx) => runMemberUpdate(tx, { window: fx.window, now: mondayNoonAfter(MONDAYS[0]), workspaceId: db.workspaceA, estimateFor }));
+    expect(res).toMatchObject({ paused: true, days: [], weeks: [], ranked: 0 });
+    for (const t of ["day_records", "episodes", "propositions", "task_ledger", "week_records", "opportunities"]) {
+      const n = await db.sql.unsafe(`SELECT count(*)::int AS n FROM ${db.schema}.${t} WHERE member_id = $1`, [id]);
+      expect({ t, n: n[0].n }).toEqual({ t, n: 0 });
+    }
   });
 });

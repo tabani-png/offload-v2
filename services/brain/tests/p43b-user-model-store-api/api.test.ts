@@ -59,6 +59,19 @@ describe.skipIf(!HAS_DB)("p43b records and review routes", () => {
     expect((await call("/v1/review/week?w=nope"))!.body.error.code).toBe("invalid_request");
   });
 
+  test("API: a stored week after the member's current week is 404 on both routes", async () => {
+    const at = async (path: string, now: number) => {
+      const res = (await handleUserModelRequest(new Request(`https://offload.test${path}`), auth(db.A1), { runInTenant: db.run, now: () => now }))!;
+      return [res.status, res.status === 200 ? "ok" : ((await res.json()) as any).error.code];
+    };
+    // 2026-W45 is stored; on Tuesday of 2026-W43 it has not happened yet for this member.
+    const before = Date.UTC(2026, 9, 20, 12);
+    expect(await at(`/v1/records/weeks/${W}`, NOW)).toEqual([200, "ok"]);
+    expect(await at(`/v1/review/week?w=${W}`, NOW)).toEqual([200, "ok"]);
+    expect(await at(`/v1/records/weeks/${W}`, before)).toEqual([404, "not_found"]);
+    expect(await at(`/v1/review/week?w=${W}`, before)).toEqual([404, "not_found"]);
+  });
+
   test("API: GET /v1/records/days/{date} answers the day record; unknown day 404; malformed 400", async () => {
     const d = (await call("/v1/records/days/2026-11-03"))!;
     expect(d.status).toBe(200);
