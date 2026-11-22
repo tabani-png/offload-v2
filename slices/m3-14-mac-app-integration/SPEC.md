@@ -93,10 +93,17 @@ running observer, and imports go through the uploader when this Mac is signed in
   `offerCheck`. Through the uploader: offered while the person is sending with no new notice waiting (ONBOARDING
   section 8). On this Mac: offered when m3-10's on-device sink exists and onboarding is past screen 2 (or done), in
   Local mode too (see Scope changes).
-- **Menu lines** (`ModeLines`, `AppComposition.modeLines`, read each time the menu draws): "Local mode: nothing leaves
-  this Mac" whenever nothing is uploaded (GLOSSARY: signed out or without upload consent), then why the import is not
-  offered ("Recordings import is coming: it needs on-device text reading" without an importer; "Recordings import
-  starts after Start sending" otherwise). Plain text items.
+- **Menu lines** (`ModeLines`, `AppComposition.modeLines`, read each time the menu draws), plain text items, in this
+  order:
+  - "Not watching: Offload could not open its storage on this Mac. Quit and open it again", while capture was asked to
+    start and could not (`CaptureRuntime.lastError`, for example a Keychain that refused). The error itself is never
+    shown.
+  - "Local mode: nothing leaves this Mac", whenever nothing is uploaded (GLOSSARY: signed out or without upload
+    consent).
+  - Why the import is not offered:
+    - "Recordings import is coming: it needs on-device text reading", without an importer;
+    - "Recordings import starts after Start sending", for an uploader-backed import before sending;
+    - "Recordings import opens once the first setup steps are done", for an on-device import before screen 2.
 - **Seams for m3-10 to m3-13** (`CompositionSeams`, passed to `AppComposition.live(seams:)`): `textRecognizer` and
   `onDeviceImportSink` for the composition's own import, and `analysis`, called once before AppModel is built with
   `AnalysisInputs { neverWatch, events, uploadBackend, importMasker, importLedger }` (the one Never watch list, the
