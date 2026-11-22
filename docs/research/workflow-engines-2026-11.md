@@ -4,7 +4,13 @@ Research behind [ADR 0039](../adr/0039-routine-definition-v2-and-execution-backe
 [GLOSSARY.md](../GLOSSARY.md). Every external fact below was checked on **2026-11-22** at the URL next to it. Facts
 marked **UNVERIFIED** could not be confirmed from a primary source that day. This is not legal advice; the license
 reading is an engineer's reading of the published texts and needs counsel and, for n8n, the vendor's written answer
-before anyone relies on it commercially ([OQ-30](../OPEN_QUESTIONS.md#oq-30-n8n-in-offload)).
+before anyone relies on it commercially ([OQ-32](../OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n)).
+
+**Owner decision, 2026-11-22** ([OQ-30](../OPEN_QUESTIONS.md#oq-30-n8n-in-offload)), verbatim: "Build worflow
+automation as an expert n8n engineer". Sections 3.1, 6 and 7 were updated the same day for it: expert n8n practice
+becomes workflow design rules, Offload exports verified fixes as n8n workflow JSON for the user's own n8n (with an
+optional push), Offload's own engine stays the default runtime, and n8n run by Offload stays gated on n8n's written
+answer.
 
 ## 1. The question
 
@@ -67,18 +73,37 @@ credentials and make the outbound call themselves, so Offload's broker and gate 
   [docs.n8n.io/n8n-community-license/community-license/license-faq.md](https://docs.n8n.io/n8n-community-license/community-license/license-faq.md).
   The FAQ quotes below are from that page.
 
-What the FAQ allows and forbids:
-- **Allowed**: "Use n8n behind the scenes in your own product, where users can use and trigger the automations you
-  built, and even connect their own accounts to them." Also: "Triggering or executing pre-built workflows via API or
-  webhooks is fine."
-- **Not allowed**: "Allow external end users to build or configure their own workflows through your product, whether
-  via a custom UI, our API, MCP, or an AI agent acting on the user's behalf."
-- The test it applies: "The SUL test is not about UI visibility — it is about who controls the workflow logic and
-  whose commercial interests are being served." It also says the license "restricts use where the commercial value of
-  a product derives entirely or substantially from n8n functionality."
-- Shipping n8n to a customer's own server: "This is permissible, but it may sit in gray territory. Shipping n8n to
-  your customers as part of a paid product comes with extra conditions under the license ... Confirm your
+What the FAQ allows and forbids (all quotes checked 2026-11-22 at the FAQ URL above):
+- **Scope**: it "applies to the self-hosted version of n8n only"; "n8n Cloud is a paid subscription with its own
+  terms; this page doesn't apply to it." No public n8n Cloud terms page was found in the docs index that day
+  (**UNVERIFIED**: Cloud terms).
+- **Allowed**, as listed:
+  - "Use n8n behind the scenes in your own product, where users can use and trigger the automations you built, and
+    even connect their own accounts to them." Also: "Triggering or executing pre-built workflows via API or webhooks
+    is fine."
+  - "Build automations for your clients on your instance, as long as your clients do not have the possibility to
+    create or edit them."
+  - "Charge your customers for workflow creation, setup, and maintenance services."
+  - "Consulting and automation services are explicitly permitted under the Sustainable Use License." The condition:
+    "n8n remains your internal tool, where clients receive outputs, not access."
+- **Not allowed**, as listed:
+  - "Allow external end users to build or configure their own workflows through your product, whether via a custom
+    UI, our API, MCP, or an AI agent acting on the user's behalf."
+  - "Host n8n as a service and allow your clients to build workflows".
+  - "Fork n8n's code to launch your own automation product" and "White-label n8n by removing our branding and
+    offering n8n as is."
+- **The test it applies**: "The key question is not whose credentials are used, but who controls the workflow
+  logic." It is "medium-neutral: what matters is whether the end user determines the workflow logic", "not the
+  interface used (UI, n8n API, MCP, or an AI agent acting for the user)." Also: "The SUL test is not about UI
+  visibility — it is about who controls the workflow logic and whose commercial interests are being served." It
+  "restricts use where the commercial value of a product derives entirely or substantially from n8n functionality."
+- **Shipping n8n to a customer's own server**: "This is permissible, but it may sit in gray territory. Shipping n8n
+  to your customers as part of a paid product comes with extra conditions under the license ... Confirm your
   architecture with license@n8n.io before launch."
+- **Contacts**: "For licensing questions, contact" license@n8n.io; "To discuss a commercial license, contact"
+  sales@n8n.io.
+- **Not in the FAQ**: who owns workflow JSON a user creates, or a third-party product that writes workflows into a
+  user's own instance.
 
 The OEM route:
 - The old Embed page `n8n.io/embed` returned 404. The docs now describe an OEM deployment that "requires a separate
@@ -86,14 +111,27 @@ The OEM route:
   ([deploy-as-an-oem-integration](https://docs.n8n.io/deploy/host-n8n/deploy-as-an-oem-integration.md)).
 - No public price. The [pricing page](https://n8n.io/pricing/) has no OEM line. **UNVERIFIED**: any OEM price.
 
-**What that means for Offload.** An Offload fix is a workflow built for each user, from that user's own work, by an
-AI acting on that user's behalf, and the user approves its logic before it runs. That is the case the FAQ names as
-not allowed. So:
-- **Offload may not host n8n** on Offload Cloud to run users' fixes without an OEM or Enterprise agreement.
-- **Offload may not ship n8n** in its images: free redistribution is limited to non-commercial purposes.
-- **Deploying fixes into a customer's own n8n** through its API is not addressed directly. The closest text is the
-  "gray territory" answer and the medium-neutral test, which names the API and "an AI agent acting for the user".
-  Treat it as **needs written confirmation from license@n8n.io**.
+**What that means for Offload**, path by path. Every one of these limits binds a *licensee* of n8n, about *its*
+use of n8n ("through your product", "on your instance").
+- **Hosted: n8n that Offload runs, building and running fixes for users** ("Offload builds and runs it inside n8n
+  for you"). An Offload fix is a workflow built per user, from that user's work, by an AI acting for that user, and
+  the user approves its logic: the end user determines the workflow logic. That is the FAQ's not-allowed case, so it
+  needs an OEM or Enterprise agreement. **Gated** on n8n's written answer
+  ([OQ-32](../OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n)); not built.
+- **Shipping n8n** in Offload's images: no. Free redistribution is limited to non-commercial purposes.
+- **Export file** (decided, slice m5-12): Offload writes n8n workflow JSON with its own code; the user imports it into
+  their own self-hosted n8n. Offload runs no n8n, ships no n8n code and is not an n8n licensee here. The user is the
+  licensee and uses n8n "for your own internal business purposes", which the license allows. The closest FAQ lines
+  favour it: "Charge your customers for workflow creation, setup, and maintenance services" and "clients receive
+  outputs". Residual risk: low. n8n could argue the commercial-value clause, but that clause restricts use of
+  n8n, which Offload does not use here.
+- **Push to the user's own instance** (decided, slice m5-12, ships off): Offload calls the user's n8n public API with
+  the user's API key to create and optionally publish the approved JSON. The user is still the licensee of that
+  instance and the workflow serves their own business, so on our reading the "through your product" limit is not
+  triggered: there is no n8n of Offload's for the user to build on. But the not-allowed sentence names exactly this
+  medium ("our API ... an AI agent acting on the user's behalf"), and the test is "medium-neutral". Residual risk:
+  **real**. A user on n8n Cloud is under terms we have not read. So push ships switched off until n8n confirms in
+  writing (OQ-32).
 - **Calling workflows a customer built themselves** in their own n8n, as tools, matches "Triggering or executing
   pre-built workflows via API or webhooks is fine". n8n can expose one workflow as an MCP server through its MCP
   Server Trigger node
@@ -107,23 +145,66 @@ not allowed. So:
   update, `publish`/`unpublish` (activate/deactivate are deprecated) and history
   ([workflows](https://docs.n8n.io/connect/n8n-api/build-and-run/workflows.md)). There are also executions (list,
   stop, retry) and credentials routes.
-- **Reliability**: error workflows that start with an Error Trigger
-  ([handle errors](https://docs.n8n.io/build/flow-logic/handle-errors-gracefully.md)). Per-node `retryOnFail`,
-  `maxTries`, `waitBetweenTries` exist in source
-  ([interfaces.ts](https://github.com/n8n-io/n8n/blob/master/packages/workflow/src/interfaces.ts)); a docs page for
-  them is **UNVERIFIED**. Queue mode with Redis and workers is in the community edition; multi-main is paid
+- **API details for a push** ([workflows](https://docs.n8n.io/connect/n8n-api/build-and-run/workflows.md), checked
+  2026-11-22):
+  - "The n8n API is available on: ... Self-hosted: All editions"; "It isn't available on the free trial."
+  - Base path `https://<your-instance-url>/api/v1`; "Send the API key in your API call as a header named
+    `X-N8N-API-KEY`." "Scopes are available on all plans from n8n 2.14.0"; before that, non-Enterprise keys "have
+    full access to all the account's resources and capabilities."
+  - `POST /workflows` requires `name`, `nodes`, `connections`, `settings`; also accepts `pinData` ("Pinned sample
+    data for nodes, keyed by node name"), `staticData` and others. `id`, `active`, `tags`, `meta` and other fields are
+    `readOnly`. The request schema has `additionalProperties: false`, at the top and on each node.
+  - `POST /workflows/{workflowId}/publish`: "Publish a workflow. In n8n v1, this action was termed activating a
+    workflow." `/activate` is "Deprecated: use POST /workflows/{id}/publish instead." The authentication page still
+    names `/activate` and `/deactivate`; the reference is newer.
+  - The reference index says a POST can be retried "with an `Idempotency-Key` header", and "The reference matches the
+    latest stable n8n release."
+- **Reliability**:
+  - Error workflows: "For each workflow, you can set an error workflow in Workflow Settings. It runs if an execution
+    fails." It "must start with the" Error Trigger
+    ([handle errors](https://docs.n8n.io/build/flow-logic/handle-errors-gracefully.md)). API setting
+    `settings.errorWorkflow`: "The ID of the workflow that contains the error trigger node."
+  - Node settings: "Retry On Fail: When an execution fails, the node reruns until it succeeds." On Error has "Stop
+    Workflow", "Continue" and "Continue (using error output)"
+    ([nodes](https://docs.n8n.io/build/understand-workflows/workflow-components/work-with-nodes.md)). The API node
+    schema has `retryOnFail`, `maxTries`, `waitBetweenTries`, `onError`; `continueOnFail` is deprecated ("use onError
+    instead"). **UNVERIFIED**: units and limits of `maxTries` and `waitBetweenTries` (no docs page gives them).
+  - Timeouts: workflow setting Timeout Workflow, API `settings.executionTimeout` (**UNVERIFIED**: its unit in the API);
+    HTTP Request "Timeout ... in milliseconds"
+    ([HTTP Request](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.httprequest.md)).
+  - Dedupe across runs: Remove Duplicates has "Remove Items Processed in Previous Executions", scope Node or
+    Workflow, "Value to Dedupe On"; "By default, n8n stores 10,000 items"
+    ([Remove Duplicates](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.removeduplicates.md)).
+  - Time zones: "If you don't configure the workflow or instance timezone, n8n defaults to the EDT (New York)
+    timezone" ([workflow settings](https://docs.n8n.io/build/manage-workflows/configure-workflow-settings.md)); the
+    Schedule Trigger takes a "Custom (Cron)" expression and uses the workflow time zone if set
+    ([Schedule Trigger](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.scheduletrigger.md)). The
+    page is ambiguous about a sixth (seconds) cron field; the export emits five fields.
+  - Code node: "Run Once for All Items" (default) or "Run Once for Each Item"; JavaScript; "You can't access the file
+    system or make HTTP requests"
+    ([Code](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.code.md)). **UNVERIFIED** in the
+    docs read: the exact `$input.all()` syntax; the m5-12 live test confirms the wrapper.
+  - Human approval inside n8n exists per app, for example Slack "Send and Wait for Response"
+    ([Slack approvals](https://docs.n8n.io/integrations/builtin/app-nodes/n8n-nodes-base.slack/approvals.md)). The
+    export does not add one by default. Queue mode with Redis and workers is in the community edition; multi-main is paid
   ([community edition features](https://docs.n8n.io/deploy/host-n8n/community-edition-features.md)).
 - **Plan limits**:
   - Full workflow history is Enterprise only; "Versions from the last 24 hours are available for all users"
     ([change history](https://docs.n8n.io/build/manage-workflows/view-change-history.md)).
   - Git source control is Business and Enterprise
     ([source control](https://docs.n8n.io/administer/use-source-control-and-environments.md)).
-  - "Data pinning isn't available for production workflow executions"
+  - "Data pinning isn't available for production workflow executions"; "You can only pin data for nodes that have a
+    single main output"; "You can't pin data if the output data includes binary data"
     ([pin and mock data](https://docs.n8n.io/build/work-with-data/pin-and-mock-data.md)).
 - **Generation and validation**:
-  - Workflows are JSON ([export and import](https://docs.n8n.io/build/manage-workflows/export-and-import.md)).
-  - Node `typeVersion` is kept per workflow
-    ([node versioning](https://docs.n8n.io/connect/create-nodes/build-your-node/reference/versioning.md)).
+  - "n8n saves workflows in JSON format." Exported files "include" credential names and IDs, and "HTTP Request nodes
+    may contain authentication headers when imported from cURL"
+    ([export and import](https://docs.n8n.io/build/manage-workflows/export-and-import.md)). The page does not say
+    that secret values are left out; Offload's export carries no credential id, name of the user's real credential or
+    header value at all.
+  - Node versions: "If a user builds and saves a workflow using version 1, n8n continues to use version 1 in that
+    workflow" ([node versioning](https://docs.n8n.io/connect/create-nodes/build-your-node/reference/versioning.md)).
+    The API schema has `type` (string) and `typeVersion` (number) on each node, without a description.
   - The Workflow SDK (from 2.12.0) turns code into workflow JSON "and validates it"
     ([workflow SDK](https://docs.n8n.io/connect/workflow-sdk.md)).
   - The instance-level MCP server has tools such as `create_workflow_from_code` and `validate_node_config`
@@ -280,6 +361,10 @@ are this page's judgement, stated so they can be argued with. The arithmetic was
 | Windmill CE, hosted by Offload | 5 | 2 | 3 | 1 | 4 | 3 | 4 | 3 | **59** |
 | n8n CE, hosted by Offload | 4 | 1 | 2 | 0 | 4 | 5 | 3 | 2 | **47** |
 
+The n8n export (decided 2026-11-22) is not in this table: it is an export target, not an execution backend. A fix
+exported to the user's n8n runs outside Offload, so the "gate fit" row of "n8n, customer-run" describes it, and the
+user, told so in words, chooses it per fix.
+
 Why the scores:
 - **Native**:
   - Stability 4, not 5: DBOS gives durable steps and step retries, but error handling, read-shape drift and the
@@ -325,10 +410,18 @@ backend and several integration sources.
    ([ADR 0039](../adr/0039-routine-definition-v2-and-execution-backends.md).)
 2. **Do not host or ship n8n.** Its license forbids Offload's use case on Offload-run n8n without an OEM or Enterprise
    agreement. Its execution model would also bypass the broker and the gate.
-3. **n8n may still help users who run it.**
-   - Now, with no licensing question: a user can connect their own n8n workflows to Offload as MCP tools.
-   - Later, only with the owner's go-ahead and n8n's written confirmation: an export of a verified fix as n8n
-     workflow JSON for the user's own instance, labelled as running outside Offload's gate.
+3. **Build like an expert n8n engineer, and export to n8n** (owner decision of 2026-11-22):
+   - Eight workflow design rules (explicit triggers; small, single-purpose steps; error workflows and branches;
+     per-step retries and timeouts; idempotent writes; credentials by reference; pinned-data tests; held-out
+     acceptance before activation), enforced by lint on every routine definition and every export
+     ([ADR 0039 section 3.4](../adr/0039-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules)).
+   - An n8n export of each verified fix for the user's own n8n, checked against a schema and a pinned node catalog,
+     with `pinData` from the tokenised fixtures, labelled as running outside Offload's gate; and a push to the user's
+     own instance by its API, built but switched off until n8n answers in writing
+     ([ADR 0039 section 9](../adr/0039-routine-definition-v2-and-execution-backends.md#9-the-n8n-export)).
+   - A user can also connect their own n8n workflows to Offload as MCP tools, as before.
+   - n8n run by Offload for users stays gated
+     ([OQ-32](../OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n)).
 4. **"Faster" comes from integration sources, not a second engine**: MCP servers (including Activepieces' and the
    user's own n8n), Composio, and MIT Activepieces pieces as a source for direct-API adapters.
 5. **"Research the best tools" becomes a code-ranked tool choice per capability** in the fix designer. A model may
@@ -340,8 +433,15 @@ backend and several integration sources.
 - **n8n**:
   - Hosting or embedding it for paying users without an agreement breaches the SUL. The license "will automatically
     terminate" on violation (LICENSE.md).
-  - Deploying fixes into a customer's own n8n is unconfirmed. Ask license@n8n.io in writing before building it.
-  - Do not port n8n node code.
+  - Export file to the user's own n8n: low residual risk (section 3.1). Still part of the written question.
+  - Push into the user's own n8n by its API: real residual risk, because the FAQ's not-allowed sentence names "our API"
+    and "an AI agent acting on the user's behalf" and calls its test medium-neutral. Built, but off until n8n answers
+    in writing ([OQ-32](../OPEN_QUESTIONS.md#oq-32-written-license-confirmation-from-n8n), owner action: ask
+    license@n8n.io). n8n Cloud users are under terms not reviewed here.
+  - Hosted n8n for users: needs an agreement; gated, not built.
+  - Do not port n8n node code, and do not run or ship n8n's Workflow SDK or MCP server inside Offload. The node
+    catalog holds interface facts (type names, versions, parameter keys) from public docs, checked on a live instance.
+  - `LIVE:` tests run against an n8n instance the operator runs for internal testing only.
 - **Activepieces**:
   - MIT pieces need a `NOTICE` entry and the copyright line kept.
   - Never take code from `packages/ee/` or `packages/server/api/src/app/ee`.
