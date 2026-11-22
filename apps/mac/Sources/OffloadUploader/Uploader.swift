@@ -48,9 +48,12 @@ public actor Uploader {
     private var lastFlush: Date?
     /// Recordings-import objects staged on this Mac (m3-14), batched by the next flush. Nil: no imports.
     private let importOutbox: ImportOutbox?
+    /// Audience `member`: the import space routes (`/v1/imports`, `/v1/me/forget`). Nil: import calls are refused.
+    private let memberTokens: (any TokenProvider)?
 
     public init(config: UploaderConfig, transport: any HTTPTransport, signer: any DeviceSigner, tokens: any TokenProvider, store: DayStore,
-                state: UploadStateStore, ledger: EgressLedger, time: any TimeSource, importOutbox: ImportOutbox? = nil) {
+                state: UploadStateStore, ledger: EgressLedger, time: any TimeSource, importOutbox: ImportOutbox? = nil,
+                memberTokens: (any TokenProvider)? = nil) {
         self.config = config
         egress = EgressGuard(apiBase: config.apiBase)
         self.transport = GuardedTransport(inner: transport, guard: egress)
@@ -61,6 +64,7 @@ public actor Uploader {
         self.ledger = ledger
         self.time = time
         self.importOutbox = importOutbox
+        self.memberTokens = memberTokens
     }
 
     /// The counters the app shows (read from the persisted state, so they survive a restart).
@@ -88,11 +92,12 @@ public actor Uploader {
         do {
             let blocked = try build(&state, &report, now: now)
             // Staged import objects join the queue in the same step, before any send (no suspension in between).
-            let drained: Set<String> = try blocked ? [] : batchStagedImports(&state, &report, now: now)
+            let imports = try blocked ? ImportDrain() : batchStagedImports(&state, &report, now: now)
             try stateStore.save(state)
             // Removed only once the batches holding them are saved: at worst an object is queued twice, never lost.
-            if !drained.isEmpty { try? importOutbox?.remove(ids: drained) }
-            if blocked { report.failed = true; return report }
+            if !imports.taken.isEmpty { try? importOutbox?.remove(ids: imports.taken) }
+            // A detector hit in either path: nothing is sent in this flush (ADR 0035); the next one goes on without it.
+            if blocked || imports.blocked { report.failed = true; return report }
         } catch {
             report.failed = true
             return report
@@ -293,6 +298,8 @@ public enum ImportUploadError: Error, Equatable, Sendable {
     case rejected(status: Int)
     /// A 2xx answer without the expected body.
     case badAnswer
+    /// No member-audience token provider: the import routes need one (API.md section 1, Auth).
+    case noMemberToken
     /// An object that is not `source = "import"` with an `import_id`.
     case notAnImportObject
 }
@@ -322,44 +329,43 @@ extension Uploader {
         recordRequest(kind: "forget", body: body)
     }
 
-    /// Moves staged import objects into batches under the next seqs. Objects a detector stops now are set aside and
-    /// counted as blocked, never sent. Imports keep their real (old) times: no 7-day drop, the server files them under
-    /// the import day (ADR 0020). Returns the ids taken out of the outbox. Synchronous: no send can interleave.
-    private func batchStagedImports(_ state: inout UploadState, _ report: inout FlushReport, now: Date) throws -> Set<String> {
-        guard let importOutbox, let staged = try? importOutbox.staged(), !staged.isEmpty else { return [] }
-        var clean: [Observation] = []
-        for o in staged {
-            if ImportOutbox.isImportObject(o), (try? egress.inspect(o)) != nil { clean.append(o) } else {
-                state.counters.blocked += 1
-                report.blocked += 1
-            }
+    /// Moves staged import objects into batches under the next seqs. Like the live path, a detector hit stops it: the
+    /// offending objects are set aside (taken out of the outbox, counted as blocked, never sent), nothing else is
+    /// batched, and the flush sends nothing; the next flush batches the rest. Imports keep their real (old) times: no
+    /// 7-day drop, the server files them under the import day (ADR 0020). Synchronous: no send can interleave.
+    private func batchStagedImports(_ state: inout UploadState, _ report: inout FlushReport, now: Date) throws -> ImportDrain {
+        guard let importOutbox, let staged = try? importOutbox.staged(), !staged.isEmpty else { return ImportDrain() }
+        var hits: Set<String> = []
+        for o in staged where !(ImportOutbox.isImportObject(o) && (try? egress.inspect(o)) != nil) { hits.insert(o.id) }
+        if !hits.isEmpty {
+            state.counters.blocked += hits.count
+            report.blocked += hits.count
+            return ImportDrain(taken: hits, blocked: true)
         }
         var index = 0
-        while index < clean.count {
-            var n = min(config.maxObjects, clean.count - index)
-            var body = try envelope(Array(clean[index..<index + n]), seq: state.nextSeq, now: now)
+        while index < staged.count {
+            var n = min(config.maxObjects, staged.count - index)
+            var body = try envelope(Array(staged[index..<index + n]), seq: state.nextSeq, now: now)
             while body.count > config.maxBytes, n > 1 {
                 n = max(1, n * 2 / 3)
-                body = try envelope(Array(clean[index..<index + n]), seq: state.nextSeq, now: now)
+                body = try envelope(Array(staged[index..<index + n]), seq: state.nextSeq, now: now)
             }
-            state.pending.append(PendingBatch(seq: state.nextSeq, body: body, lastId: clean[index + n - 1].id, objectCount: n, kind: "observation_batch"))
+            state.pending.append(PendingBatch(seq: state.nextSeq, body: body, lastId: staged[index + n - 1].id, objectCount: n, kind: "observation_batch"))
             state.nextSeq += 1
             index += n
         }
-        return Set(staged.map(\.id))
+        return ImportDrain(taken: Set(staged.map(\.id)), blocked: false)
     }
 
-    private static func requestBody(_ fields: [String: String]) throws -> Data {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        return try encoder.encode(fields)
-    }
+    /// The body as its own JCS form (API.md section 1: the signed body must equal `jcs(JSON.parse(body))`).
+    private static func requestBody(_ fields: [String: String]) throws -> Data { try JCS.encode(fields) }
 
-    /// One signed POST to the one host; a 401 refreshes the token once.
+    /// One signed POST to the one host with a member-audience token; a 401 refreshes the token once.
     private func signedPost(_ path: String, body: Data) async throws -> HTTPResponse {
+        guard let memberTokens else { throw ImportUploadError.noMemberToken }
         var refreshed = false
         while true {
-            let token = try await tokens.token(forceRefresh: refreshed)
+            let token = try await memberTokens.token(forceRefresh: refreshed)
             let signature = Base64URL.encode(try signer.sign(body))
             let request = HTTPRequest(
                 url: config.apiBase.appendingPathComponent(path), method: "POST",
@@ -383,4 +389,10 @@ extension Uploader {
             detectors: [:], pseudonyms: [:], body: body)
         try? ledger.append(entry)
     }
+}
+
+/// What one flush took from the import outbox, and whether a detector stopped it.
+struct ImportDrain {
+    var taken: Set<String> = []
+    var blocked = false
 }

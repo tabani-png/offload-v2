@@ -28,6 +28,12 @@ public final class ImportOutbox: @unchecked Sendable {
         guard !objects.isEmpty else { return }
         for o in objects where !Self.isImportObject(o) { throw ImportUploadError.notAnImportObject }
         for o in objects { try egress.inspect(o) }
+        try stageUnchecked(objects)
+    }
+
+    /// Appends without the checks. Tests use it to stand in for objects staged before a detector learned a pattern;
+    /// the flush checks every object again.
+    func stageUnchecked(_ objects: [Observation]) throws {
         try Self.lock.withLock {
             var all = try readLocked()
             all.append(contentsOf: objects)
