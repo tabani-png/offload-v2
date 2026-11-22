@@ -58,14 +58,16 @@ m2-05, on hold), and no model is called.
     null, runs_on: "cloud" | "device" }`, `LAUNCH_CATALOG`, `ADAPTER_ORDER = ["mcp", "composio", "openapi", "browser"]`.
   - `FixOption { option_no, kind, rule, recommended, title, detail, steps, figures: { weekly_hours_saved, setup_hours,
     payback_weeks, confidence } }`, `FixProposal { task_key, rule, leave_alone_first, options, estimate: FixEstimate }`.
-  - `FixEstimate` gains `option?: FixOption` (the stand-in `estimateFor` path stores one option built from the bare
-    estimate).
+  - `FixEstimate` gains `option?: FixOption`. The stand-in `estimateFor` path stores one option built from the bare
+    estimate (`bareOption`, `rule: "estimate"`, no steps), so every ranked finder opportunity has an option row.
   - `runMemberUpdate` input gains `fixRules?: FixRules`; `UnderstandingDeps` gains `fixRules?` (passed through, withheld
     without a workspace, as `estimateFor`). `estimateFor` wins when both are given.
   - Repository: `saveOpportunities(tx, { ..., options? })` stores each ranked opportunity's options;
     `listOpportunityViews(tx, { isoWeek?, state? })` and `getOpportunityView(tx, id)` return the API `Opportunity`
     shape with `options[]`; `listWeekEpisodes(tx, from, to)` reads episodes through `day_records.episode_ids`.
-- API.md `Opportunity` and `FixOption` shapes are written down (the routes are m5-05's).
+- API.md `Opportunity` and `FixOption` shapes are written down (the routes are m5-05's). `listOpportunityViews`
+  without `isoWeek` answers the latest week with opportunities.
+- `fixes` is added to `MEMBER_ISOLATED_TABLES` (store/migrate.ts), so p43b's RLS and privacy tests cover it.
 
 ## Design note
 1. **Evidence** (`opportunities/evidence.ts`, pure). For the latest week of the run, the job reads the task_instance
@@ -186,7 +188,18 @@ into `offload serve` (m1-06), `remove_step` and `small_app` rules, track record 
 ## Progress
 - [x] SPEC, verify.sh, ROADMAP link (375d690)
 - [x] red tests: all 21 seen failing (`not implemented`, missing `fixes` table)
-- [ ] evidence, connectors, rules, estimate, options
-- [ ] migration, repository, job wiring
-- [ ] docs
+- [x] connectors, evidence, rules, estimate, options (d95edd3)
+- [x] migration 0002, repository, job wiring (46205ec): 21 slice tests pass, full suite 671 pass
+- [x] docs: ARCHITECTURE section 6 (fix rules), DATA_MODEL sections 4 and 6, API.md `Opportunity`, GLOSSARY
 - [ ] self-review, verify.sh, verify-all
+
+Known limits (for the next slices):
+- Steps are listed in system id order, not in the workflow's order: episodes keep the set of apps and hosts, not
+  their sequence. The fix designer (m2-05) orders steps from the instances' spans.
+- A desktop mail app (Mail, Outlook) has no connector here: the mailbox behind it is unknown until the pseudonym match
+  or a connection names it (m5-06, m2-02), so its step runs on the device and cloud kinds need another connected step.
+- Weekly minutes are the week record's observed minutes, not extrapolated: a partial week (an import of 3 days)
+  estimates from what was seen.
+- The launch catalog is ADR 0033's list as data; every entry is "unverified" until spike S5 / m2-02 flips it. The
+  proposal does not filter on verification (the fix designer must, before pinning).
+- Only the latest week of a run is ranked (unchanged from p43b).

@@ -411,6 +411,35 @@ score = weeklyHoursSaved            top fix option's saving, from fix rules (cod
 - Top 5 per week are stored in `opportunities` with every factor and its arithmetic. Today shows one at a time.
 - An empty profile gives the plain fix-rule order (tested).
 
+**Fix rules** (slice [m5-04](../slices/m5-04-opportunity-finder/SPEC.md), `services/brain/src/opportunities/`). Code
+only, no model. For the latest week of a run, each task gets **task evidence** from the week record (minutes,
+instances, median) and its task-instance episodes of the last 8 weeks, read through `day_records.episode_ids`:
+the days it was seen, the **systems** it touches (bare hosts, and desktop apps that are neither a browser nor a stand-in
+app) and a **cadence** (one instance a day at about the same hour on 3 or more days, or one a week on the same
+weekday in 2 or more weeks). A task needs 3 instances in the week or a cadence; work that is only code, meetings or
+chat gets no fix. The first matching rule kind gives the fix kinds to try:
+
+| Rule kind | Matches | Fix kinds, in the rule's order |
+|---|---|---|
+| `report_assembly` | a cadence, a sheet or docs system, 2 or more systems | `scheduled_routine`, `script` |
+| `email_triage` | mail only, 5 or more instances, median 10 min or less | `setup_change` (mail rules), `agent_workflow` |
+| `email_to_records` | mail and another system | `agent_workflow`, `api_integration`, `browser_automation` (web), `script` (desktop) |
+| `app_to_app_copy` | 2 or more systems other than mail | `api_integration` (a connector pair), `browser_automation` (web), `script` (desktop) |
+| `single_app_entry` | one sheet, docs, web or other system | `browser_automation` (web) or `script` (desktop) |
+
+Each step's connector is resolved in [ADR 0033](adr/0033-pinned-connector-resolution-and-launch-catalog.md)'s order
+(MCP, Composio, direct API, browser) against the launch catalog and an optional tenant filter; a web app outside the
+catalog goes through the browser, a desktop app outside it runs on the device. A cloud kind (`api_integration`,
+`agent_workflow`, `scheduled_routine`) is offered only when a step has a connector. Each option's estimate comes from a
+fixed table per fix kind (share of the task's time taken over, review minutes per instance, setup base and per step,
+confidence): weekly hours saved = (minutes × share − instances × review) / 60; setup = base + per step × steps (+1 h
+per browser step and +0.5 h per device step in a cloud kind); confidence = kind confidence × evidence factors (0.85
+under 5 instances or on one day, without a cadence) × 0.85 per browser step × 0.9 per device step; payback = setup /
+saving. All four are Figures. Options that save nothing are dropped; the rest are ordered by saving × confidence ÷
+max(1, payback), up to 3, option 1 recommended unless the best saving is under 0.5 h per week ("leave it alone"
+first). Option 1's numbers are the `FixEstimate` the score ranks; the options are stored in `fixes` with the
+opportunity. Instant read and the pinning of connections are not built yet.
+
 ```mermaid
 flowchart LR
   WEEK[(week_records)] --> CAND[Candidates: task keys with hours]
