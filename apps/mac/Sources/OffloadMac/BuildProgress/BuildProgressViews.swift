@@ -19,6 +19,13 @@ extension StatusDot {
   var accessibilityWord: String { BuildCopy.dotWord(self) }
 }
 
+/// How an action button looks. m3-04's button styles do not read `isEnabled`, so a disabled action is faded here, from
+/// the model's own rule, so the labelled sample's Install never looks pressable (review 2, finding 2).
+enum ActionLook {
+  static let disabledOpacity = 0.4
+  static func opacity(enabled: Bool) -> Double { enabled ? 1 : disabledOpacity }
+}
+
 enum BuildProgressColors {
   /// A failed check (the mockup's red).
   static let failed = Color(hex: 0xE5484D)
@@ -192,10 +199,12 @@ public struct BuildDetailView: View {
         Button(BuildCopy.install) { Task { await model.install() } }
           .buttonStyle(PrimaryButtonStyle())
           .disabled(!model.canInstall)
-          .help(model.canInstall ? "" : (model.isLocal ? BuildCopy.installNeedsCloud : BuildCopy.readFirst))
+          .opacity(ActionLook.opacity(enabled: model.canInstall))
+          .help(model.installLine ?? "")
         Button(BuildCopy.seeWhatChanged) { Task { await model.readDefinition() } }
           .buttonStyle(SecondaryButtonStyle())
           .disabled(!model.canReadDefinition)
+          .opacity(ActionLook.opacity(enabled: model.canReadDefinition))
         if model.canCancel {
           Button(BuildCopy.cancelBuild) { Task { await model.cancel() } }
             .buttonStyle(SecondaryButtonStyle())
@@ -353,15 +362,16 @@ struct PlanPanelView: View {
           Text(line).textStyle(Tokens.TypeScale.body).foregroundStyle(Theme.ink2)
         }
       }
-      if case .ready(let fix) = plan.phase {
-        let summary = PlanSummary.make(fix: fix, title: plan.title)
+      if let summary = model.planSummary {
         Text(summary.summary).textStyle(Tokens.TypeScale.body).foregroundStyle(Theme.ink)
           .fixedSize(horizontal: false, vertical: true)
-        CaptionLine([summary.estimate, summary.cap].compactMap { $0 }.joined(separator: " · "))
+        // The fingerprint of the brief whose hashes OK, build posts (review 2, finding 9).
+        CaptionLine([summary.estimate, summary.cap, summary.fingerprint].compactMap { $0 }.joined(separator: " · "))
         HStack(spacing: Tokens.Space.s8) {
           Button(BuildCopy.okBuild) { Task { await model.okBuild() } }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!model.canOKBuild)
+            .opacity(ActionLook.opacity(enabled: model.canOKBuild))
           Button(BuildCopy.notNow) { model.dismissPlan() }
             .buttonStyle(SecondaryButtonStyle())
         }
