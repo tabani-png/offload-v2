@@ -138,7 +138,7 @@ final class M314LocalSink: ImportSink, @unchecked Sendable {
     backend: UploadBackend = .local, state: OnboardingState? = nil, currentNoticeVersion: String? = nil,
     bufferReadable: Bool = true, probe: FakePermissionProbe = FakePermissionProbe(),
     seams: CompositionSeams = CompositionSeams(), home: URL = M314Fixture.tempHome(),
-    secrets: MemorySecretStore = MemorySecretStore(), wiring: M314Wiring = M314Wiring(),
+    secrets: any SecretStore = MemorySecretStore(), wiring: M314Wiring = M314Wiring(),
     realRecordings: Bool = false
   ) -> AppComposition {
     let env = CompositionEnvironment(

@@ -225,6 +225,24 @@ extension M314 {
     c.app.onboarding.reconsentNeeded()
     #expect(c.modeLines == [ModeLines.local, ModeLines.importAfterSending])
   }
+
+  @Test("LAUNCH: when capture cannot open its storage (a Keychain that refuses), the menu says watching is off, without the error")
+  @MainActor func captureFailureIsSaid() {
+    let failed = M314App.composition(state: M314State.watchingLocally, secrets: FailingSecrets())
+    defer { failed.capture.stop() }
+    #expect(!failed.capture.isRunning)
+    #expect(failed.capture.lastError != nil)
+    #expect(failed.modeLines.contains(ModeLines.captureOff))
+    #expect(!ModeLines.captureOff.contains("Denied"))
+    // Capture running: no such line.
+    let running = M314App.composition(state: M314State.watchingLocally)
+    defer { running.capture.stop() }
+    #expect(running.capture.isRunning)
+    #expect(!running.modeLines.contains(ModeLines.captureOff))
+    // Before screen 2 nothing was tried, so nothing failed.
+    let fresh = M314App.composition(state: M314State.fresh, secrets: FailingSecrets())
+    #expect(!fresh.modeLines.contains(ModeLines.captureOff))
+  }
 }
 
 /// An in-memory Keychain that counts reads and writes.
