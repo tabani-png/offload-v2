@@ -95,7 +95,7 @@ describe("p45a docker provider", () => {
       await p.exec(sb, { argv: ["bun", "/check/harness.ts"], cwd: "/check", timeout_ms: 10, harness: true });
       const h = calls.at(-1)!.argv;
       expect(h[h.indexOf("--user") + 1]).toBe("0:0");
-      expect(h.filter((x, k) => h[k - 1] === "--cap-add")).toEqual(["CHOWN", "SETGID", "SETUID"]);
+      expect(h.filter((_x, k) => h[k - 1] === "--cap-add")).toEqual(["CHOWN", "SETGID", "SETUID"]);
     }
   });
 

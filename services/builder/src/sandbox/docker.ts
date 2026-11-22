@@ -1,7 +1,11 @@
 // Docker SandboxProvider (self-host and dev, ADR 0011). From old container.ts's flags (apple/container's `run`, no code
 // copied): no network, read-only root, every capability dropped, the check folder mounted read-only, one sandbox per
-// shard, temps removed. Hardened beyond it: a non-root user, no-new-privileges, a pids limit, an env allowlist, and a
-// timed-out container is removed (the old runner killed the CLI client and left the VM running).
+// shard, temps removed. Hardened beyond it: no-new-privileges, a pids limit, an env allowlist, a timed-out container
+// is removed (the old runner killed the CLI client and left the VM running), and who runs as whom:
+//   - every exec runs as 65534:65534 with no added capability (a worker's commands above all);
+//   - the ONE exception is the trusted check harness (`exec({ harness: true })`, set only by shards.ts and the advisory
+//     run in attempt.ts) on a provider with the user split: it starts as root (PID 1) with only CHOWN, SETGID and
+//     SETUID, to run the check and the built tool as two other users (harness.ts).
 // A sandbox is two private host folders plus labels; every exec is a fresh `docker run --rm` over them.
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -165,6 +169,8 @@ export class DockerProvider implements SandboxProvider {
   /** The exact `docker run` argv for one exec. */
   runArgv(s: Sandbox, name: string, o: ExecOptions): string[] {
     const b = this.box(s);
+    // Root (with three capabilities) only for the trusted harness on a split provider; never for anything else.
+    const root = this.split && o.harness === true;
     const env = { ...b.spec.env, ...(o.env ?? {}) };
     const envArgs = Object.keys(env)
       .sort()
@@ -184,11 +190,11 @@ export class DockerProvider implements SandboxProvider {
       "--pids-limit", "256",
       "--memory", `${b.spec.memory_mb}m`,
       "--cpus", String(b.spec.vcpu),
-      ...(this.split ? ["--user", "0:0", "--cap-add", "CHOWN", "--cap-add", "SETGID", "--cap-add", "SETUID"] : ["--user", "65534:65534"]),
+      ...(root ? ["--user", "0:0", "--cap-add", "CHOWN", "--cap-add", "SETGID", "--cap-add", "SETUID"] : ["--user", "65534:65534"]),
       "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m",
       "--env", "HOME=/tmp",
       "--env", "TMPDIR=/tmp",
-      ...(this.split ? splitEnv() : []),
+      ...(root ? splitEnv() : []),
       ...envArgs,
       "--mount", `type=bind,source=${b.work},target=${MOUNT_PATH.work}`,
       "--mount", `type=bind,source=${b.check},target=${MOUNT_PATH.check},readonly`,
@@ -233,8 +239,14 @@ export class DockerProvider implements SandboxProvider {
       // the reaper finds it by its label later (ADR 0031)
     } finally {
       if (b !== undefined) {
-        rmSync(b.root, { recursive: true, force: true });
+        // Forget it whatever happens; a folder that cannot be removed (a file a check made unremovable) is left to the
+        // reaper (ADR 0031, m2-08), never thrown at the build that is ending.
         this.boxes.delete(s.id);
+        try {
+          rmSync(b.root, { recursive: true, force: true });
+        } catch {
+          // left for the reaper
+        }
       }
     }
   }

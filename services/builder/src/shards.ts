@@ -63,7 +63,7 @@ export async function runShards(o: {
         await o.provider.putFiles(sb, "check", checkFolder(s.check.content).map((f) => ({ path: f.path, bytes: enc.encode(f.text), mode: f.mode })));
         const before = await o.provider.snapshot(sb, "work");
         const n = nonce();
-        const r = await o.provider.exec(sb, { argv: HARNESS_ARGV, cwd: "/check", stdin: `${n}\n`, env: { ...HARNESS_ENV }, timeout_ms: o.timeout_ms });
+        const r = await o.provider.exec(sb, { argv: HARNESS_ARGV, cwd: "/check", stdin: `${n}\n`, env: { ...HARNESS_ENV }, timeout_ms: o.timeout_ms, harness: true });
         const after = await o.provider.snapshot(sb, "work");
         const proof = parseProof(r.stdout, n);
         const output = `${r.stdout}${r.stderr}`.slice(-OUTPUT_TAIL);

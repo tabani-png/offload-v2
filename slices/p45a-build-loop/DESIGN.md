@@ -50,8 +50,10 @@ Found in this review (not fixed by `473cafb`):
 11. **Shard PASS was the container's exit code alone**, against the old repo's own rule. Bun 1.4.4 exits 0 when no test
     ran. v2 shards run the trusted harness: nonce on stdin, `OFFLOAD_PROOF` line, PASS only for exit 0 + matching nonce +
     status `pass` + at least one test in the JUnit report (`PROOF:`).
-12. **Containers ran as root** with no `no-new-privileges` or pids limit. v2 adds `--user 65534:65534`,
-    `--security-opt no-new-privileges`, `--pids-limit`, `--memory`, `--cpus`, and only allowlisted env names.
+12. **Containers ran as root** with no `no-new-privileges` or pids limit. v2 runs every exec as `--user 65534:65534`
+    with no added capability, plus `--security-opt no-new-privileges`, `--pids-limit`, `--memory`, `--cpus` and only
+    allowlisted env names. The one exception is the trusted harness exec (`harness: true`, set only by `shards.ts` and
+    the advisory run) on a split provider: root, PID 1, with `CHOWN`, `SETGID` and `SETUID` only (section 7).
 13. **The held-out writer saw the whole visible check** (`<visible_check>` in the prompt): copying was easy and ADR 0012
     says it never sees the check set. v2: it sees the brief and the visible check's interface (file, entry points,
     output format), never its body (`HELDOUT:`).
@@ -74,7 +76,8 @@ Found in this review (not fixed by `473cafb`):
 `destroy`, `list(tag)`. Spec: image, vCPU, memory, wall time, `network_allowlist`, env, tag `offload-build-<build_id>`.
 - `docker` (self-host, dev): a sandbox is two private host folders (`work`, `check`) plus labels; every `exec` is
   `docker run --rm -i --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 256
-  --user 65534:65534 --tmpfs /tmp --mount …/work → /work --mount …/check → /check,readonly`. The executor is injected,
+  --user 65534:65534 --tmpfs /tmp --mount …/work → /work --mount …/check → /check,readonly`; only the harness exec on a
+  split provider gets `--user 0:0 --cap-add CHOWN --cap-add SETGID --cap-add SETUID` instead. The executor is injected,
   so tests pin the exact argv and the exec-error rule with a fake; a `LIVE:` test runs real Docker and skips without it.
   A non-empty `network_allowlist` is refused until the egress proxy network lands (m2-08).
 - `e2b` (Offload Cloud): `src/sandbox/cloud.ts` stub; `create` throws an infra error (m2-08 builds it).

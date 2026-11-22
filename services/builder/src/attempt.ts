@@ -142,7 +142,7 @@ export async function runAttempt(d: AttemptDeps, i: AttemptInput): Promise<Attem
       r.artifact = await d.provider.getFiles(sb, "work");
       const sha = artifactSha256(r.artifact);
       const nonce = newNonce();
-      const adv = await d.provider.exec(sb, { argv: HARNESS_ARGV, cwd: "/check", stdin: `${nonce}\n`, env: { ...HARNESS_ENV }, timeout_ms: d.config.verify_wall_ms });
+      const adv = await d.provider.exec(sb, { argv: HARNESS_ARGV, cwd: "/check", stdin: `${nonce}\n`, env: { ...HARNESS_ENV }, timeout_ms: d.config.verify_wall_ms, harness: true });
       r.advisory_output = feedbackText(`${adv.stdout}${adv.stderr}`);
       if (adv.exit === 0 && parseProof(adv.stdout, nonce).ok) {
         r.outcome = "built";
