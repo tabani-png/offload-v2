@@ -606,7 +606,12 @@ public final class BuildProgressModel: ObservableObject {
     }
     switch opportunity.state {
     // An unknown state keeps waiting: the fix is read only in ready_for_approval (review4.md finding 2).
-    case .open, .chosen, .capturingFixtures, .designing, .unknown:
+    // Still open: the build answer never reached Offload (the person left while it was on its way). The answer's own
+    // reply is already past open, so this is the resume and poll paths (review6.md finding 2).
+    case .open:
+      plan = p
+      stopPlan(BuildCopy.answerNotReceived)
+    case .chosen, .capturingFixtures, .designing, .unknown:
       p.phase = .designing
       p.line = BuildCopy.designing
       plan = p
@@ -729,11 +734,13 @@ public final class BuildProgressModel: ObservableObject {
     plan = nil
     planTask?.cancel()
     planTask = nil
-    // A stopped plan already said why; any other plan may still be designed on Offload.
-    if case .stopped = phase {
-      notice = nil
-    } else {
-      notice = BuildCopy.closedHere
+    // True to the phase, and it says the plan can't be opened here again: the opportunity is past open, so Today no
+    // longer lists it and the kept plan is gone (review6.md finding 1). A stopped plan already said why.
+    switch phase {
+    case .stopped: notice = nil
+    case .ready: notice = BuildCopy.closedReady
+    case .needsConnection: notice = BuildCopy.closedWaitingOnConnection
+    case .answering, .designing, .tooLong, .starting: notice = BuildCopy.closedDesigning
     }
   }
 

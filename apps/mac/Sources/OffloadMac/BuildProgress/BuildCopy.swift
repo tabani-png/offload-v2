@@ -118,7 +118,10 @@ public enum BuildCopy {
   /// A build this Mac did not record (the API has no list route) cannot be listed (review4.md finding 4).
   public static let alreadyBuilt = "This suggestion is already being built or was built. A build this Mac didn't record isn't listed here."
   public static let designStopped = "Designing this fix stopped and needs you. Nothing is built until then."
-  public static let closedHere = "Closed on this Mac. Offload may still finish designing it."
+  public static let closedDesigning = "Closed on this Mac. Offload may still design it, but it can't be opened here again."
+  public static let closedReady = "Closed on this Mac. This plan can't be opened here again."
+  public static let closedWaitingOnConnection = "Closed on this Mac. Nothing more happens until the apps are connected, and it can't be opened here again."
+  public static let answerNotReceived = "Your OK, build didn't reach Offload. Press OK, build in Today again."
   public static let close = "Close"
   public static let lastBuildFailed = "Its last build didn't pass. Nothing was installed."
   public static let starting = "Starting the build…"
@@ -249,7 +252,7 @@ public enum BuildCopy {
       heldOutLabel, notRun, install, seeWhatChanged, whatItWillDo, cancelBuild, removeFromList, okBuild,
       installNeedsCloud, installNeedsEnrollment, buildNeedsEnrollment, installChanged, definitionMissing, readFirst,
       measuredAfter, notMeasured, measuredLater, planTitle, answering, designing, stillDesigning, planChanged,
-      alreadyRunning, noFixYet, setAside, alreadyBuilt, designStopped, closedHere, close, lastBuildFailed, starting, noBuilds, offline, gone, checking, opportunityNeedsCloud,
+      alreadyRunning, noFixYet, setAside, alreadyBuilt, designStopped, closedDesigning, closedReady, closedWaitingOnConnection, answerNotReceived, close, lastBuildFailed, starting, noBuilds, offline, gone, checking, opportunityNeedsCloud,
     ]
     let built: [String] = [
       fingerprint("7c41e2"), attemptsPassing(2, of: 3), failedFixing(1), otherStage("recovered", state: "failed"),
