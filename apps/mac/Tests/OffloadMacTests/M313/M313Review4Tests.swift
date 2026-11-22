@@ -6,8 +6,6 @@ import Testing
 // and an unknown state keeps waiting, the fix is read only in `ready_for_approval` (finding 2); closing a plan posts
 // nothing (review5.md finding 1, which replaced finding 3's posting answer); the capped headline names the build's own
 // cap (finding 8).
-// (Earlier header text, kept for the record:) Not now posts the
-// glossary's answer and a failure keeps the plan (finding 3); the capped headline names the build's own cap (finding 8).
 
 extension M313 {
   @Test("PLAN: needs_you says the design stopped and needs the person, reads no fix and drops the kept plan")
