@@ -25,6 +25,10 @@ public enum ExclusionBridge {
   public let file: URL
   private let source: any ExclusionSource
   private var written: [ExclusionRule]?
+  /// How a file is created (path, bytes, attributes). Tests watch the attributes; the app uses FileManager.
+  var createFile: @MainActor (String, Data, [FileAttributeKey: Any]) -> Bool = { path, data, attributes in
+    FileManager.default.createFile(atPath: path, contents: data, attributes: attributes)
+  }
 
   public init(file: URL, source: any ExclusionSource) {
     self.file = file
@@ -44,7 +48,8 @@ public enum ExclusionBridge {
     // list holds bundle ids, hosts and title words, no screen content (SPEC Scope changes, review 2 finding 5).
     let fm = FileManager.default
     let temp = file.deletingLastPathComponent().appendingPathComponent(".\(file.lastPathComponent).\(UUID().uuidString)")
-    guard fm.createFile(atPath: temp.path, contents: try encoder.encode(rules), attributes: [.posixPermissions: 0o600]) else {
+    let data = try encoder.encode(rules)
+    guard createFile(temp.path, data, [.posixPermissions: 0o600]) else {
       throw CocoaError(.fileWriteUnknown)
     }
     do {
