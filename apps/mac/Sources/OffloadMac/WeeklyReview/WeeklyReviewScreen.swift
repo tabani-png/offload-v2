@@ -69,8 +69,14 @@ struct WeeklyReviewView: View {
     case .empty:
       VStack(alignment: .leading, spacing: Tokens.Space.s16) {
         Text(ReviewCopy.empty).textStyle(Tokens.TypeScale.display).foregroundStyle(Theme.ink)
-        Button(ReviewCopy.chooseRecordings) { model.chooseRecordings() }
-          .buttonStyle(PrimaryButtonStyle())
+        HStack(spacing: Tokens.Space.s12) {
+          Button(ReviewCopy.chooseRecordings) { model.chooseRecordings() }
+            .buttonStyle(PrimaryButtonStyle())
+          if let latest = model.latestDataWeek {
+            Button(ReviewCopy.seeWeek(latest)) { Task { await model.showLatestData() } }
+              .buttonStyle(SecondaryButtonStyle())
+          }
+        }
       }
     case .notYet:
       Text(model.notYetLine ?? "").textStyle(Tokens.TypeScale.display).foregroundStyle(Theme.ink)

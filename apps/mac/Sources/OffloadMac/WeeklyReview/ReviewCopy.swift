@@ -8,12 +8,17 @@ public enum ReviewCopy {
 
   // MARK: Title and subtitle
 
-  /// "Week of Nov 9" (the week's Monday).
-  public static func weekOf(_ week: ISOWeek) -> String {
+  /// "Nov 9" (the week's Monday).
+  static func monday(_ week: ISOWeek) -> String {
     let c = LocalDays.calendar(week.timeZone).dateComponents([.month, .day], from: week.from)
     let month = months[max(0, min(11, (c.month ?? 1) - 1))]
-    return "Week of \(month) \(c.day ?? 1)"
+    return "\(month) \(c.day ?? 1)"
   }
+
+  /// "Week of Nov 9".
+  public static func weekOf(_ week: ISOWeek) -> String { "Week of \(monday(week))" }
+  /// The empty state's way to the latest week with data: "See the week of Oct 5".
+  public static func seeWeek(_ week: ISOWeek) -> String { "See the week of \(monday(week))" }
 
   public static let reviewItem = "review"
   public static func titleItems(_ week: ISOWeek) -> [String] { [weekOf(week), reviewItem] }
@@ -186,7 +191,7 @@ public enum ReviewCopy {
       goalQuestion(repeat: "Xcode, then Slack", goal: "Ship a product"), buildQuestion(repeat: "Xcode, then Slack"),
       cloudQuestion(name: "Reconcile invoices"), whyLine(top: true, minutesPerWeek: 145, present: 3, observed: 4),
       whyLine(top: false, minutesPerWeek: 60, present: 1, observed: 1), yes, no, anotherGoal, okBuild, notNow, never, keep,
-      leaveAlone, whichGoal, neverNote, pickGoal, answerFailed, loading, empty, chooseRecordings, notYet(slot), tryAgain,
+      leaveAlone, whichGoal, neverNote, pickGoal, answerFailed, loading, empty, chooseRecordings, seeWeek(week), notYet(slot), tryAgain,
       failedOffline, failedSignedOut, failedBusy, failedServer, failedOther, previousWeek, nextWeek, howCounted, slotTitle,
       dayLabel, timeLabel, notifyToggle, notifyHelp, notificationsOff, slotSaveFailed, notificationTitle, notificationBody,
     ] + goalTrendItems(up: true, weeks: 4) + goalTrendItems(up: false, weeks: 3) + counterItems(answered: 2, total: 4)

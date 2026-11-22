@@ -128,6 +128,21 @@ public final class WeeklyReviewModel: ObservableObject {
     return week.next
   }
 
+  /// The latest week with data up to now, other than the shown one: the empty state offers it, because an imported
+  /// archive often holds only older weeks.
+  public var latestDataWeek: ISOWeek? {
+    guard isLocal else { return nil }
+    let current = currentWeek
+    let shown = week
+    return dataWeeks.last(where: { !(current < $0) && $0.id != shown.id })
+  }
+
+  public func showLatestData() async {
+    guard let target = latestDataWeek else { return }
+    followsNow = false
+    await show(target)
+  }
+
   public var canGoBack: Bool { previousTarget != nil }
   public var canGoForward: Bool { nextTarget != nil }
 
