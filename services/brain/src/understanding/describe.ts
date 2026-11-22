@@ -121,6 +121,7 @@ export function describeSpan(span: Span, timezone: string): SpanDescription {
     verbFrom: verb === null ? "default" : "text",
     objectFrom: object === null ? "none" : "text",
     text: "",
+    observationIds: span.observationIds,
   };
   d.text = descriptionText(d);
   return d;

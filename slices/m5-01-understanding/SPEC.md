@@ -88,7 +88,7 @@ Pipeline, all in `services/brain/src/understanding/`:
    bigrams 0.5), signed buckets, 1024 dims, unit norm. Same text, same vector.
 6. **Induce** (`induce.ts`): steps join by exact `app|host|verb|object` key, else the best step on the same surface
    with cosine ≥ 0.7. Tasks are connected components of steps linked by a shared item pseudonym or a reliable
-   transition. Instances split on a new day, a gap over 10 min, a conflicting `doc` pseudonym or the instance's first
+   transition. Instances split on a new day, a gap over 10 min, a step coming back with a conflicting `doc` or the instance's first
    step recurring after another step. Ids are deterministic (uuid from sha256 of device and object ids), so the same
    observations give the same window and `runMemberUpdate` writes the same rows.
 7. **Job** (`job.ts`): duplicate check on `outbox_deliveries` → profile timezone (brain transaction) → read (capture
@@ -157,6 +157,12 @@ fix rules and `FixEstimate` (m5-04: `estimateFor` is passed through), `offload s
 - **EMBED red test example changed after the red commit**: the "alike" pair shared 5 of 8 words (cosine 0.63, below
   the 0.7 assign threshold), which is not what two instances of one step look like; it now differs by the words one
   frame shows more (cosine above 0.7). The embedder was not tuned to the test.
+- **Conflicting doc pseudonym, made precise** (INDUCE red test case changed after the red commit): an instance splits
+  when a step already in it comes back with a disjoint `doc`, not on any two different docs. Live capture sends the
+  pseudonym of each page's URL path as `doc`, so a mail message and the web form it leads to always differ; splitting
+  on that would cut every live multi-step workflow into single steps. The test case is now `A(d5) B(d5) B(d6)` →
+  `AB`, `B` instead of `A(d5) B(d6)` → `A`, `B`. Step B's title now names its order (`Order <doc:…>`), as A's does,
+  so two B pages are two spans (same app, title and host would correctly be one span).
 - **Old understanding code is written fresh, not copied**: old `describe.ts`/`induce.ts` depend on frame notes,
   grouping and the name masker; v2 gets masked text only, so the rules are smaller. Same constants.
 

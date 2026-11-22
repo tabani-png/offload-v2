@@ -52,6 +52,12 @@ type Event =
   | { kind: CaptureObservation["kind"]; id: string; ts: number; o: CaptureObservation }
   | { kind: "text"; id: string; ts: number; t: CaptureText };
 
+/** At one instant: what ends comes first, then what resumes, then the focus, then what happens on it. A text read at
+ * the moment of a focus change belongs to the new app, never to the old one re-opened by idle_end. */
+const RANK: Readonly<Record<Event["kind"], number>> = {
+  idle_start: 0, pause: 1, resume: 2, idle_end: 3, focus: 4, permission_change: 5, input_counts: 6, text: 6,
+};
+
 const byTime = (a: { ts: number; id: string }, b: { ts: number; id: string }) => a.ts - b.ts || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 function focusOf(o: CaptureObservation): Focus {
@@ -76,7 +82,9 @@ function toSegments(events: readonly Event[], idleBackdateMs: number): Segment[]
     if (cur === null) return;
     cur.end = Math.max(cur.start, at);
     cut(cur, at);
-    out.push(cur);
+    // An empty moment (idle_end right before a focus re-opens the old app for 0 s) is not activity and must not
+    // carry the old app's doc into the next span.
+    if (cur.end > cur.start || cur.texts.length > 0 || cur.inputs.length > 0) out.push(cur);
     cur = null;
   };
   const open = (focus: Focus, ts: number, opener: string, refs: Ref[]) => {
@@ -134,7 +142,9 @@ function toSegments(events: readonly Event[], idleBackdateMs: number): Segment[]
 function applyCues(seg: Segment): Segment[] {
   if (!seg.focus.standIn) return [seg];
   const parts: Segment[] = [];
-  let running: Cue | null = null;
+  let running = null as Cue | null;
+  /** A new app replaces the cue; a host alone updates it. */
+  const next = (r: Cue | null, c: Cue): Cue => (r === null || (c.appBundleId !== undefined && c.appBundleId !== r.appBundleId) ? c : { ...r, ...c });
   let part: Segment = seg;
   const withCue = (s: Segment, c: Cue | null): Segment => {
     if (c === null || (c.appBundleId === undefined && c.host === undefined)) return s;
@@ -153,9 +163,9 @@ function applyCues(seg: Segment): Segment[] {
       // A new app or host on screen: the part so far ends here and a new one starts at this text.
       parts.push(withCue({ ...part, end: t.ts }, running));
       part = { ...seg, opener: t.id, start: t.ts, refs: [], texts: [], inputs: [] };
-      running = c.appBundleId !== undefined && c.appBundleId !== running.appBundleId ? c : { ...running, ...c };
+      running = next(running, c);
     } else if (found) {
-      running = running === null ? c : c.appBundleId !== undefined && c.appBundleId !== running.appBundleId ? c : { ...running, ...c };
+      running = next(running, c);
     }
     part.texts.push(t);
   }
@@ -279,7 +289,7 @@ export function sessionize(observations: readonly CaptureObservation[], texts: r
   for (const t of texts) push(t.device_id, { kind: "text", id: t.object_id, ts: t.ts, t });
   const spans: Span[] = [];
   for (const device of [...byDevice.keys()].sort()) {
-    const events = byDevice.get(device)!.sort(byTime);
+    const events = byDevice.get(device)!.sort((a, b) => a.ts - b.ts || RANK[a.kind] - RANK[b.kind] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const segments = toSegments(events, opts.idleBackdateMs).flatMap(applyCues);
     spans.push(...mergeSegments(segments, opts).map((b) => toSpan(device, b)));
   }

@@ -61,7 +61,7 @@ test("INDUCE: steps sharing a doc pseudonym on different days join the same task
 test("INDUCE: instances split on a new day, a gap over 10 min and a conflicting doc pseudonym", async () => {
   const r = rng(12);
   const A = (d: string): Segment => ({ app: app("com.apple.mail", "Mail", `Order ${d}`, d), seconds: 60, frames: [`Order ${d} from customer`] });
-  const B = (d: string): Segment => ({ app: { bundle: "com.google.Chrome", name: "Google Chrome", title: "Orders", host: "shop.example", doc: d }, seconds: 60, frames: [`Create order ${d} shop`] });
+  const B = (d: string): Segment => ({ app: { bundle: "com.google.Chrome", name: "Google Chrome", title: `Order ${d}`, host: "shop.example", doc: d }, seconds: 60, frames: [`Create order ${d} shop`] });
   const at = (day: string, min: number) => utc(day) + 9 * 3_600_000 + min * 60_000;
   const d1 = "<doc:h_1111111111111111>", d2 = "<doc:h_2222222222222222>", d3 = "<doc:h_3333333333333333>", d4 = "<doc:h_4444444444444444>";
   const d5 = "<doc:h_5555555555555555>", d6 = "<doc:h_6666666666666666>";
@@ -69,10 +69,10 @@ test("INDUCE: instances split on a new day, a gap over 10 min and a conflicting 
     recordingObservations({ start: at("2026-11-09", 0), source: "live", segments: [A(d1), B(d1), A(d2), B(d2)] }, r), // start step recurs: 2
     recordingObservations({ start: at("2026-11-09", 30), source: "live", segments: [A(d3), B(d3)] }, r), // gap over 10 min: 1
     recordingObservations({ start: at("2026-11-10", 0), source: "live", segments: [A(d4), B(d4)] }, r), // new day: 1
-    recordingObservations({ start: at("2026-11-10", 30), source: "live", segments: [A(d5), B(d6)] }, r), // conflicting doc: 2
+    recordingObservations({ start: at("2026-11-10", 30), source: "live", segments: [A(d5), B(d5), B(d6)] }, r), // a step comes back with another doc: 2
   ]);
   const w = await win(b, ["2026-11-09", "2026-11-10"]);
   expect(w.tasks).toHaveLength(1);
   const sizes = w.tasks[0]!.instances.map((i) => spanApps(w, i.spanIds).map((a) => (a === "com.apple.mail" ? "A" : "B")).join(""));
-  expect(sizes).toEqual(["AB", "AB", "AB", "AB", "A", "B"]);
+  expect(sizes).toEqual(["AB", "AB", "AB", "AB", "AB", "B"]);
 });

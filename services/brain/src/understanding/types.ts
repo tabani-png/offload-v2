@@ -83,4 +83,6 @@ export interface SpanDescription {
   objectFrom: "text" | "label" | "none";
   /** The text that is embedded: surface, verb, object and content words. No pseudonyms, no digits. */
   text: string;
+  /** Evidence ids, copied from the span. */
+  observationIds: string[];
 }
