@@ -88,7 +88,11 @@ an empty `BASE`.
 In CI the checkout has full history and `SLICE_UPSTREAM` is set (the PR merge commit's first parent, or the previous
 `main` tip on push), so only the change's own commits are scope-checked and a slice already `done` there is skipped.
 A `done` slice is scope-checked only from `BASE` to the commit that set `status: done` in its SPEC, so later slices
-stacked on the same branch are not charged to it; `in_progress` slices still check everything since `BASE`.
+stacked on the same branch are not charged to it; `in_progress` slices still check everything since `BASE`. If that
+commit is a squash that also lands another slice (its SPEC is in the commit and is `in_progress` there or set `done`
+there too, so its own `verify.sh` checks the commit), files of the commit in that slice's `paths_in_scope` and not in
+its `paths_out_of_scope` are charged to it, not to the `done` slice, unless the `done` slice also changed them in an
+earlier commit. Every other file the `done` slice changed is still checked against its own scope.
 
 `scripts/verify-all.sh` lints every SPEC and `verify.sh`, then runs `verify.sh` for every slice marked `done` with
 `SKIP_FULL_SUITE=1` (it already ran the full suite once).

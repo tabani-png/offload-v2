@@ -135,3 +135,90 @@ test("SCOPE: status: done not yet committed falls back to everything since BASE"
   expect(filesFor("s2", root, base).files).toContain("packages/b/y.ts");
   expect(filesFor("s2", root, base).files).toContain("slices/s2/SPEC.md");
 });
+
+// One squash commit lands several slices at once (a PR squash-merged to main): it sets s1 done and also carries
+// s2's files and SPEC. s2's own verify.sh scope-checks that commit, so s2's in-scope files are not charged to s1.
+const scopedSpec = (id: string, status: string, inScope: string, outOfScope = "[]") =>
+  `---\nid: ${id}\nstatus: ${status}\npaths_in_scope: ${inScope}\npaths_out_of_scope: ${outOfScope}\n---\n`;
+const s1Spec = (status: string) => scopedSpec("s1", status, "[packages/a/**, slices/s1/**]");
+const s2Spec = (status: string) =>
+  scopedSpec("s2", status, "[docs/**, STATUS.md, slices/s2/**]", "[docs/private/**]");
+
+type SquashOpts = { squash?: Record<string, string>; s2Before?: string; s1Earlier?: Record<string, string> };
+function squashRepo(opts: SquashOpts = {}) {
+  const root = mkdtempSync(join(tmpdir(), "slice-changes-squash-"));
+  dirs.push(root);
+  git(root, "init", "-q", "-b", "main");
+  const base = commit(root, { "README.md": "a\n", "slices/s1/SPEC.md": s1Spec("in_progress") }, "base");
+  if (opts.s2Before) commit(root, { "slices/s2/SPEC.md": s2Spec(opts.s2Before) }, "s2 earlier");
+  if (opts.s1Earlier) commit(root, opts.s1Earlier, "s1: earlier work");
+  const upstream = git(root, "rev-parse", "HEAD");
+  commit(root, {
+    "slices/s1/SPEC.md": s1Spec("done"),
+    "packages/a/x.ts": "x\n",
+    "slices/s2/SPEC.md": s2Spec("in_progress"),
+    "slices/s2/verify.sh": "v\n",
+    "docs/guide.md": "g\n",
+    "STATUS.md": "s\n",
+    ...(opts.squash ?? {}),
+  }, "squash: s1 done, s2 files");
+  return { root, base, upstream };
+}
+
+function squashFiles(id: string, root: string, base: string, upstream?: string) {
+  const r = Bun.spawnSync(
+    ["bash", "-uc", `set -o pipefail; . "${lib}"; SLICE_ID="$2"; slice_files "$1"; echo "rc=$?"; printf '%s\\n' "$SLICE_FILES"`, "x", base, id],
+    { cwd: root, env: upstream ? { ...env, SLICE_UPSTREAM: upstream } : env, stdout: "pipe", stderr: "pipe" },
+  );
+  const out = r.stdout.toString().trim().split("\n");
+  const i = out.findIndex((l) => l.startsWith("rc="));
+  return { log: out.slice(0, i).join("\n"), rc: out[i], files: out.slice(i + 1).filter(Boolean) };
+}
+
+const s1Own = ["packages/a/x.ts", "slices/s1/SPEC.md"];
+
+test("SCOPE: a squash that sets a slice done does not charge it another landing slice's in-scope files", () => {
+  const { root, base, upstream } = squashRepo();
+  const ci = squashFiles("s1", root, base, upstream);
+  expect({ rc: ci.rc, files: ci.files }).toEqual({ rc: "rc=0", files: s1Own });
+  expect(ci.log).toContain("s2");
+  expect(squashFiles("s1", root, base).files).toEqual(s1Own);
+});
+
+test("SCOPE: in a squash, a file the done slice changed outside every landing slice's scope is still reported", () => {
+  const { root, base, upstream } = squashRepo({ squash: { "apps/web/oops.ts": "o\n" } });
+  expect(squashFiles("s1", root, base, upstream).files).toEqual(["apps/web/oops.ts", ...s1Own]);
+});
+
+test("SCOPE: in a squash, a file in another slice's paths_out_of_scope is still charged to the done slice", () => {
+  const { root, base, upstream } = squashRepo({ squash: { "docs/private/x.md": "p\n" } });
+  expect(squashFiles("s1", root, base, upstream).files).toEqual(["docs/private/x.md", ...s1Own]);
+});
+
+test("SCOPE: in a squash, another slice that is only ready there does not take files from the done slice", () => {
+  const { root, base, upstream } = squashRepo({ squash: { "slices/s2/SPEC.md": s2Spec("ready") } });
+  expect(squashFiles("s1", root, base, upstream).files).toEqual([
+    "STATUS.md", "docs/guide.md", ...s1Own, "slices/s2/SPEC.md", "slices/s2/verify.sh",
+  ]);
+});
+
+test("SCOPE: in a squash, a slice already done before that commit does not take files from the done slice", () => {
+  const touched = s2Spec("done") + "\nnote\n";
+  const { root, base, upstream } = squashRepo({ s2Before: "done", squash: { "slices/s2/SPEC.md": touched } });
+  expect(squashFiles("s1", root, base, upstream).files).toEqual([
+    "STATUS.md", "docs/guide.md", ...s1Own, "slices/s2/SPEC.md", "slices/s2/verify.sh",
+  ]);
+});
+
+test("SCOPE: a file the done slice changed in an earlier commit stays charged even if a landing slice owns it", () => {
+  const { root, base } = squashRepo({ s1Earlier: { "docs/guide.md": "mine\n" } });
+  expect(squashFiles("s1", root, base).files).toEqual(["docs/guide.md", ...s1Own]);
+});
+
+test("SCOPE: a slice landing in the same squash is still charged every file of that commit itself", () => {
+  const { root, base, upstream } = squashRepo({ squash: { "apps/web/oops.ts": "o\n" } });
+  expect(squashFiles("s2", root, base, upstream).files).toEqual([
+    "STATUS.md", "apps/web/oops.ts", "docs/guide.md", "packages/a/x.ts", "slices/s1/SPEC.md", "slices/s2/SPEC.md",
+    "slices/s2/verify.sh",
+  ]);
+});
