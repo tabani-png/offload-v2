@@ -4,16 +4,45 @@
 // do not make a number known.
 import type { CompleteText } from "../user-model/ports.ts";
 import { userContextBlock, type UserContext } from "../understanding/context.ts";
-import { hasLink } from "../user-model/names.ts";
+import { hasAnyLink } from "../user-model/names.ts";
 import { isFigure, r1, r2 } from "./figure.ts";
 import type { WeekRecord } from "./week-record.ts";
 
 const SKIP_KEYS = new Set(["id", "evidence", "arithmetic", "source_purged_at"]);
 const NUMBER_RE = /\d+(?:\.\d+)?/g;
+/** Cardinal number words, checked against the record like digits (ADR 0003: a number in words is still a number). */
+const UNITS: Readonly<Record<string, number>> = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11,
+  twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+};
+const TENS: Readonly<Record<string, number>> = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+/** Multipliers, fractions and scales imply arithmetic the record does not hold: always refused. */
+const REFUSED_WORDS = new Set([
+  "half", "halves", "halved", "twice", "thrice", "double", "doubled", "doubles", "triple", "tripled", "triples",
+  "quadruple", "quadrupled", "dozen", "dozens", "quarter", "quarters", "third", "thirds", "hundred", "hundreds",
+  "thousand", "thousands", "million", "millions", "billion", "billions",
+]);
+
+/** Number words in a text: `{ word, value }`, value null for a refused word. `forty-two` and `forty two` are 42. */
+function numberWords(text: string): Array<{ word: string; value: number | null }> {
+  const out: Array<{ word: string; value: number | null }> = [];
+  const tokens = text.toLowerCase().match(/[a-z]+/g) ?? [];
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]!;
+    const next = tokens[i + 1];
+    if (TENS[t] !== undefined && next !== undefined && (UNITS[next] ?? 0) >= 1 && UNITS[next]! <= 9) {
+      out.push({ word: `${t} ${next}`, value: TENS[t]! + UNITS[next]! });
+      i += 1;
+    } else if (UNITS[t] !== undefined) out.push({ word: t, value: UNITS[t]! });
+    else if (TENS[t] !== undefined) out.push({ word: t, value: TENS[t]! });
+    else if (REFUSED_WORDS.has(t)) out.push({ word: t, value: null });
+  }
+  return out;
+}
 const normalize = (text: string) => text.replace(/(\d),(?=\d{3}(?:\D|$))/g, "$1");
 export const MAX_SENTENCE = 300;
 
-/** A model-written text may only use numbers that are in the record. */
+/** A model-written text may only use numbers that are in the record, written in digits or as cardinal words. */
 export function checkNarrative(text: string, record: unknown): { ok: boolean; unknown: string[] } {
   const known = new Set<string>();
   const add = (n: number, ratio = false) => {
@@ -32,6 +61,7 @@ export function checkNarrative(text: string, record: unknown): { ok: boolean; un
   };
   walk(record, "");
   const unknown = (normalize(text).match(NUMBER_RE) ?? []).filter((n) => !known.has(String(Number(n))));
+  for (const w of numberWords(text)) if (w.value === null || !known.has(String(w.value))) unknown.push(w.word);
   return { ok: unknown.length === 0, unknown };
 }
 
@@ -49,6 +79,7 @@ export function weekNarrativePrompt(record: WeekRecord, user: UserContext | unde
   return [
     "Write one short sentence for this person's weekly review, in plain words, addressed to them.",
     "Use only numbers that appear in the week record below. Do not compute or round new numbers.",
+    "Write every number in digits, never as a word, and do not compare with other weeks.",
     userContextBlock(user),
     "<week_record>",
     `active hours: ${record.hours.total.value}`,
@@ -77,6 +108,6 @@ export async function writeWeekSentence(
   }
   const sentence = reply.trim().split("\n")[0]?.trim() ?? "";
   // A link (bare host names included) or an email address is never shown or stored; the code sentence stands.
-  if (sentence === "" || sentence.length > MAX_SENTENCE || hasLink(sentence) || !checkNarrative(sentence, record).ok) return fallback;
+  if (sentence === "" || sentence.length > MAX_SENTENCE || hasAnyLink(sentence) || !checkNarrative(sentence, record).ok) return fallback;
   return { sentence, source: "model" };
 }

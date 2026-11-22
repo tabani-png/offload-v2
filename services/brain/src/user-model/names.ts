@@ -46,13 +46,27 @@ const CODE_SUFFIXES = new Set([
 ]);
 /** A dotted token whose last label has 2 or more letters: `acme.com`, `bit.ly`, `shop.example`. */
 const HOST_TOKEN_RE = /\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.([a-z]{2,})\b/gi;
+/** Full-width and ideographic dots (`evil．com`, `evil。com`) read as dots. */
+const WIDE_DOTS_RE = /[\uff0e\u3002\uff61]/g;
+const IPV4_RE = /\b\d{1,3}(?:\.\d{1,3}){3}\b/;
 
-/** Stricter than hasLeak, for text a person types or a model writes (goals, role, industry, the weekly sentence):
- * also refuses `www.` and any host name, whatever its suffix. Code file names (`README.md`, `Node.js`) are fine. */
-export function hasLink(text: string): boolean {
-  if (hasLeak(text) || /\bwww\./i.test(text)) return true;
-  for (const m of text.matchAll(HOST_TOKEN_RE)) if (!CODE_SUFFIXES.has(m[1]!.toLowerCase())) return true;
+function linkIn(text: string, allowCodeFiles: boolean): boolean {
+  const t = text.replace(WIDE_DOTS_RE, ".");
+  if (hasLeak(t) || /\bwww\./i.test(t) || IPV4_RE.test(t)) return true;
+  for (const m of t.matchAll(HOST_TOKEN_RE)) if (!allowCodeFiles || !CODE_SUFFIXES.has(m[1]!.toLowerCase())) return true;
   return false;
+}
+
+/** For text a model writes (the weekly sentence): refuses any link, `www.`, host name or IP address, whatever its
+ * suffix. No exception: a model sentence has no reason to name a file, and `evil.sh` is a real host. */
+export function hasAnyLink(text: string): boolean {
+  return linkIn(text, false);
+}
+
+/** For text a person types (goals, role, industry): like hasAnyLink, except that code file names (`README.md`,
+ * `Node.js`) are allowed. A host on one of those suffixes (`bun.sh`) is therefore accepted too (API.md). */
+export function hasLink(text: string): boolean {
+  return linkIn(text, true);
 }
 
 /** True when the text holds an email address or a URL. */
