@@ -71,7 +71,8 @@ public struct OnDeviceRecordings {
                           timeZone: TimeZone = .current,
                           durations: (@Sendable (URL) -> TimeInterval?)? = nil,
                           appNames: (@MainActor ([String]) -> @Sendable (String) -> [String])? = { LiveAppNames.resolver(for: $0) },
-                          importsListReadable: Bool = true)
+                          importsListReadable: Bool = true, nameFinder: (any PersonNameFinder)? = nil,
+                          installedAppNames: Set<String>? = nil)
     throws -> OnDeviceRecordings {
     let paths = folders.paths
     let key = try pseudonymKey ?? LocalPseudonymKey.loadOrCreate(at: paths.pseudonymKey)
@@ -80,8 +81,12 @@ public struct OnDeviceRecordings {
     let ledger = FileRecordingLedger(file: paths.ledger)
     let discarded = importsListReadable ? discardUnfinished(store: store, sink: sink, ledger: ledger) : []
     let protected = [paths.offloadSupport]
+    // Installed apps' names are listed once here, so the name tagger never takes a menu bar app for a person.
+    let apps = installedAppNames ?? Set(InstalledAppNames.list(folders: InstalledAppNames.folders(home: folders.home)))
+    let finder: any PersonNameFinder = nameFinder ?? NaturalLanguageNameFinder()
     let importer = RecordingImporter(
-      recognizer: recognizer ?? VisionTextRecognizer(), masker: InterimTextMasker(key: key), hasher: nil, keyframes: nil,
+      recognizer: recognizer ?? VisionTextRecognizer(), masker: InterimTextMasker(key: key, names: finder, appNames: apps),
+      hasher: nil, keyframes: nil,
       exclusions: NeverWatchImportExclusions(source: neverWatch), sink: sink, ledger: ledger, readers: readers,
       clock: clock, timeZone: timeZone, protected: protected
     )
