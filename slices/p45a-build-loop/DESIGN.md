@@ -131,10 +131,14 @@ An independent Opus security review (2026-11-14) confirmed the guard, proof, pat
 RLS rules. It also found stale-recovery and deploy issues, now fixed with tests: heartbeats inside attempts,
 `BuildEnded`, the attempt row written first, ending the build on a failed mint, kind- and subject-bound claims, a
 deploy that can be retried, and p45b's unrounded threshold and stored raw minutes. Open:
-- **Same uid for harness and tool.** In a Docker shard the harness, `bun test` and the built tool all run as 65534.
-  A forged JUnit report alone cannot pass (bun's exit code is still required). But on a host with Yama
-  `ptrace_scope = 0`, the tool could read the nonce from PID 1. Fix for m2-08: start the container as root with
-  only `SETUID`/`SETGID`, keep the report in a root-only folder, and run `bun test` as 65534. Spike it on real Docker.
+- **User split in verification** (review round 3). The Docker harness starts as root (PID 1, only `CHOWN`, `SETGID`,
+  `SETUID`), runs the check as the host user that owns `/check` (check, guard, bunfig `0400`) and every tool the check
+  starts, through a root-side spawn broker, as another user with the check's group and a clean environment. The tool
+  can read neither the held-out check, nor the check's `/proc` entries, nor the harness's nonce; temp folders the check
+  makes are shared through the group. Checks may start processes only with `Bun.spawn`/`Bun.spawnSync`, the two the
+  guard routes. A provider that isolates the tool refuses proofs without `split: true`. Tested for real with
+  passwordless `sudo` (skipped without it: GitHub's hosted runners have it); `privilege_split: false` is development
+  only. Open: the `LIVE:` Docker run (it has the cheat case).
 - **Approvals are in memory** (`MemoryApprovals`): a restart loses them. The Postgres adapter is m2-06.
 - **Durable handoff of the build token**: the inline runner holds it in process (section 4).
 - **`LOCAL:` hand-off to m5-03** (owner action: whoever writes m5-03's SPEC). ROADMAP's m5-03 row does not list the

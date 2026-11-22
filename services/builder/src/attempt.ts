@@ -102,7 +102,8 @@ export async function runAttempt(d: AttemptDeps, i: AttemptInput): Promise<Attem
     sb = await d.provider.create({ image: d.config.image, vcpu: 2, memory_mb: 4096, wall_ms: d.config.worker_wall_ms, network_allowlist: [], env: {}, tag: i.tag, role: "worker" });
     r.sandbox_id = sb.id;
     await d.provider.putFiles(sb, "check", [
-      ...checkFolder(i.visible.content).map((f) => ({ path: f.path, bytes: enc.encode(f.text) })),
+      // The frozen check is visible to the worker: readable copies (only verification hides its check).
+      ...checkFolder(i.visible.content, { readable: true }).map((f) => ({ path: f.path, bytes: enc.encode(f.text), mode: f.mode })),
       { path: "BUILD.md", bytes: enc.encode(i.brief_md) },
       ...i.fixtures.map((f) => ({ path: `fixtures/${f.path}`, bytes: f.bytes })),
     ]);

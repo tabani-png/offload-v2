@@ -60,7 +60,7 @@ export async function runShards(o: {
       try {
         sb = await o.provider.create(o.spec);
         await o.provider.putFiles(sb, "work", o.artifact);
-        await o.provider.putFiles(sb, "check", checkFolder(s.check.content).map((f) => ({ path: f.path, bytes: enc.encode(f.text) })));
+        await o.provider.putFiles(sb, "check", checkFolder(s.check.content).map((f) => ({ path: f.path, bytes: enc.encode(f.text), mode: f.mode })));
         const before = await o.provider.snapshot(sb, "work");
         const n = nonce();
         const r = await o.provider.exec(sb, { argv: HARNESS_ARGV, cwd: "/check", stdin: `${n}\n`, env: { ...HARNESS_ENV }, timeout_ms: o.timeout_ms });
@@ -68,7 +68,9 @@ export async function runShards(o: {
         const proof = parseProof(r.stdout, n);
         const output = `${r.stdout}${r.stderr}`.slice(-OUTPUT_TAIL);
         if (r.timed_out || r.exit === null) return { ...fail("the check did not finish in time", sb.id), output };
-        return { shard: s.name, passed: r.exit === 0 && proof.ok, ran: proof.nonce_ok, error: null, exit: r.exit, proof, output, wrote_workspace: before !== after, sandbox_id: sb.id, ms: Date.now() - t0 };
+        // With the user split, a pass also needs the harness's word that the tool ran as a user that could not read the check.
+        const isolated = o.provider.isolates_tool !== true || proof.split;
+        return { shard: s.name, passed: r.exit === 0 && proof.ok && isolated, ran: proof.nonce_ok, error: null, exit: r.exit, proof, output, wrote_workspace: before !== after, sandbox_id: sb.id, ms: Date.now() - t0 };
       } catch (e) {
         return fail("the check could not run", sb?.id ?? null, e instanceof SandboxInfraError ? "infra" : "exec");
       } finally {

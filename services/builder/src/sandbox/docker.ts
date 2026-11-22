@@ -13,6 +13,13 @@ import { checkEnv, MOUNT_PATH, safeRelPath, SandboxInfraError, SandboxSpecError,
 export type Executor = (argv: string[], o: { stdin?: string; timeout_ms: number }) => Promise<ExecResult>;
 
 const MAX_OUTPUT = 256 * 1024;
+/** The check runs as the host user that wrote /check (its files are 0400); the tool as another one. */
+function splitEnv(): string[] {
+  const uid = process.getuid?.() ?? 0;
+  const gid = process.getgid?.() ?? 0;
+  const tool = uid === 65534 ? 65533 : 65534;
+  return ["--env", `OFFLOAD_CHECK_UID=${uid}`, "--env", `OFFLOAD_CHECK_GID=${gid}`, "--env", `OFFLOAD_TOOL_UID=${tool}`];
+}
 const DOCKER_ERROR_EXITS: ReadonlySet<number> = new Set([125, 126, 127]);
 const MAX_FILE = 4 * 1024 * 1024;
 const MAX_FILES = 2_000;
@@ -46,10 +53,20 @@ export class DockerProvider implements SandboxProvider {
   private readonly root: string;
   private readonly boxes = new Map<string, Box>();
 
-  constructor(o: { executor?: Executor; docker?: string; root?: string } = {}) {
+  private readonly split: boolean;
+
+  /** `privilege_split` (default true): the harness starts as root with only CHOWN, SETGID and SETUID, runs the check
+   * as the host user that owns /check and the built tool as another user that cannot read it. False is for
+   * development only (no root): verdicts then do not prove the held-out check stayed hidden. */
+  constructor(o: { executor?: Executor; docker?: string; root?: string; privilege_split?: boolean } = {}) {
+    this.split = o.privilege_split ?? true;
     this.executor = o.executor ?? spawnExecutor;
     this.docker = o.docker ?? "docker";
     this.root = o.root ?? tmpdir();
+  }
+
+  get isolates_tool(): boolean {
+    return this.split;
   }
 
   async create(spec: SandboxSpec): Promise<Sandbox> {
@@ -96,8 +113,9 @@ export class DockerProvider implements SandboxProvider {
     for (const f of files) {
       const p = join(base, f.path);
       mkdirSync(dirname(p), { recursive: true, mode: mount === "work" ? 0o777 : 0o755 });
-      writeFileSync(p, f.bytes, { mode: mount === "work" ? 0o666 : 0o444 });
-      chmodSync(p, mount === "work" ? 0o666 : 0o444);
+      const mode = f.mode ?? (mount === "work" ? 0o666 : 0o444);
+      writeFileSync(p, f.bytes, { mode });
+      chmodSync(p, mode);
     }
   }
 
@@ -166,10 +184,11 @@ export class DockerProvider implements SandboxProvider {
       "--pids-limit", "256",
       "--memory", `${b.spec.memory_mb}m`,
       "--cpus", String(b.spec.vcpu),
-      "--user", "65534:65534",
+      ...(this.split ? ["--user", "0:0", "--cap-add", "CHOWN", "--cap-add", "SETGID", "--cap-add", "SETUID"] : ["--user", "65534:65534"]),
       "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m",
       "--env", "HOME=/tmp",
       "--env", "TMPDIR=/tmp",
+      ...(this.split ? splitEnv() : []),
       ...envArgs,
       "--mount", `type=bind,source=${b.work},target=${MOUNT_PATH.work}`,
       "--mount", `type=bind,source=${b.check},target=${MOUNT_PATH.check},readonly`,

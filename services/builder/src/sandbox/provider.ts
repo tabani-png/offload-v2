@@ -29,6 +29,8 @@ export interface Sandbox {
 export interface SandboxFile {
   path: string;
   bytes: Uint8Array;
+  /** File mode in the sandbox folder (default 0666 in /work, 0444 in /check). */
+  mode?: number;
 }
 
 export interface ExecResult {
@@ -48,6 +50,9 @@ export interface ExecOptions {
 
 export interface SandboxProvider {
   readonly name: "docker" | "e2b";
+  /** True when the provider runs the built tool as a user that cannot read the check (the user split): a verification
+   * pass then also needs the harness's `split` proof. */
+  readonly isolates_tool?: boolean;
   create(spec: SandboxSpec): Promise<Sandbox>;
   putFiles(s: Sandbox, mount: Mount, files: SandboxFile[]): Promise<void>;
   /** Regular files only, sorted by path; symlinks are never followed. */

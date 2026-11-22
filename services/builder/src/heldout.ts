@@ -13,7 +13,7 @@ export const HELDOUT_WRITER_SYSTEM = [
   "You write an acceptance check for a small tool before anyone builds it. The check decides done, not the builder.",
   "This check is held out: the builder never sees it. It must keep exactly the interface given (same file name, same commands, same output format), so a correct build passes it.",
   "Use different fixtures from any example in the brief, and test the boundaries the brief implies: empty and very long inputs, exact limits (at, one below, one above), repeated items, unusual characters, and anything the brief says must never happen.",
-  "Write one file, accept.test.ts, for bun test. Import only bun:test and node: builtins. Run the built tool as a subprocess from the workspace root (Bun.spawnSync([process.execPath, 'run', ...])); never import the built code. No network. Put fixtures and outputs in a temporary folder, never in the workspace.",
+  "Write one file, accept.test.ts, for bun test. Import only bun:test and node: builtins. Run the built tool as a subprocess from the workspace root, only with Bun.spawnSync or Bun.spawn (Bun.spawnSync([process.execPath, 'run', ...])), never child_process, Bun.$ or workers; never import the built code. No network. Put fixtures and outputs in a temporary folder, never in the workspace.",
   'Reply with JSON only: {"file":"accept.test.ts","content":"..."}.',
 ].join("\n");
 

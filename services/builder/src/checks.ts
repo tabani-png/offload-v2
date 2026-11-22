@@ -56,6 +56,8 @@ export function parseCheckReply(reply: string): { file: typeof CHECK_FILE; conte
   if (content.includes("\u0000")) return { reason: "the check has a NUL byte" };
   const bad = disallowedTsImport(content);
   if (bad !== null) return { reason: `the check may only import bun:/node: builtins or relative files; it imports ${bad}` };
+  const proc = disallowedProcessApi(content);
+  if (proc !== null) return { reason: `the check may start the built tool only with Bun.spawn or Bun.spawnSync; it uses ${proc}` };
   return { file: CHECK_FILE, content };
 }
 
@@ -72,6 +74,25 @@ export function disallowedTsImport(content: string): string | null {
       return JSON.stringify(spec);
     }
   }
+  return null;
+}
+
+/** Process APIs a check may not use. With the user split (harness.ts) the guard routes Bun.spawn and Bun.spawnSync to
+ * the built tool's own user; any other way to start a process would run the tool as the check's user, which can read the
+ * check (and the held-out answers). */
+const PROCESS_SPECIFIERS = new Set(["child_process", "node:child_process", "bun:ffi", "worker_threads", "node:worker_threads", "cluster", "node:cluster"]);
+const PROCESS_PATTERNS: Array<[RegExp, string]> = [
+  [/\bBun\s*\.\s*\$/, "Bun.$"],
+  [/\bimport\s*\{[^}]*\$[^}]*\}\s*from\s*["']bun["']/, "$ from bun"],
+  [/\bnew\s+Worker\s*\(/, "new Worker()"],
+  [/\bprocess\s*\.\s*(?:dlopen|binding|_linkedBinding)\b/, "process.dlopen/binding"],
+];
+
+export function disallowedProcessApi(content: string): string | null {
+  for (const re of SPECIFIERS) {
+    for (const m of content.matchAll(re)) if (PROCESS_SPECIFIERS.has(m[1]!)) return JSON.stringify(m[1]!);
+  }
+  for (const [re, name] of PROCESS_PATTERNS) if (re.test(content)) return name;
   return null;
 }
 

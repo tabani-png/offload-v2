@@ -20,7 +20,14 @@ const tmp = (p = "offload-p45a-guard-") => {
   return d;
 };
 afterAll(() => {
-  for (const d of temps) rmSync(d, { recursive: true, force: true });
+  for (const d of temps) {
+    try {
+      rmSync(d, { recursive: true, force: true });
+    } catch {
+      // the privileged tests' root harness leaves root-owned files (bun's cache) in the emulated /tmp
+      Bun.spawnSync(["sudo", "-n", "rm", "-rf", d]);
+    }
+  }
 });
 
 /** Runs the command of a `docker run` argv with local bun; container paths are mapped to the sandbox's host folders.
@@ -29,6 +36,7 @@ afterAll(() => {
 const emulator = (o2: { sudo: boolean }): Executor => async (argv, o) => {
   if (argv[1] !== "run") return { exit: 0, stdout: "", stderr: "", timed_out: false };
   const maps: Array<[string, string]> = [];
+  const mounts: string[] = [];
   const env: Record<string, string> = {};
   let workdir = "/";
   let entrypoint: string | null = null;
@@ -41,6 +49,7 @@ const emulator = (o2: { sudo: boolean }): Executor => async (argv, o) => {
     if (a === "--mount") {
       const kv = Object.fromEntries(v.split(",").filter((p) => p.includes("=")).map((p) => p.split("=") as [string, string]));
       maps.push([kv["target"]!, kv["source"]!]);
+      mounts.push(kv["source"]!);
     } else if (a === "--tmpfs") {
       const t = tmp("offload-p45a-tmpfs-");
       chmodSync(t, 0o1777);
@@ -65,7 +74,7 @@ const emulator = (o2: { sudo: boolean }): Executor => async (argv, o) => {
   const fullEnv: Record<string, string> = { PATH: process.env["PATH"] ?? "/usr/bin:/bin", ...Object.fromEntries(Object.entries(env).map(([k, v]) => [k, map(v)])) };
   if (o2.sudo) {
     // In a container the mounts are roots; on the host their parent (the sandbox folder, 0700) must be traversable.
-    for (const [, host] of maps) chmodSync(join(host, ".."), 0o711);
+    for (const host of mounts) chmodSync(join(host, ".."), 0o711);
   }
   const p = Bun.spawn(o2.sudo ? ["sudo", "-n", "env", "-i", ...Object.entries(fullEnv).map(([k, v]) => `${k}=${v}`), ...cmd] : cmd, {
     cwd: map(workdir),
