@@ -101,7 +101,7 @@ public struct PlanSummary: Equatable, Sendable {
   public var summary: String
   public var estimate: String?
   public var cap: String
-  /// "fingerprint 7c41e2": the brief whose hashes OK, build posts (review 2, finding 9).
+  /// "fingerprint 7c41e2": the brief whose hashes OK, build posts (review1.md finding 9).
   public var fingerprint: String
 
   public init(summary: String, estimate: String?, cap: String, fingerprint: String) {
@@ -227,7 +227,7 @@ public final class BuildProgressModel: ObservableObject {
 
   public var canCancel: Bool { !isLocal && client != nil && detail?.actions.offerCancel == true }
 
-  /// The line next to Install, on screen (not only a tooltip): why it is off, or what happened (review 2, finding 2).
+  /// The line next to Install, on screen (not only a tooltip): why it is off, or what happened (review1.md finding 2).
   public var installLine: String? {
     if isLocal { return BuildCopy.installNeedsCloud }
     if let installed = installState.installed { return BuildCopy.installed(version: installed.version) }
@@ -286,7 +286,7 @@ public final class BuildProgressModel: ObservableObject {
   }
 
   /// Checks for cancellation after every wait: a later hand-off cancels this one, which then posts nothing
-  /// (review 1, finding 4).
+  /// (pre-review finding 4).
   private func startCloud(_ pending: BuildRequest?) async {
     guard !Task.isCancelled else { return }
     await refresh()
@@ -299,7 +299,7 @@ public final class BuildProgressModel: ObservableObject {
       await resumePlan(kept)
       guard !Task.isCancelled else { return }
     }
-    // Also resumes a plan that was waiting when the screen went away (review 2, finding 5).
+    // Also resumes a plan that was waiting when the screen went away (review1.md finding 5).
     restartPlanLoop()
     restartPolling()
   }
@@ -450,7 +450,7 @@ public final class BuildProgressModel: ObservableObject {
       return nil
     } catch {
       guard isActive else { return nil }
-      // In words; "Retrying" only when offline, and no retry when this Mac must sign in again (review 2, finding 4).
+      // In words; "Retrying" only when offline, and no retry when this Mac must sign in again (review1.md finding 4).
       connectionLine = connectionWords(error)
       if Self.isSignedOut(error) { return nil }
       pollErrors += 1
@@ -499,7 +499,7 @@ public final class BuildProgressModel: ObservableObject {
       guard plan?.opportunityID == opportunityID else { return }
       await apply(opportunity)
     } catch {
-      // A later plan is not stopped by this one's failure (review 2, finding 5).
+      // A later plan is not stopped by this one's failure (review1.md finding 5).
       guard plan?.opportunityID == opportunityID else { return }
       if Task.isCancelled || Self.isCancellation(error) {
         // The screen went away while the answer was on its way: not an error. The plan waits on the opportunity,
@@ -609,7 +609,7 @@ public final class BuildProgressModel: ObservableObject {
       p.line = BuildCopy.connectFirst(opportunity.missingConnections)
       plan = p
     case .needsConnection:
-      // No apps named: keep designing, never read the fix while a connection is missing (review 1, finding 6).
+      // No apps named: keep designing, never read the fix while a connection is missing (pre-review finding 6).
       p.phase = .designing
       p.line = BuildCopy.designing
       plan = p
@@ -705,7 +705,7 @@ public final class BuildProgressModel: ObservableObject {
     guard canReadDefinition, let client, let id = selected else { return }
     installState.busy = true
     defer { installState.busy = false }
-    // Every result is kept only while the same build is still chosen (review 2, finding 3).
+    // Every result is kept only while the same build is still chosen (review1.md finding 3).
     do {
       let definition = try await client.definition(id: id)
       guard selected == id else { return }
@@ -733,7 +733,7 @@ public final class BuildProgressModel: ObservableObject {
     do {
       let deployed = try await client.deploy(id: id, hashes: hashes)
       // The install belongs to its build's record whatever is chosen now; the screen shows it only for that build
-      // (review 2, finding 3).
+      // (review1.md finding 3).
       if var record = store.record(id) {
         record.routineID = deployed.routineID
         record.installedAt = now()

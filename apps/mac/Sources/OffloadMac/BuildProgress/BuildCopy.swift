@@ -119,7 +119,7 @@ public enum BuildCopy {
   /// "Connect Google Sheets and Github first."
   public static func connectFirst(_ apps: [String]) -> String { "Connect \(joined(apps.map(appName))) first." }
 
-  /// Providers whose names are not plain title case (review 2, finding 8).
+  /// Providers whose names are not plain title case (review1.md finding 8).
   static let providerNames: [String: String] = [
     "github": "GitHub", "gitlab": "GitLab", "hubspot": "HubSpot", "quickbooks": "QuickBooks", "linkedin": "LinkedIn",
     "youtube": "YouTube", "google_sheets": "Google Sheets", "google_drive": "Google Drive", "google_docs": "Google Docs",

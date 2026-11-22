@@ -218,7 +218,7 @@ sheet?" (m5-06); any change to m3-10's folders.
   - The meter's elapsed time is recomputed on each poll (every 2 s while live), not every second.
   - Views (`BuildProgressViews.swift`, `BuildProgressScreen.swift`) are not unit tested; everything they show comes
     from the tested model and pure types.
-- **Review 1** (an independent Opus read; nothing compiled on Linux): fixed a test that would not compile
+- **Pre-review** (the author's own independent Opus subagent read before the logged reviews; nothing compiled on Linux; its commits say "review 1"): fixed a test that would not compile
   (`figuresSample` built its allowed numbers as an array); Remove from list moved out of the row's button so a click
   and VoiceOver reach it; the VoiceOver dot and step words moved into `BuildCopy`; a later hand-off cancels an earlier
   one before it answers anything; only an offline read says "Can't reach Offload. Retrying." (other failures in their
@@ -226,7 +226,7 @@ sheet?" (m5-06); any change to m3-10's folders.
   a deliberate click). Left for the owner: the Contract's "the Mac formats them only" for hs-1 numbers versus the
   measured line computed as `ratio` × `estimated_minutes_per_week` ÷ 60 (Design note), until the outcome carries a
   measured-per-week Figure.
-- **Review 2** (`logs/m3-13-mac-build-progress.review1.md`, verdict CHANGES; every finding taken):
+- **Review 1** (`logs/m3-13-mac-build-progress.review1.md`, verdict CHANGES; every finding taken; its commits and code comments of that round say "review 2", renamed in comments since):
   1. Tests now cover cancel (new tag `CANCEL`: offered only while live, the returned build replaces the one shown, an
      error becomes a notice, the unsigned route), choosing another build (clears the definition read; refuses ids not
      on this Mac), **Not now**, a failed answer, no fix to build and a definition the server does not have.
@@ -258,5 +258,23 @@ sheet?" (m5-06); any change to m3-10's folders.
   11. Test plan step 2 needs m3-11 (Today) or m3-12 (Weekly review) to call `NavigationModel.startBuild`; nothing on
       this branch does yet. The hand-off is covered by the HANDOFF tests, and Builds opens the labelled sample from
       the sidebar.
+- **Review 2** (`logs/m3-13-mac-build-progress.review2.md`, verdict CHANGES; every finding taken; commits say
+  "review2.md"):
+  1. **The OK, build plan is kept across screens.** Leaving Builds destroys `BuildProgressScreen` and its model, and an
+     answered opportunity is no longer listed as open, so the plan was lost. `PlanRecordStore`
+     (`UserDefaultsPlanRecordStore`, key `ai.offload.builds.planWaiting`) keeps `KeptPlan` (opportunity, option and fix
+     ids, the suggestion's name as shown, the start time) while the plan is answering, designing, waiting on a
+     connection, ready or starting; it is cleared on 202, Not now, stopped, too long and already running. A new
+     screen model resumes it in `startCloud`: it reads the opportunity once at once (so a ready plan shows again even
+     after 10 minutes), never posts the answer again, then polls from the kept start time. Tests build a second model
+     over the same stores, as the app does. `.local` keeps nothing. For the SECURITY_PRIVACY owners: this second
+     `UserDefaults` key holds the same kind of data as the builds list (review 1 item 7) and belongs in the same list
+     and forget flow.
+  2. A cancel that gets 409 `state_conflict` reads the build again, so "Showing the latest." shows it (the earlier test
+     had pinned the stale headline and was corrected).
+  3. Removing a gone build chooses the next one through `select(_:)`: its fix is read, its detail made and its poll
+     started. `remove(buildID:)` is now `async`.
+  4. The measured hours stay computed on the Mac (review 1 item 6); still for the owner to decide before M4 outcomes.
+  5. The rounds are now named after their log files; code comments say "pre-review" and "review1.md".
 - `BASE` is set after m3-10 is `done`, so m3-10's placeholder commit in `BuildProgress/` is not counted against this
   slice's `owns`.

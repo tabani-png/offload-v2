@@ -251,7 +251,7 @@ enum Decimals {
   }
 
   /// Hours to one decimal, rounded half to even as hs-1 displays them (ADR 0022, `round_half_even(seconds / 360) /
-  /// 10`): 1.25 is "1.2", 1.35 is "1.4", 2 is "2.0" (review 2, finding 6).
+  /// 10`): 1.25 is "1.2", 1.35 is "1.4", 2 is "2.0" (review1.md finding 6).
   static func hours(_ value: Double) -> String {
     let tenths = scaled(value, places: 1, mode: .bankers)
     return "\(tenths / 10).\(tenths % 10)"
@@ -319,7 +319,7 @@ public struct BudgetMeter: Equatable, Sendable {
     var seconds = 0
     if let start = BuildTime.parse(build.startedAt) {
       // A build that ended without `ended_at` stops at its last stage's end, else stands still: it never counts on
-      // to now (review 2, finding 10).
+      // to now (review1.md finding 10).
       let end: Date
       if let ended = BuildTime.parse(build.endedAt) {
         end = ended

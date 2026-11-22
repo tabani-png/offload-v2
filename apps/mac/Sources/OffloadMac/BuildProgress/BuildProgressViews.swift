@@ -20,7 +20,7 @@ extension StatusDot {
 }
 
 /// How an action button looks. m3-04's button styles do not read `isEnabled`, so a disabled action is faded here, from
-/// the model's own rule, so the labelled sample's Install never looks pressable (review 2, finding 2).
+/// the model's own rule, so the labelled sample's Install never looks pressable (review1.md finding 2).
 enum ActionLook {
   static let disabledOpacity = 0.4
   static func opacity(enabled: Bool) -> Double { enabled ? 1 : disabledOpacity }
@@ -365,7 +365,7 @@ struct PlanPanelView: View {
       if let summary = model.planSummary {
         Text(summary.summary).textStyle(Tokens.TypeScale.body).foregroundStyle(Theme.ink)
           .fixedSize(horizontal: false, vertical: true)
-        // The fingerprint of the brief whose hashes OK, build posts (review 2, finding 9).
+        // The fingerprint of the brief whose hashes OK, build posts (review1.md finding 9).
         CaptionLine([summary.estimate, summary.cap, summary.fingerprint].compactMap { $0 }.joined(separator: " · "))
         HStack(spacing: Tokens.Space.s8) {
           Button(BuildCopy.okBuild) { Task { await model.okBuild() } }
