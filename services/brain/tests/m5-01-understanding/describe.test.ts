@@ -97,3 +97,21 @@ test("DESCRIBE: a labeler that throws leaves the rules' description", async () =
   const out = await describeSpans([span({ texts: ["Supplier log entered"] })], "UTC", failing);
   expect([out[0]!.verb, out[0]!.verbFrom, out[0]!.object, out[0]!.objectFrom]).toEqual(["edit", "default", "", "none"]);
 });
+
+test("DESCRIBE: labels map to items by their item number; a missing or repeated item gets no label", async () => {
+  const answer = (labels: unknown[]) => async (): Promise<RouteResult> => ({ status: "ok", call_id: "c", route: "label", tier: "haiku", model: "m", content: "", usd: 0, attempts: [], output: { labels } });
+  const items = [{ span_id: "s1", text: "a" }, { span_id: "s2", text: "b" }, { span_id: "s3", text: "c" }];
+  const who = { tenant_id: "t1", member_id: "m1" };
+  // Out of order: each label still lands on its own item.
+  const swapped = await routerSpanLabeler(answer([{ item: "2", verb: "pay", object: "bill" }, { item: "1", verb: "approve", object: "invoice" }]), who).label(items);
+  expect(swapped.get("s1")).toEqual({ verb: "approve", object: "invoice" });
+  expect(swapped.get("s2")).toEqual({ verb: "pay", object: "bill" });
+  expect(swapped.has("s3")).toBe(false);
+  // A repeated item number labels nothing for that item.
+  const repeated = await routerSpanLabeler(answer([{ item: "1", verb: "pay", object: "bill" }, { item: "1", verb: "send", object: "quote" }]), who).label(items);
+  expect(repeated.has("s1")).toBe(false);
+  // The schema asks for the item number as a label.
+  let schema: unknown;
+  await routerSpanLabeler(async (call) => { schema = call.schema; return { status: "needs_you", call_id: "c", route: "label", reason: "monthly_budget_reached", attempts: [] }; }, who).label(items);
+  expect(JSON.stringify(schema)).toContain('"item":{"type":"string","enum":["1","2","3"]}');
+});

@@ -148,3 +148,22 @@ test("INDUCE: a stand-in task cued by its host only is named on that host, not o
   expect(w.tasks[0]!.name).toBe("View on video.example");
   expect(w.tasks[0]!.name).not.toContain("Screen");
 });
+
+test("INDUCE: realistic chrome without app names or a URL bar on the first lines still gives one task and keeps noise apart", async () => {
+  const r = rng(37);
+  // A recording without a menu bar: the OCR starts with the tab strip and the toolbar; the host is on line 3.
+  const frame = (inv: string) => `Inbox (3) | Bills | Supplier invoices log\nBack Forward Reload\napp.ledgerly.example\nNew bill supplier reference ${inv} amount due save approve invoice`;
+  const parts: Built[] = [];
+  for (const [d, day] of DAYS.entries()) {
+    for (let i = 0; i < 2; i++) {
+      const inv = `<doc:h_${String(d * 2 + i).repeat(16).slice(0, 16)}>`;
+      parts.push(recordingObservations({ start: utc(day) + (9 + i) * 3_600_000, segments: [{ app: standIn, seconds: 150, frames: [frame(inv), frame(inv)] }] }, r));
+    }
+  }
+  parts.push(clips(["Pasta recipe tomato basil garlic simmer", "Travel vlog beach sunset drone island"], 38));
+  const w = await win(merge(parts));
+  expect(w.spans.every((s) => s.host === "")).toBe(true);
+  const repeated = w.tasks.filter((t) => t.instances.length > 1);
+  expect(repeated.map((t) => t.instances.length)).toEqual([6]);
+  expect(w.tasks.filter((t) => t.instances.length === 1)).toHaveLength(2);
+});

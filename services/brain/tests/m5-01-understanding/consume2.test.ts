@@ -180,3 +180,24 @@ t("CONSUME: an import older than 31 days is analysed on its own days even when t
   const byKey = [...(await db.sql.unsafe(`SELECT task_key, count(*)::int AS n FROM ${db.schema}.episodes WHERE member_id = $1 AND kind = 'task_instance' GROUP BY task_key`, [a.owner]))] as { n: number }[];
   expect(byKey.map((x) => x.n).filter((n) => n > 1)).toEqual([4]);
 });
+
+t("CONSUME: an import spanning 40 days is analysed on every day that holds rows", async () => {
+  const a = db.fx.a;
+  const span = [daysAgo(45), daysAgo(25), daysAgo(5)];
+  await insertCapture(db, a, a.owner, a.devices.owner, invoiceImport(span, { perDay: 2, noise: false, menuBar: false }), todayUtc());
+  const r = await runUnderstanding(db.deps, await emitIngested(db, a, a.owner, a.devices.owner));
+  expect(r.status).toBe("updated");
+  expect(r.days).toEqual(span);
+  const byKey = [...(await db.sql.unsafe(`SELECT count(*)::int AS n FROM ${db.schema}.episodes WHERE member_id = $1 AND kind = 'task_instance' GROUP BY task_key`, [a.owner]))] as { n: number }[];
+  expect(byKey.map((x) => x.n)).toEqual([6]);
+});
+
+t("CONSUME: an event range from first_ts to last_ts over an old import and live rows covers both", async () => {
+  const a = db.fx.a;
+  const old = [daysAgo(42), daysAgo(40)];
+  const yesterday = daysAgo(1);
+  await insertCapture(db, a, a.owner, a.devices.owner, invoiceImport(old, { perDay: 2, noise: false, menuBar: false }), todayUtc());
+  await insertCapture(db, a, a.owner, a.devices.owner, recordingObservations({ start: Date.parse(`${yesterday}T10:00:00Z`), source: "live", segments: [NOISE[1]!] }, rng(80)), yesterday);
+  const r = await runUnderstanding(db.deps, await emitIngested(db, a, a.owner, a.devices.owner, 1, 1, { first_ts: `${old[0]}T00:00:00Z`, last_ts: `${yesterday}T23:59:00Z` }));
+  expect(r.days).toEqual([...old, yesterday]);
+});

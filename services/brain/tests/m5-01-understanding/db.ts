@@ -98,11 +98,14 @@ export async function insertCapture(db: ConsumeDb, t: FixtureTenant, memberId: s
         [t.tenantId, deviceId, o.object_id, day, memberId, o.ts, o.kind, o.app_bundle_id, o.app_name, o.title, o.host, o.doc, o.keys, o.clicks, o.source, o.import_id],
       );
     }
+    // Texts carry the source and import id of the batch they came with (the observations of the same recording).
+    const source = built.observations[0]?.source ?? "import";
+    const importId = built.observations[0]?.import_id ?? null;
     for (const x of built.texts) {
       await tx.query(
         `insert into observation_texts (tenant_id, device_id, object_id, day, member_id, ts, text, text_hash, text_source, app_bundle_id, source, import_id)
-         values ($1, $2, $3, $4::date, $5, to_timestamp($6::double precision / 1000), $7, $8, $9, $10, 'import', $11)`,
-        [t.tenantId, deviceId, x.object_id, day, memberId, x.ts, x.text, new Bun.CryptoHasher("sha256").update(x.text).digest("hex"), x.text_source, x.app_bundle_id, "0193a6f2-0000-7000-8000-0000000000e1"],
+         values ($1, $2, $3, $4::date, $5, to_timestamp($6::double precision / 1000), $7, $8, $9, $10, $11, $12)`,
+        [t.tenantId, deviceId, x.object_id, day, memberId, x.ts, x.text, new Bun.CryptoHasher("sha256").update(x.text).digest("hex"), x.text_source, x.app_bundle_id, source, importId],
       );
     }
   });

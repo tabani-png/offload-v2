@@ -60,3 +60,13 @@ test("SPAN: text snapshots attach to the span open at their time", () => {
   expect(spans.map((s) => s.texts)).toEqual([["Inbox invoice"], ["Log row"]]);
   expect(spans.map((s) => s.observationIds)).toEqual([["A", "T1"], ["B", "T2"]]);
 });
+
+test("SPAN: a text read at the instant of a focus change belongs to the new app", () => {
+  // idle_end, the new focus and its first text share one ts (the recordings import writes them so); their ids sort
+  // the other way round, so only the order by kind puts the text on the new app.
+  const spans = sessionize(
+    [o("A", 0, "focus", MAIL), o("Z1", 60, "idle_start"), o("Z3", 300, "idle_end"), o("Z2", 300, "focus", XL), o("Z9", 500, "idle_start")],
+    [txt("Z0", 300, "Log row entered")],
+  );
+  expect(spans.map((s) => [s.appBundleId, s.texts])).toEqual([["com.microsoft.Excel", ["Log row entered"]]]);
+});
