@@ -363,4 +363,42 @@ describe("p45a held-out check isolation (review 3 finding 1)", () => {
     expect(r.proof).toMatchObject({ status: "pass", split: true, tests: 1 });
     expect(r.passed).toBe(true);
   }, 60_000);
+
+  /** A privileged shard of `check` with the given artifact; `leakyMount` writes the 0400 check files 0444 instead. */
+  const privileged = async (check: string, artifact: SandboxFile[], o: { leakyMount?: boolean } = {}) => {
+    const p = new DockerProvider({ executor: emulator({ sudo: true }), docker: "docker" });
+    made.push(p);
+    if (o.leakyMount) {
+      const put = p.putFiles.bind(p);
+      p.putFiles = (sb, m, files) => put(sb, m, files.map((f) => (f.mode === 0o400 ? { ...f, mode: 0o444 } : f)));
+    }
+    return shard(p, check, artifact);
+  };
+
+  test.skipIf(!sudoOk)("SHARDS: (privileged) when the tool's user can read the check anyway (a mount that ignores modes), the harness does not claim the split and no pass counts", async () => {
+    const r = await privileged(HONEST_SHARED, [file("slug.ts", SLUG_TOOL)], { leakyMount: true });
+    expect(r.proof).toMatchObject({ status: "pass", split: false });
+    expect(r.passed).toBe(false);
+  }, 60_000);
+
+  test.skipIf(!sudoOk)("SHARDS: (privileged) the broker refuses a tool command outside the workspace", async () => {
+    const check = 'import { expect, test } from "bun:test";\ntest("cwd", () => { const r = Bun.spawnSync(["/bin/true"], { cwd: "/tmp" }); expect(r.exitCode).toBe(126); expect(r.stderr.toString()).toContain("refused"); });\n';
+    const r = await privileged(check, [file("slug.ts", SLUG_TOOL)]);
+    expect(r.proof).toMatchObject({ status: "pass", split: true });
+  }, 60_000);
+
+  test.skipIf(!sudoOk)("SHARDS: (privileged) the tool gets a clean environment: PATH, HOME and TMPDIR only, nothing of the check's or the harness's", async () => {
+    // `bun run` adds NODE and npm_* to its own process; everything else must come from the broker's clean environment
+    const tool = 'console.log(Object.keys(process.env).filter((k) => k !== "NODE" && !k.startsWith("npm_")).sort().join(","));\n';
+    const check = 'import { expect, test } from "bun:test";\ntest("env", () => { const r = Bun.spawnSync([process.execPath, "run", "env.ts"]); expect(r.stdout.toString().trim()).toBe("HOME,PATH,TMPDIR"); });\n';
+    const r = await privileged(check, [file("env.ts", tool)]);
+    expect(r.proof).toMatchObject({ status: "pass", split: true });
+  }, 60_000);
+
+  test.skipIf(!sudoOk)("SHARDS: (privileged) the tool's user cannot connect to the broker socket", async () => {
+    const tool = 'let out = "refused"; try { const s = await Bun.connect({ unix: process.argv[2]!, socket: { data() {} } }); out = "connected"; s.end(); } catch {} console.log(out);\n';
+    const check = 'import { expect, test } from "bun:test";\ntest("socket", () => { const r = Bun.spawnSync([process.execPath, "run", "dial.ts", process.env.OFFLOAD_BROKER ?? ""]); expect(r.stdout.toString().trim()).toBe("refused"); });\n';
+    const r = await privileged(check, [file("dial.ts", tool)]);
+    expect(r.proof).toMatchObject({ status: "pass", split: true });
+  }, 60_000);
 });
