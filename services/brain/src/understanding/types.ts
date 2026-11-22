@@ -72,8 +72,11 @@ export interface SpanDescription {
   pseudonyms: string[];
   /** The `<doc:h_…>` subset. */
   docs: string[];
-  /** Content words: lowercase letters only, 3+ characters, no stop words, most frequent first. */
+  /** Content words: lowercase letters only, 3+ characters, no stop words, most frequent first. They feed the embedding
+   * and the optional label route only; never a name. */
   words: string[];
+  /** Words of the masked window title only (C1 metadata, already stored as `title`): the only words a task name uses. */
+  titleWords: string[];
   /** False for a stand-in span with no cue and no words: it counts as time but joins no task. */
   joinable: boolean;
   standIn: boolean;

@@ -49,18 +49,25 @@ function hostIn(text: string): { host: string; at: number } | null {
   return null;
 }
 
-function appIn(text: string): { name: string; id: string; at: number } | null {
-  let best: { name: string; id: string; at: number } | null = null;
-  for (const [name, id] of KNOWN_APPS) {
-    const re = new RegExp(`(?<![\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u");
-    const m = re.exec(text);
-    if (m !== null && (best === null || m.index < best.at)) best = { name, id, at: m.index };
+/** One RegExp per known app, built once: the name at the start of a line, as a whole word. */
+const APP_RES: ReadonlyArray<{ name: string; id: string; re: RegExp }> = KNOWN_APPS.map(([name, id]) => ({
+  name, id, re: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u"),
+}));
+/** Window chrome is at the top of a snapshot: only its first lines can name the app. */
+export const CHROME_LINES = 2;
+
+/** The app named at the start of one of the first CHROME_LINES lines (window chrome), never one in the body text:
+ * "ask the Slack admin" or "a recipe from Mail" name no app. Longest name first ("Microsoft Excel" over "Excel"). */
+function appIn(text: string): { name: string; id: string } | null {
+  for (const line of text.split(/\r?\n/).slice(0, CHROME_LINES)) {
+    const l = line.trimStart();
+    for (const a of APP_RES) if (a.re.test(l)) return { name: a.name, id: a.id };
   }
-  return best;
+  return null;
 }
 
-/** The app and host one masked text snapshot shows: the earliest known app name (window chrome is at the top) and the
- * earliest host-shaped token (the URL bar). Pseudonym tokens are ignored. Empty when nothing is found. */
+/** The app and host one masked text snapshot shows: a known app name opening one of its first lines (window chrome)
+ * and the earliest host-shaped token (the URL bar). Pseudonym tokens are ignored. Empty when nothing is found. */
 export function cueOf(text: string): Cue {
   const t = text.replace(TOKEN_RE, " ");
   const app = appIn(t);

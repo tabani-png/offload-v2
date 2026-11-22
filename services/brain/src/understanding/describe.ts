@@ -115,6 +115,7 @@ export function describeSpan(span: Span, timezone: string): SpanDescription {
     pseudonyms: sorted,
     docs: sorted.filter((p) => p.startsWith("<doc:")),
     words: content,
+    titleWords: [...new Set(wordsOf(span.title))],
     joinable: !(span.standIn && !span.cued && content.length === 0),
     standIn: span.standIn,
     cued: span.cued,

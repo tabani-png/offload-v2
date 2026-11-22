@@ -43,7 +43,10 @@ interface Step {
 
 const surfaceOf = (d: SpanDescription) => `${d.appBundleId}|${d.host}`;
 const keyOf = (d: SpanDescription) => `${surfaceOf(d)}|${d.verb}|${d.object}`;
-const informative = (d: SpanDescription) => d.object !== "" || !(d.standIn && !d.cued);
+/** A key says "same work" only when it names an object or a verb read on screen, on a surface something named. A
+ * default verb with no object says only "same app", and a stand-in without a cue says nothing: those spans join by
+ * embedding (or a shared pseudonym) only, so unrelated recordings never merge on a generic key. */
+const informative = (d: SpanDescription) => (d.object !== "" || d.verbFrom !== "default") && !(d.standIn && !d.cued);
 const byStart = (a: SpanDescription, b: SpanDescription) => a.start - b.start || (a.spanId < b.spanId ? -1 : 1);
 
 function addVec(step: Step, v: readonly number[] | undefined): void {
@@ -193,9 +196,11 @@ function toTask(instances: readonly Building[], vectors: ReadonlyMap<string, rea
   const primary = [...steps].sort((a, b) => (starts.get(b) ?? 0) - (starts.get(a) ?? 0) || active(b) - active(a) || (a.key < b.key ? -1 : 1))[0]!;
   const lead = primary.members[0]!;
   const signature = [...new Set(steps.map((s) => s.key))].sort().join("+");
+  // Names use the verb, object, app and masked title only: never words read from text snapshots (C1 text stays in
+  // understanding; the name is stored in the ledger and episodes).
   const skip = new Set([lead.verb, ...lead.appName.toLowerCase().split(/[^\p{L}]+/u)]);
-  const noun = lead.object !== "" ? lead.object : lead.words.filter((w) => !skip.has(w)).slice(0, 2).join(" ");
-  const where = lead.standIn && !lead.cued ? "" : ` in ${lead.appName}`;
+  const noun = lead.object !== "" ? lead.object : lead.titleWords.filter((w) => !skip.has(w)).slice(0, 2).join(" ");
+  const where = lead.standIn && !lead.cued ? " on screen" : ` in ${lead.appName}`;
   const all = instances.flatMap((i) => i.members);
   const vecs = all.map((m) => vectors.get(m.spanId)).filter((v): v is readonly number[] => v !== undefined);
   let centroid: number[] | null = null;
@@ -218,7 +223,7 @@ function toTask(instances: readonly Building[], vectors: ReadonlyMap<string, rea
     id: `t_${createHash("sha256").update(`${signature}\u0000${all[0]!.spanId}`).digest("hex").slice(0, 12)}`,
     signature,
     kind: `${kindOf(lead)}.${lead.verb}${lead.object === "" ? "" : `-${lead.object}`}`,
-    name: `${cap(lead.verb)} ${noun}${where}`.trim(),
+    name: `${[cap(lead.verb), noun].filter((x) => x !== "").join(" ")}${where}`,
     appBundleId: lead.appBundleId,
     appName: lead.appName,
     host: lead.host,
