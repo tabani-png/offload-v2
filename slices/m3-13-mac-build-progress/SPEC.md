@@ -276,5 +276,18 @@ sheet?" (m5-06); any change to m3-10's folders.
      started. `remove(buildID:)` is now `async`.
   4. The measured hours stay computed on the Mac (review 1 item 6); still for the owner to decide before M4 outcomes.
   5. The rounds are now named after their log files; code comments say "pre-review" and "review1.md".
+- **Review 3** (`logs/m3-13-mac-build-progress.review3.md`, verdict CHANGES; every finding taken; commits say
+  "review3.md"):
+  1. Past 10 minutes the plan poll stops but the kept plan stays: "Still designing. Check back later." is now true,
+     because the next visit reads the opportunity again and shows OK, build once the fix is ready. The kept plan is
+     cleared only on 202, Not now, already running or a stopped plan. While waiting on a connection, the limit stops
+     the poll but keeps "Connect <apps> first.".
+  2. Choosing a build that was never read (its first read failed) reads it, so removing a gone build loads the next
+     one; the test now uses a next build that was never loaded and fails without the change.
+  3. A kept plan whose suggestion was since set aside (`not_now`, `never`, `left_alone`), built (`building`,
+     `ready_to_ship`, `shipped`) or failed (`build_failed`) is stopped with a sentence and cleared, never offered for
+     building again.
+  4. **Not now** is shown in every phase but `starting` (OK, build on its way), and does nothing while starting.
+  5. The measured hours stay computed on the Mac, for the owner (review1.md item 6, review2.md item 4).
 - `BASE` is set after m3-10 is `done`, so m3-10's placeholder commit in `BuildProgress/` is not counted against this
   slice's `owns`.
