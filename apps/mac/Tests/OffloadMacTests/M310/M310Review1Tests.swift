@@ -33,7 +33,7 @@ extension M310 {
     var video = M310Events(origin: .imported("imp-a"), prefix: "v")
     video.idleEnd(M310Clock.date(2026, 11, 18, 9, 20))
     video.focus(M310Clock.date(2026, 11, 18, 9, 20), M310App.mail)          // 9:20 to 9:50, app only
-    video.idleStart(M310Clock.date(2026, 11, 18, 9, 50))
+    video.idleStart(M310Clock.date(2026, 11, 18, 9, 52))
     let d = LocalInsights.day(watch.events + video.events, day: "2026-11-18", timeZone: M310Clock.utc, exclusions: [])
     #expect(d.activeSeconds.value == 3000)
     #expect(d.perApp.map(\.appName) == ["Mail", "Xcode", "Safari", "Slack"])
@@ -47,7 +47,8 @@ extension M310 {
     live.focus(M310Clock.date(2026, 11, 20, 9), M310App.xcode)
     live.text(M310Clock.date(2026, 11, 20, 9, 4))
     live.text(M310Clock.date(2026, 11, 20, 9, 8))
-    live.idleStart(M310Clock.date(2026, 11, 20, 9, 10))
+    live.text(M310Clock.date(2026, 11, 20, 9, 10))
+    live.idleStart(M310Clock.date(2026, 11, 20, 9, 12))
     var imported = M310Events(origin: .imported("imp-1"), prefix: "i")
     imported.session(M310Clock.date(2026, 11, 20, 9), [(M310App.slack, "#ops", nil, 20)])
     let d = LocalInsights.day(live.events + imported.events, day: "2026-11-20", timeZone: M310Clock.utc, exclusions: [])

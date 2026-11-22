@@ -222,7 +222,8 @@ extension M310 {
     let insights = Self.insights(M310Reader(e.events), live: live)
     await insights.refreshAll()
     #expect(insights.snapshot.observedDays == ["2026-11-18", "2026-11-20"])
-    #expect(insights.snapshot.day("2026-11-20")?.activeSeconds.value == 600)
+    // idle_start at 17:10 is the observer's "last input 17:08 + 120 s": 17:00 to 17:08 (review 2, as LocalNowSummary).
+    #expect(insights.snapshot.day("2026-11-20")?.activeSeconds.value == 480)
     #expect(insights.snapshot.day("2026-11-18")?.activeSeconds.value == 1800)
   }
 

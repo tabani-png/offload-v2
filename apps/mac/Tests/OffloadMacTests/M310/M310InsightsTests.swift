@@ -14,7 +14,7 @@ extension M310 {
     e.focus(M310Clock.date(2026, 11, 20, 9, 30), M310App.safari, title: "Pull request 41", host: "github.com")  // g-003
     e.focus(M310Clock.date(2026, 11, 20, 9, 40), M310App.slack, title: "#ops")                         // g-004
     e.focus(M310Clock.date(2026, 11, 20, 9, 50), M310App.xcode)                                         // g-005
-    e.idleStart(M310Clock.date(2026, 11, 20, 10, 20))                                                   // g-006
+    e.idleStart(M310Clock.date(2026, 11, 20, 10, 22))   // g-006: the readers' shape, last activity 10:20 + 120 s
     return (e, LocalInsights.day(e.events, day: "2026-11-20", timeZone: M310Clock.utc, exclusions: []))
   }
 
@@ -65,7 +65,7 @@ extension M310 {
       e.focus(t, app, title: "page", host: i < 6 ? "site\(i).example.com" : nil)
       t = t.addingTimeInterval(TimeInterval((10 - i) * 60))
     }
-    e.idleStart(t)
+    e.idleStart(t.addingTimeInterval(120))
     let d = LocalInsights.day(e.events, day: "2026-11-20", timeZone: M310Clock.utc, exclusions: [])
     #expect(d.topApps.map(\.appName) == ["App 1", "App 2", "App 3", "App 4", "App 5"])
     #expect(d.perApp.count == 7)
@@ -91,7 +91,7 @@ extension M310 {
   func spanAcrossMidnight() {
     var e = M310Events(prefix: "m")
     e.focus(M310Clock.date(2026, 11, 19, 23, 50), M310App.xcode)
-    e.idleStart(M310Clock.date(2026, 11, 20, 0, 20))
+    e.idleStart(M310Clock.date(2026, 11, 20, 0, 22))
     let before = LocalInsights.day(e.events, day: "2026-11-19", timeZone: M310Clock.utc, exclusions: [])
     let after = LocalInsights.day(e.events, day: "2026-11-20", timeZone: M310Clock.utc, exclusions: [])
     #expect(before.activeSeconds.value == 600)
@@ -104,7 +104,7 @@ extension M310 {
     let berlin = try #require(TimeZone(identifier: "Europe/Berlin"))
     var e = M310Events(prefix: "z")
     e.focus(M310Clock.date(2026, 11, 19, 23, 50), M310App.xcode)   // 00:50 in Berlin
-    e.idleStart(M310Clock.date(2026, 11, 20, 0, 20))
+    e.idleStart(M310Clock.date(2026, 11, 20, 0, 22))
     let local = LocalInsights.day(e.events, day: "2026-11-20", timeZone: berlin, exclusions: [])
     let before = LocalInsights.day(e.events, day: "2026-11-19", timeZone: berlin, exclusions: [])
     #expect(local.activeSeconds.value == 1800)

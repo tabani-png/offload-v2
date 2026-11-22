@@ -73,7 +73,8 @@ struct M310Events {
   mutating func idleStart(_ at: Date) { add(.idleStart, at) }
   mutating func text(_ at: Date) { add(.textSnapshot, at) }
 
-  /// One session: `idle_end`, a focus per step for its minutes, `idle_start` at the end.
+  /// One session in the readers' shape (review 2): `idle_end`, a focus per step for its minutes, `idle_start` 120 s
+  /// after the session's last activity (m3-05's readers write it there; insights move it back).
   mutating func session(_ start: Date, _ steps: [(app: (String, String), title: String?, host: String?, minutes: Int)]) {
     idleEnd(start)
     var t = start
@@ -81,7 +82,7 @@ struct M310Events {
       focus(t, s.app, title: s.title, host: s.host)
       t = t.addingTimeInterval(TimeInterval(s.minutes * 60))
     }
-    idleStart(t)
+    idleStart(t.addingTimeInterval(120))
   }
 
   /// The id of the n-th event (1-based).
