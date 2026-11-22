@@ -75,7 +75,8 @@ export interface FixOption {
   /** 1..3 */
   option_no: number;
   kind: ProposedFixKind;
-  rule: RuleKind;
+  /** The rule kind, or `estimate` for an option built from a bare FixEstimate (no rule ran). */
+  rule: RuleKind | "estimate";
   recommended: boolean;
   /** Code template from masked words only. */
   title: string;

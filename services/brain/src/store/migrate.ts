@@ -10,7 +10,7 @@ export const MIGRATIONS_DIR = join(import.meta.dir, "../../sql");
 /** The member-isolated (MI) tables this module creates; packages/db appends them to its MEMBER_ISOLATED_TABLES. */
 export const MEMBER_ISOLATED_TABLES = [
   "profiles", "goals", "task_ledger", "episodes", "propositions", "day_records", "week_records", "month_records",
-  "quarter_records", "figure_index", "review_answers", "opportunities",
+  "quarter_records", "figure_index", "review_answers", "opportunities", "fixes",
 ] as const;
 
 export function migrationFiles(): string[] {

@@ -1,7 +1,10 @@
 // The member update job: runs the p43a pipeline for one analysed window inside one tenant transaction and saves it.
 // Called by the durable runtime (W1-C, m5-05) per member; running it twice with the same window leaves the same rows.
 // No network I/O: the weekly sentence is written by writeWeekNarrative, outside the data transaction.
+import { CADENCE_WEEKS, buildTaskEvidence } from "../opportunities/evidence.ts";
+import { bareOption } from "../opportunities/options.ts";
 import type { FixRules } from "../opportunities/rules.ts";
+import type { FixOption } from "../opportunities/types.ts";
 import { rankOpportunities, PERSISTENCE_WEEKS, type FixEstimate } from "../opportunities/score.ts";
 import { userContextOf } from "../profile/profile.ts";
 import { addWeeks, isoWeekOf, monthOfWeek, quarterOfWeek, weekDays } from "../records/dates.ts";
@@ -84,12 +87,27 @@ export async function runMemberUpdate(tx: Tx, input: MemberUpdateInput): Promise
 
   let ranked = 0;
   const latest = weeks[weeks.length - 1];
-  if (input.estimateFor !== undefined && latest !== undefined) {
+  if ((input.estimateFor !== undefined || input.fixRules !== undefined) && latest !== undefined) {
     const week = (await repo.getWeekRecord(tx, latest))!;
     const estimates: FixEstimate[] = [];
-    for (const t of week.tasks) {
-      const e = input.estimateFor(t);
-      if (e !== null) estimates.push({ ...e, taskKey: t.task_key });
+    const options = new Map<string, FixOption[]>();
+    if (input.estimateFor !== undefined) {
+      for (const t of week.tasks) {
+        const e = input.estimateFor(t);
+        if (e === null) continue;
+        estimates.push({ ...e, taskKey: t.task_key });
+        options.set(t.task_key, [e.option ?? bareOption({ ...e, taskKey: t.task_key }, latest)]);
+      }
+    } else {
+      // Fix rules (m5-04): the episodes of the last 8 weeks, read through the day records, give each task's evidence.
+      const days = weekDays(latest);
+      const episodes = await repo.listWeekEpisodes(tx, weekDays(addWeeks(latest, -(CADENCE_WEEKS - 1)))[0]!, days[6]!);
+      for (const ev of buildTaskEvidence({ week, episodes, timezone: profile.timezone })) {
+        const p = input.fixRules!.propose(ev);
+        if (p === null) continue;
+        estimates.push(p.estimate);
+        options.set(p.task_key, p.options);
+      }
     }
     const goals = (await repo.listGoals(tx)).map((g) => ({ id: g.id, embedding: g.embedding }));
     const r = rankOpportunities({
@@ -97,7 +115,7 @@ export async function runMemberUpdate(tx: Tx, input: MemberUpdateInput): Promise
       drains: profile.drains, goals, taskVectors: input.taskVectors ?? new Map(), answers: await repo.listReviewAnswers(tx),
       ...(input.trackRecord === undefined ? {} : { trackRecord: input.trackRecord }),
     });
-    await repo.saveOpportunities(tx, { isoWeek: latest, workspaceId: input.workspaceId, ranked: r, now });
+    await repo.saveOpportunities(tx, { isoWeek: latest, workspaceId: input.workspaceId, ranked: r, now, options });
     ranked = r.length;
   }
   return { days: u.dayRecords.map((d) => d.day), weeks, months, quarters, ranked, paused: false };

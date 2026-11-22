@@ -165,10 +165,11 @@ async function runClaimed(deps: UnderstandingDeps, ev: IngestedEvent): Promise<U
       const update = await deps.runBrain(ctx, async (tx) => {
         // One member's updates run one after the other: the ledger and propositions are read, merged and written back.
         await repo.lockProfile(tx);
-        // Without a workspace no opportunity is ranked (estimateFor withheld), so workspaceId is never read: "" says so.
+        // Without a workspace no opportunity is ranked (estimateFor and fixRules withheld), so workspaceId is never read: "" says so.
         return runMemberUpdate(tx, {
           window, now, workspaceId: workspaceId ?? "",
           ...(deps.estimateFor !== undefined && workspaceId !== null ? { estimateFor: deps.estimateFor } : {}),
+          ...(deps.fixRules !== undefined && workspaceId !== null ? { fixRules: deps.fixRules } : {}),
         });
       });
       if (update.paused) {
