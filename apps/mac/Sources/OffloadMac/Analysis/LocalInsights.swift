@@ -213,13 +213,19 @@ public enum LocalInsights {
   /// span at the last activity plus 120 s. Imports carry their idleness explicitly (the readers write `idle_start`
   /// and `idle_end` from the rows and frames, and write a focus only when it changes), so silence in an import is
   /// not idleness and the rule is off for them (see the SPEC's Scope changes).
-  public static func spans(_ events: [InsightEvent], until: Date? = nil, idleGapRule: Bool = true) -> [ActivitySpan] {
+  ///
+  /// `runsInterleave` is for imports, whose files each write one or more runs (idle_end … idle_start) and whose
+  /// runs can interleave in time order (see the idle_start case); a live stream is one run after another.
+  public static func spans(_ events: [InsightEvent], until: Date? = nil, idleGapRule: Bool = true,
+                           runsInterleave: Bool = false) -> [ActivitySpan] {
     let sorted = events.sorted { $0.ts != $1.ts ? $0.ts < $1.ts : $0.id < $1.id }
     var out: [ActivitySpan] = []
     var cur: ActivitySpan?
     var lastFocus: InsightEvent?
     var lastActivity: Date?
     var paused = false
+    // Imports: the starts (idle_end) of runs not yet closed by their idle_start, oldest first (review 3).
+    var openRuns: [Date] = []
 
     func close(at t: Date) {
       guard var c = cur else { return }
@@ -250,11 +256,18 @@ public enum LocalInsights {
         // moved back here, as m3-04's local now summary does (review 2). A span opened after that point is dropped,
         // and any span still running past it is cut there.
         let cutoff = e.ts.addingTimeInterval(-idleThreshold)
-        if let c = cur { close(at: max(c.start, cutoff)) }
-        var i = out.count - 1
-        while i >= 0, out[i].end > cutoff {
+        // An import holds several files, each one run (idle_end … idle_start); the next file may start within the
+        // 120 s before this idle_start (back-to-back recordings, a screenwatch day continuing past midnight). Each
+        // idle_start closes the oldest open run; when a later run has already begun, it cuts only what started before
+        // that run, and the later run's spans are left alone (review 3).
+        if !openRuns.isEmpty { openRuns.removeFirst() }
+        // A run still open that began before this run's last activity cannot be a later file: it lost its
+        // idle_start, so it is forgotten rather than shield spans from every later cut.
+        openRuns.removeAll { $0 < cutoff }
+        let laterRun = runsInterleave ? openRuns.first : nil
+        if let c = cur, laterRun.map({ c.start < $0 }) ?? true { close(at: max(c.start, cutoff)) }
+        for i in out.indices where out[i].end > cutoff && (laterRun.map { out[i].start < $0 } ?? true) {
           out[i].end = max(out[i].start, cutoff)
-          i -= 1
         }
         out.removeAll { $0.end <= $0.start }
       case .pause:
@@ -265,6 +278,7 @@ public enum LocalInsights {
         paused = false
         lastActivity = e.ts
       case .idleEnd, .textSnapshot:
+        if e.kind == .idleEnd { openRuns.append(e.ts) }
         if cur == nil, !paused, let f = lastFocus { open(f, at: e.ts, by: e.id) }
         lastActivity = e.ts
       }
@@ -348,7 +362,7 @@ public enum LocalInsights {
     for origin in ordered {
       let live = origin == .live
       var kept: [ActivitySpan] = []
-      for s in spans(byOrigin[origin] ?? [], until: live ? until : nil, idleGapRule: live) {
+      for s in spans(byOrigin[origin] ?? [], until: live ? until : nil, idleGapRule: live, runsInterleave: !live) {
         kept += uncovered(s, by: covered)
       }
       out += kept
