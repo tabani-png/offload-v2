@@ -3,6 +3,7 @@ import { buildUnderstandingWindow } from "../../src/understanding/window.ts";
 import type { UnderstandingWindow } from "../../src/user-model/ports.ts";
 import { invoiceImport, merge, recordingObservations, rng, utc, type Built, type Segment } from "./fixtures.ts";
 
+
 const DAYS = ["2026-11-09", "2026-11-10", "2026-11-11"];
 const win = (b: Built, days: string[] = DAYS) => buildUnderstandingWindow({ timezone: "UTC", days, observations: b.observations, texts: b.texts });
 const spanApps = (w: UnderstandingWindow, ids: readonly string[]) => ids.map((id) => w.spans.find((s) => s.id === id)!.appBundleId);
@@ -75,4 +76,58 @@ test("INDUCE: instances split on a new day, a gap over 10 min and a conflicting 
   expect(w.tasks).toHaveLength(1);
   const sizes = w.tasks[0]!.instances.map((i) => spanApps(w, i.spanIds).map((a) => (a === "com.apple.mail" ? "A" : "B")).join(""));
   expect(sizes).toEqual(["AB", "AB", "AB", "AB", "AB", "B"]);
+});
+
+const standIn = { bundle: "recording.unknown", name: "Screen" };
+const clips = (texts: readonly string[], seed: number): Built => {
+  const r = rng(seed);
+  return merge(texts.map((t, i) => recordingObservations({ start: utc(DAYS[i]!) + 14 * 3_600_000, segments: [{ app: standIn, seconds: 45, frames: [t, t] }] }, r)));
+};
+
+test("INDUCE: unrelated recordings sharing an object word or an app name do not merge", async () => {
+  const preview = await win(clips(["Preview pasta recipe tomato basil garlic", "Preview travel vlog beach sunset island", "Preview keyboard review switches tactile sound"], 31));
+  expect(preview.tasks.map((t) => t.instances.length)).toEqual([1, 1, 1]);
+  const order = await win(clips(["Pizza order tracking delivery driver map", "Order history sneakers running shoes size", "Order status laptop charger courier"], 32));
+  expect(order.tasks.map((t) => t.instances.length)).toEqual([1, 1, 1]);
+});
+
+const stripTokens = (b: Built): Built => ({
+  observations: b.observations.map((o) => ({ ...o, doc: null, title: o.title === null ? null : o.title.replace(/<[^<>]*>/g, " ") })),
+  texts: b.texts.map((t) => ({ ...t, text: t.text.replace(/<[^<>]*>/g, " ") })),
+});
+
+test("INDUCE: reliable transitions alone join a workflow whose steps share no pseudonym", async () => {
+  const fx = invoiceImport(DAYS, { perDay: 2, noise: false, menuBar: true });
+  const w = await win(stripTokens(fx));
+  expect(w.tasks).toHaveLength(1);
+  expect(w.tasks[0]!.instances).toHaveLength(6);
+});
+
+test("INDUCE: a doc pseudonym on more than 12 spans is a container and links nothing", async () => {
+  const r = rng(33);
+  const D = "<doc:h_cccccccccccccccc>";
+  const parts: Built[] = [];
+  for (let i = 0; i < 13; i++) {
+    const seg = i % 2 === 0
+      ? { app: app("com.apple.mail", "Mail", `Digest ${D}`, D), seconds: 60, frames: [`Inbox newsletter digest ${D}`] }
+      : { app: app("com.apple.iWork.Numbers", "Numbers", `Budget ${D}`, D), seconds: 60, frames: [`Budget forecast quarter ${D}`] };
+    parts.push(recordingObservations({ start: utc(DAYS[0]!) + 8 * 3_600_000 + i * 30 * 60_000, source: "live", segments: [seg] }, r));
+  }
+  const w = await win(merge(parts), [DAYS[0]!]);
+  expect(w.tasks).toHaveLength(2);
+});
+
+test("INDUCE: a shared person pseudonym links steps only within 20 min", async () => {
+  const P = "<person:h_dddddddddddddddd>";
+  const pair = async (gapMin: number) => {
+    const r = rng(34);
+    const start = utc(DAYS[0]!) + 9 * 3_600_000;
+    const b = merge([
+      recordingObservations({ start, source: "live", segments: [{ app: app("com.apple.mail", "Mail", `Quote for ${P}`), seconds: 60, frames: [`Reply quote ${P}`] }] }, r),
+      recordingObservations({ start: start + (1 + gapMin) * 60_000, source: "live", segments: [{ app: { bundle: "com.google.Chrome", name: "Google Chrome", title: "Deals", host: "crm.example" }, seconds: 60, frames: [`Update deal ${P}`] }] }, r),
+    ]);
+    return (await win(b, [DAYS[0]!])).tasks.length;
+  };
+  expect(await pair(5)).toBe(1);
+  expect(await pair(180)).toBe(2);
 });

@@ -44,3 +44,14 @@ test("WINDOW: no text snapshot content reaches the window", async () => {
   expect(json).not.toMatch(/\d+\.\d\d\b/);
   for (const t of w.tasks) expect(t.name).not.toMatch(/[<>\d]/);
 });
+
+test("WINDOW: a task without an object is named from its verb, app and masked title, never from snapshot text", async () => {
+  const r = rng(22);
+  const seg = { app: { bundle: "com.apple.iWork.Numbers", name: "Numbers", title: "Budget" }, seconds: 120, frames: ["forecast quarter marketing spend"] };
+  const b = merge([0, 1].map((d) => recordingObservations({ start: Date.parse(`${DAYS[d]}T10:00:00Z`), source: "live", segments: [seg] }, r)));
+  const w = await buildUnderstandingWindow({ timezone: "UTC", days: DAYS, observations: b.observations, texts: b.texts });
+  expect(w.tasks).toHaveLength(1);
+  expect(w.tasks[0]!.name).toBe("Edit budget in Numbers");
+  const json = JSON.stringify({ ...w, tasks: w.tasks.map((t) => ({ ...t, centroid: null })) });
+  for (const word of ["forecast", "quarter", "marketing", "spend"]) expect(json).not.toContain(word);
+});

@@ -22,6 +22,8 @@ export interface ConsumeDb {
   role: string;
   /** Counts every brain transaction, to prove a duplicate event writes nothing. */
   brainCalls: { n: number };
+  /** Arm a barrier to make brain transactions overlap. */
+  gate: { barrier: Barrier | null };
   deps: UnderstandingDeps;
   close(): Promise<void>;
 }
@@ -37,12 +39,18 @@ export async function consumeDb(): Promise<ConsumeDb> {
   await applyUserModelMigrations(sql, { schema, appRole: role });
   const inner = bunRunInTenant(sql, { schema, appRole: role });
   const brainCalls = { n: 0 };
+  const gate: { barrier: Barrier | null } = { barrier: null };
   const runBrain: RunInTenant = (ctx, fn) => {
     brainCalls.n++;
-    return inner(ctx, fn);
+    const b = gate.barrier;
+    // With a barrier armed, every brain transaction is open before any of them runs its body (deterministic overlap).
+    return inner(ctx, async (tx) => {
+      if (b !== null) await b.wait();
+      return fn(tx);
+    });
   };
   return {
-    fx, sql, schema, role, brainCalls,
+    fx, sql, schema, role, brainCalls, gate,
     deps: { capture: pgCaptureStore(fx.app), runBrain, clock: () => Date.now() },
     close: async () => {
       await sql.unsafe(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
@@ -51,6 +59,28 @@ export async function consumeDb(): Promise<ConsumeDb> {
       await fx.close();
     },
   };
+}
+
+/** Releases waiters in groups of `size`; a lone waiter is released after `timeoutMs` (the other side never came). */
+export class Barrier {
+  private waiting: Array<() => void> = [];
+  constructor(private readonly size: number, private readonly timeoutMs = 1500) {}
+  wait(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      this.waiting.push(resolve);
+      if (this.waiting.length >= this.size) {
+        for (const w of this.waiting.splice(0)) w();
+        return;
+      }
+      setTimeout(() => {
+        const i = this.waiting.indexOf(resolve);
+        if (i >= 0) {
+          this.waiting.splice(i, 1);
+          resolve();
+        }
+      }, this.timeoutMs);
+    });
+  }
 }
 
 export const todayUtc = (): string => new Date().toISOString().slice(0, 10);
@@ -79,9 +109,9 @@ export async function insertCapture(db: ConsumeDb, t: FixtureTenant, memberId: s
 }
 
 /** The outbox event m3-01 writes for an accepted batch. */
-export async function emitIngested(db: ConsumeDb, t: FixtureTenant, memberId: string, deviceId: string, seq = 1, accepted = 1): Promise<IngestedEvent> {
+export async function emitIngested(db: ConsumeDb, t: FixtureTenant, memberId: string, deviceId: string, seq = 1, accepted = 1, range?: { first_ts: string; last_ts: string }): Promise<IngestedEvent> {
   const id = uuidv7();
-  const payload = { device_id: deviceId, member_id: memberId, seq, accepted };
+  const payload = { device_id: deviceId, member_id: memberId, seq, accepted, ...(range ?? {}) };
   const row = await withTenant(db.fx.app, ctxOf(db, t, memberId), async (tx) =>
     (await tx.query("insert into events_outbox (tenant_id, id, type, version, payload) values ($1, $2, 'observations.ingested', 1, $3) returning created_at", [t.tenantId, id, JSON.stringify(payload)])).rows[0],
   );
@@ -105,6 +135,8 @@ export async function instancesByKey(db: ConsumeDb, memberId: string): Promise<M
 
 /** Clears capture rows, outbox and brain rows between tests (the fixture tenants stay). */
 export async function resetRows(db: ConsumeDb): Promise<void> {
+  db.gate.barrier = null;
+  await db.sql.unsafe(`DELETE FROM ${db.schema}.profiles`);
   await db.fx.admin.query("delete from outbox_deliveries; delete from events_outbox; delete from observation_texts; delete from observations");
   for (const t of BRAIN_TABLES) await db.sql.unsafe(`DELETE FROM ${db.schema}.${t}`);
 }

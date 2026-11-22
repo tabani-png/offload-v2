@@ -23,11 +23,13 @@ export interface UnderstandingDeps {
   embedder?: Embedder;
   /** Optional `label` route (routerSpanLabeler). Never required. */
   labeler?: SpanLabeler;
+  /** Optional `label` route per member (routerSpanLabeler built for the event's tenant and member). */
+  labelerFor?: (m: MemberRef) => SpanLabeler | undefined;
   /** Fix rules (m5-04), passed through to runMemberUpdate. */
   estimateFor?: MemberUpdateInput["estimateFor"];
 }
 
-export type UnderstandingStatus = "updated" | "duplicate" | "empty" | "paused" | "unknown_member";
+export type UnderstandingStatus = "updated" | "duplicate" | "busy" | "failed" | "empty" | "paused" | "unknown_member";
 
 export interface UnderstandingResult {
   status: UnderstandingStatus;
@@ -37,6 +39,9 @@ export interface UnderstandingResult {
   tasks: number;
   instances: number;
 }
+
+/** Attempts after which a failing event is no longer retried by the drain. */
+export const MAX_ATTEMPTS = 5;
 
 /** The longest run of days one event analyses (the raw TTL is 30 days). */
 export const MAX_ANALYSIS_DAYS = 31;

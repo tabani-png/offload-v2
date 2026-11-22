@@ -15,6 +15,10 @@ test("CUE: a recording without a menu bar gets its host from URL bar text and it
   expect(cueOf("Google Chrome https://app.ledgerly.example New bill")).toEqual({ appBundleId: "com.google.Chrome", appName: "Google Chrome", host: "app.ledgerly.example" });
   expect(cueOf("www.video.example Pasta recipe")).toEqual({ host: "video.example" });
   expect(cueOf("Edit billing.ts and README.md, see Node.js notes")).toEqual({});
+  // Window chrome is at the top: an app name inside the body text is not a cue.
+  expect(cueOf("Notes from the call\nask the Slack admin and check Preview of the deck")).toEqual({});
+  expect(cueOf("Pasta recipe we saw in Mail yesterday")).toEqual({});
+  expect(cueOf("Inbox\nMail\nInvoice from supplier")).toEqual({ appBundleId: "com.apple.mail", appName: "Mail" });
   const r = rng(3);
   const built = recordingObservations({ start: utc(DAY) + 9 * 3_600_000, segments: invoiceSegments(r, { menuBar: false }) }, r);
   expect(built.observations.filter((x) => x.kind === "focus")).toHaveLength(1);

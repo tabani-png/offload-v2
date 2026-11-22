@@ -91,3 +91,9 @@ test("DESCRIBE: routerSpanLabeler sends a label route call with a label-only sch
   const refused = routerSpanLabeler(async () => ({ status: "needs_you", call_id: "c", route: "label", reason: "monthly_budget_reached", attempts: [] }), { tenant_id: "t1", member_id: "m1" });
   expect((await refused.label([{ span_id: "s1", text: "x" }])).size).toBe(0);
 });
+
+test("DESCRIBE: a labeler that throws leaves the rules' description", async () => {
+  const failing: SpanLabeler = { label: async () => { throw new Error("router down"); } };
+  const out = await describeSpans([span({ texts: ["Supplier log entered"] })], "UTC", failing);
+  expect([out[0]!.verb, out[0]!.verbFrom, out[0]!.object, out[0]!.objectFrom]).toEqual(["edit", "default", "", "none"]);
+});
