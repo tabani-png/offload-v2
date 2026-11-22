@@ -15,7 +15,8 @@ import OffloadUploader
 @MainActor public final class CaptureRuntime: CaptureControl, CaptureLifecycle {
   public static let tickInterval: TimeInterval = 1
 
-  public let home: URL
+  /// The encrypted buffer, shared with the uploader (one key ring, one day store).
+  public let context: StoreContext
   /// The one Never watch list (the same store the screens, the menu bar and the import use).
   public let neverWatch: any ExclusionSource
   /// The day store, set on the first start. The local now line reads it through `events`.
@@ -24,7 +25,6 @@ import OffloadUploader
   /// Why the last start failed (the error's type, never its text), or nil.
   public private(set) var lastError: String?
 
-  private let secrets: any SecretStore
   private let ticks: Bool
   private var observer: Observer?
   private var pause: LivePauseSource?
@@ -34,21 +34,27 @@ import OffloadUploader
   private var ticking = false
 
   /// `ticks: false` builds and starts everything but never ticks the observer (tests: no TCC, no live reads).
-  public init(home: URL = StoreLayout.defaultHome(), neverWatch: any ExclusionSource, secrets: any SecretStore,
-              ticks: Bool = true) {
-    self.home = home
+  public init(context: StoreContext, neverWatch: any ExclusionSource, ticks: Bool = true) {
+    self.context = context
     self.neverWatch = neverWatch
-    self.secrets = secrets
     self.ticks = ticks
     let handle = StoreHandle()
     store = handle
     events = StoreEventSource(handle: handle)
   }
 
+  /// Capture over its own store context (tests, tools).
+  public convenience init(home: URL = StoreLayout.defaultHome(), neverWatch: any ExclusionSource, secrets: any SecretStore,
+                          ticks: Bool = true) {
+    self.init(context: StoreContext(home: home, secrets: secrets), neverWatch: neverWatch, ticks: ticks)
+  }
+
+  public var home: URL { context.home }
+
   /// True only while capture really runs; the menu bar and screen 13 say "not watching" otherwise.
   public var isRunning: Bool { running }
 
-  public var exclusionsFile: URL { StoreLayout(home: home).exclusionsFile }
+  public var exclusionsFile: URL { context.layout.exclusionsFile }
 
   public func start() {
     guard !running else { return }
@@ -70,7 +76,7 @@ import OffloadUploader
     running = false
   }
 
-  /// m3-03: Sparkle is about to install an update. The upload queue is on disk, so stopping loses nothing.
+  /// m3-03: Sparkle is about to install an update. The composition's UpdatePreparation also pauses the uploader.
   func prepareForUpdate() { stop() }
 
   /// Writes the Never watch list to the observer's exclusions file when it changed. True when written.
@@ -83,7 +89,7 @@ import OffloadUploader
 
   /// The masker for recordings imports: the same pseudonym key as live capture, loaded when the first text is masked.
   public func importMasker() -> ImportMaskerAdapter {
-    let secrets = self.secrets
+    let secrets = context.secrets
     return ImportMaskerAdapter(load: { try CaptureRuntime.masker(secrets: secrets) })
   }
 
@@ -92,13 +98,13 @@ import OffloadUploader
   }
 
   private func build() throws {
-    let layout = StoreLayout(home: home)
+    let layout = context.layout
     try layout.ensureDirectories()
-    let days = DayCalendar()
-    let keys = KeyRing(layout: layout, secrets: secrets)
-    let dayStore = DayStore(layout: layout, keys: keys, days: days)
+    let days = context.days
+    let keys = context.keys
+    let dayStore = context.dayStore
     let time = SystemTime()
-    let masker = try Self.masker(secrets: secrets)
+    let masker = try Self.masker(secrets: context.secrets)
     let reveals = RevealMap(layout: layout, keys: keys, days: days)
     let pause = LivePauseSource()
     observer = Observer(
@@ -112,7 +118,8 @@ import OffloadUploader
 
   private func schedule() {
     timer?.invalidate()
-    timer = Timer.scheduledTimer(withTimeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
+    // Added in the common run-loop modes, so capture keeps ticking while a menu is open (review 1, finding 7).
+    let timer = Timer(timeInterval: Self.tickInterval, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated {
         guard let self, !self.ticking, let observer = self.observer else { return }
         // Never watch first, so an entry added since the last tick applies to this one.
@@ -124,5 +131,7 @@ import OffloadUploader
         }
       }
     }
+    RunLoop.main.add(timer, forMode: .common)
+    self.timer = timer
   }
 }

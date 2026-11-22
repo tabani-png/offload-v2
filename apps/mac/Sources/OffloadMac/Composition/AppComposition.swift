@@ -4,7 +4,7 @@
 // 1. BackendMode: `.local` unless this Mac is enrolled (the test build is `.local`).
 // 2. One NeverWatchStore for the screens, the menu bar, the observer (through its exclusions file) and the import.
 // 3. CaptureRuntime (built on its first start, not before) and, only in `.cloud`, UploadRuntime.
-// 4. The updater (m3-03) with that same CaptureRuntime as its CaptureLifecycle, before any scene, as before.
+// 4. The updater (m3-03), before any scene as before, with an UpdatePreparation over that same capture and uploader.
 // 5. The recordings import with the sink the launch facts allow (the uploader when sending, else m3-10's on-device
 //    sink when it exists) and the real masker; no importer until m3-10's on-device text reading exists.
 // 6. AppModel: reads both permissions, checks the notice version, then starts capture and the uploader per LaunchPlan.
@@ -29,9 +29,9 @@ public struct CompositionSeams {
 /// Everything the root reads from the Mac. `live()` fills it with the real pieces; tests with fakes.
 @MainActor public struct CompositionEnvironment {
   public var backend: BackendMode
-  /// The store home (`StoreLayout.defaultHome()`, Application Support/Offload).
-  public var home: URL
-  public var secrets: any SecretStore
+  /// The one encrypted buffer (under `StoreLayout.defaultHome()`, Application Support/Offload), shared by capture,
+  /// the uploader and the import outbox.
+  public var store: StoreContext
   public var onboardingStore: OnboardingStore
   public var probe: PermissionProbe
   public var options: LaunchOptions
@@ -46,13 +46,12 @@ public struct CompositionSeams {
   /// False in tests: capture never ticks and the uploader never takes a turn.
   public var timers: Bool
 
-  public init(backend: BackendMode, home: URL, secrets: any SecretStore, onboardingStore: OnboardingStore,
+  public init(backend: BackendMode, store: StoreContext, onboardingStore: OnboardingStore,
               probe: PermissionProbe, options: LaunchOptions, bundlePath: String, bufferReadable: Bool,
               currentNoticeVersion: String?, loginItem: LoginItemService, relauncher: Relauncher,
               account: AccountService, consent: ConsentService, timers: Bool = true) {
     self.backend = backend
-    self.home = home
-    self.secrets = secrets
+    self.store = store
     self.onboardingStore = onboardingStore
     self.probe = probe
     self.options = options
@@ -72,7 +71,7 @@ public struct CompositionSeams {
   /// Never watch list.
   public typealias RecordingsBuilder =
     @MainActor (RecordingImporter?, (any ImportSink)?, (any RecordingLedger)?, NeverWatchStore) -> RecordingsImportModel?
-  typealias UpdatesBuilder = @MainActor (any CaptureLifecycle) -> AppUpdates?
+  typealias UpdatesBuilder = @MainActor (UpdatePreparation) -> AppUpdates?
 
   public let backend: BackendMode
   public let neverWatch: NeverWatchStore
@@ -80,6 +79,8 @@ public struct CompositionSeams {
   /// Nil in Local mode: nothing exists that could send.
   public let uploads: UploadRuntime?
   public let importChoice: ImportSinkChoice
+  /// What the menu bar item says about where data goes (ModeLines).
+  public let modeLines: [String]
   public let app: AppModel
   /// Sparkle (m3-03). Nil in tests.
   let updates: AppUpdates?
@@ -89,14 +90,15 @@ public struct CompositionSeams {
     backend = env.backend
     let neverWatch = NeverWatchStore()
     self.neverWatch = neverWatch
-    let capture = CaptureRuntime(home: env.home, neverWatch: neverWatch, secrets: env.secrets, ticks: env.timers)
+    let capture = CaptureRuntime(context: env.store, neverWatch: neverWatch, ticks: env.timers)
     self.capture = capture
     var uploads: UploadRuntime?
     if case .cloud(let apiBase, let deviceID) = env.backend {
-      uploads = UploadRuntime(apiBase: apiBase, deviceID: deviceID, home: env.home, secrets: env.secrets, turns: env.timers)
+      uploads = UploadRuntime(apiBase: apiBase, deviceID: deviceID, context: env.store, turns: env.timers)
     }
     self.uploads = uploads
-    updates = makeUpdates(capture)
+    // Before an update: capture stops and the uploader pauses.
+    updates = makeUpdates(UpdatePreparation(capture: capture, uploads: uploads))
 
     let saved = env.onboardingStore.load() ?? OnboardingState()
     let facts = LaunchFacts(state: saved, uploadsAvailable: uploads != nil, bufferReadable: env.bufferReadable,
@@ -108,11 +110,12 @@ public struct CompositionSeams {
     var ledger: (any RecordingLedger)?
     var importer: RecordingImporter?
     if seams.textRecognizer != nil, sink != nil {
-      let fileLedger = FileRecordingLedger(file: env.home.appendingPathComponent("import-ledger.json"))
+      let fileLedger = FileRecordingLedger(file: env.store.home.appendingPathComponent("import-ledger.json"))
       ledger = fileLedger
       importer = ImportComposition.importer(recognizer: seams.textRecognizer, masker: capture.importMasker(), sink: sink,
-                                            ledger: fileLedger, neverWatch: neverWatch, protected: [env.home])
+                                            ledger: fileLedger, neverWatch: neverWatch, protected: [env.store.home])
     }
+    modeLines = ModeLines.lines(backend: env.backend, importReady: importer != nil)
 
     let sampleWeek = SampleWeekFlag()
     let services = OnboardingServices(
@@ -126,6 +129,9 @@ public struct CompositionSeams {
       services: services, probe: env.probe, events: capture.events, sampleWeek: sampleWeek,
       currentNoticeVersion: env.currentNoticeVersion, uploadsAvailable: uploads != nil
     )
+    // Row 11.6 "Start fresh" deletes the unreadable buffer before setup starts over.
+    let store = env.store
+    app.onStartFresh = { try? store.discard() }
   }
 
   /// The app as shipped: real permission checks, the Keychain, the store under Application Support/Offload, Sparkle.
@@ -134,10 +140,12 @@ public struct CompositionSeams {
   public static func live(arguments: [String] = ProcessInfo.processInfo.arguments,
                           seams: CompositionSeams = CompositionSeams()) -> AppComposition {
     let secrets = KeychainSecretStore()
+    let store = StoreContext(home: StoreLayout.defaultHome(), secrets: secrets)
     let env = CompositionEnvironment(
-      backend: BackendMode.live(info: Bundle.main.infoDictionary, secrets: secrets), home: StoreLayout.defaultHome(),
-      secrets: secrets, onboardingStore: UserDefaultsOnboardingStore(), probe: LivePermissionProbe(),
-      options: LaunchOptions.parse(arguments: arguments), bundlePath: Bundle.main.bundlePath, bufferReadable: true,
+      backend: BackendMode.live(info: Bundle.main.infoDictionary, secrets: secrets), store: store,
+      onboardingStore: UserDefaultsOnboardingStore(), probe: LivePermissionProbe(),
+      options: LaunchOptions.parse(arguments: arguments), bundlePath: Bundle.main.bundlePath,
+      bufferReadable: store.bufferReadable(),
       currentNoticeVersion: nil, loginItem: LiveLoginItem(), relauncher: LiveRelauncher(),
       account: UnavailableAccountService(), consent: LocalConsentService()
     )

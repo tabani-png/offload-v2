@@ -178,8 +178,12 @@ public final class AppModel: ObservableObject {
     today = TodayModel(state: onboarding.state, now: Date())
   }
 
-  /// Row 11.6 "Start fresh": the unreadable buffer is the store's to delete (m3-02); here setup starts over.
+  /// Deletes the unreadable buffer (set by the composition root, m3-14: `StoreContext.discard()`).
+  public var onStartFresh: (() -> Void)?
+
+  /// Row 11.6 "Start fresh": the unreadable buffer is deleted, then setup starts over.
   public func startFresh() {
+    onStartFresh?()
     onboarding.reset()
     route = .onboarding(.install)
   }

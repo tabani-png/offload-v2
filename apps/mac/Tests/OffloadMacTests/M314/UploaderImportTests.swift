@@ -159,7 +159,7 @@ extension M314 {
     #expect(requests.allSatisfy { $0.method == "POST" && $0.headers["Authorization"] == "Bearer tok" })
     let openBody = Data(#"{"source_kind":"videos"}"#.utf8)
     let forgetBody = Data("{\"import_id\":\"\(M314Uploads.importID)\",\"scope\":\"import\"}".utf8)
-    #expect(requests.map(\.body) == [openBody, forgetBody])
+    #expect(requests.compactMap(\.body) == [openBody, forgetBody])
     // The raw r||s signature over the exact body verifies with this device's key.
     for r in requests {
       let header = try #require(r.headers["Offload-Signature"])

@@ -6,7 +6,8 @@
 protocol CaptureLifecycle {
     /// Starts capture with the permissions that are granted.
     func start()
-    /// Flushes the upload queue and stops capture cleanly. Called before Sparkle installs an update.
+    /// Stops capture and pauses uploads (the app's UpdatePreparation, m3-14). Both queues are on disk, so nothing is
+    /// lost; the next launch starts them again. Called before Sparkle installs an update.
     func prepareForUpdate()
 }
 

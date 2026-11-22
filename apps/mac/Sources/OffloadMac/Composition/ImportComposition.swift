@@ -48,34 +48,32 @@ public enum ImportComposition {
   }
 }
 
-/// What the import needs from the uploader (PR #13's `Uploader` through UploadRuntime; a fake in tests).
+/// What the import needs from the uploader (UploadRuntime in the app; a fake in tests).
 public protocol ImportUploadQueue: Sendable {
   /// `POST /v1/imports` with `{ source_kind }`; the `import_id`.
   func openImport(sourceKind: String) async throws -> String
-  /// Queues import objects as observation batches: detectors again, next seqs, sent with the live batches.
-  func enqueueImport(_ objects: [Observation]) async throws -> Int
+  /// Synchronous and durable: checked (import objects only, detectors again) and sealed on this Mac before it
+  /// returns; the uploader's next flush batches them. Throws when anything is refused, so nothing is half kept.
+  func stageImport(_ objects: [Observation]) throws
   /// `POST /v1/me/forget` with `{ scope: "import", import_id }`.
   func forgetImport(id: String) async throws
 }
 
-/// Why the sink refused objects before anything was queued.
+/// Why the sink refused objects before anything was kept.
 public struct ImportUploadRefusal: Error, Equatable, Sendable {
   public let reason: String
 }
 
 /// m3-05's `ImportSink` through the uploader: it makes no request of its own. Every object is converted through the
-/// closed `Observation` schema and must be `source = "import"` of the space it is written to.
+/// closed `Observation` schema and must be `source = "import"` of the space it is written to. `write` returns only
+/// after the objects are staged on this Mac, so a recording the importer records as read is never lost; when staging
+/// fails, `write` throws and the importer leaves the file for the next import (review 1, finding 2).
 public final class UploaderImportSink: ImportSink, @unchecked Sendable {
   private let queue: any ImportUploadQueue
   private let lock = NSLock()
   private var open: Set<String> = []
-  private var tail: Task<Void, Never>?
-  private var failures = 0
 
   public init(queue: any ImportUploadQueue) { self.queue = queue }
-
-  /// Writes whose hand-off to the uploader failed (the import report counts moments, not uploads).
-  public var failedWrites: Int { lock.withLock { failures } }
 
   public func openImport(sourceKind: ImportSourceKind) async throws -> ImportSpace {
     let id = try await queue.openImport(sourceKind: sourceKind.rawValue)
@@ -84,40 +82,19 @@ public final class UploaderImportSink: ImportSink, @unchecked Sendable {
     return ImportSpace(id: id, sourceKind: sourceKind)
   }
 
-  /// Checked here, queued in order behind earlier writes.
   public func write(_ observations: [ImportObservation], to space: ImportSpace) throws {
     guard lock.withLock({ open.contains(space.id) }) else {
       throw ImportUploadRefusal(reason: "an import space this sink did not open")
     }
     let objects = try observations.map { try Self.observation($0, in: space) }
     guard !objects.isEmpty else { return }
-    let queue = self.queue
-    lock.withLock {
-      let previous = tail
-      tail = Task { [weak self] in
-        await previous?.value
-        do {
-          _ = try await queue.enqueueImport(objects)
-        } catch {
-          self?.noteFailure()
-        }
-      }
-    }
+    try queue.stageImport(objects)
   }
 
   public func forget(_ space: ImportSpace) async throws {
-    await drain()
     try await queue.forgetImport(id: space.id)
     lock.withLock { _ = open.remove(space.id) }
   }
-
-  /// Waits until every write so far has reached the uploader.
-  public func drain() async {
-    let last = lock.withLock { tail }
-    await last?.value
-  }
-
-  private func noteFailure() { lock.withLock { failures += 1 } }
 
   static func observation(_ o: ImportObservation, in space: ImportSpace) throws -> Observation {
     guard o.importID == space.id else { throw ImportUploadRefusal(reason: "an object of another import space") }

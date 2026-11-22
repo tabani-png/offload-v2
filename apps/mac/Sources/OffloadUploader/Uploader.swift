@@ -46,13 +46,11 @@ public actor Uploader {
     private let ledger: EgressLedger
     private let time: any TimeSource
     private var lastFlush: Date?
-    /// Import objects handed over while a flush is suspended in a send (m3-14). `flush()` saves its own copy of the
-    /// state after each send, so they are queued when it ends, never in the middle of it.
-    private var importOutbox: [Observation] = []
-    private var flushing = false
+    /// Recordings-import objects staged on this Mac (m3-14), batched by the next flush. Nil: no imports.
+    private let importOutbox: ImportOutbox?
 
     public init(config: UploaderConfig, transport: any HTTPTransport, signer: any DeviceSigner, tokens: any TokenProvider, store: DayStore,
-                state: UploadStateStore, ledger: EgressLedger, time: any TimeSource) {
+                state: UploadStateStore, ledger: EgressLedger, time: any TimeSource, importOutbox: ImportOutbox? = nil) {
         self.config = config
         egress = EgressGuard(apiBase: config.apiBase)
         self.transport = GuardedTransport(inner: transport, guard: egress)
@@ -62,6 +60,7 @@ public actor Uploader {
         stateStore = state
         self.ledger = ledger
         self.time = time
+        self.importOutbox = importOutbox
     }
 
     /// The counters the app shows (read from the persisted state, so they survive a restart).
@@ -80,11 +79,6 @@ public actor Uploader {
 
     /// Batches what is new, then sends every pending batch in seq order. Also what quitting the app calls.
     public func flush() async -> FlushReport {
-        flushing = true
-        defer {
-            flushing = false
-            queueOutbox()
-        }
         var report = FlushReport()
         let now = time.now
         lastFlush = now
@@ -93,7 +87,11 @@ public actor Uploader {
 
         do {
             let blocked = try build(&state, &report, now: now)
+            // Staged import objects join the queue in the same step, before any send (no suspension in between).
+            let drained: Set<String> = try blocked ? [] : batchStagedImports(&state, &report, now: now)
             try stateStore.save(state)
+            // Removed only once the batches holding them are saved: at worst an object is queued twice, never lost.
+            if !drained.isEmpty { try? importOutbox?.remove(ids: drained) }
             if blocked { report.failed = true; return report }
         } catch {
             report.failed = true
@@ -285,9 +283,10 @@ public actor Uploader {
 
 // MARK: - import spaces (slice m3-14-mac-app-integration)
 //
-// A recordings import (m3-05) leaves the Mac only through this uploader (ADR 0035): the import space is opened and
-// forgotten with signed requests to the one API host, written to the egress ledger, and its objects are queued as
-// ordinary observation batches (detectors again, the next seqs, the same retry), sent by `flush()` with the live ones.
+// A recordings import (m3-05) leaves the Mac only through this uploader (ADR 0035). The import space is opened and
+// forgotten with signed requests to the one API host, each written to the egress ledger. Its objects are staged on
+// this Mac first (ImportOutbox: checked, sealed, durable) and batched by the next flush as ordinary observation batches
+// under the next seqs, with the detectors run again and the same retry as live batches.
 
 public enum ImportUploadError: Error, Equatable, Sendable {
     /// The server answered with this status.
@@ -323,64 +322,31 @@ extension Uploader {
         recordRequest(kind: "forget", body: body)
     }
 
-    /// Queues import objects as observation batches under the next seqs. Every object must be an import object and
-    /// pass the device detectors again; otherwise nothing is queued (fail closed). Returns how many were queued.
-    /// Every object must be an import object and pass the device detectors again; otherwise nothing is queued (fail
-    /// closed). Queued under the next seqs as ordinary observation batches; while a flush is running they wait in memory
-    /// and are queued when it ends. Returns how many were accepted.
-    @discardableResult
-    public func enqueueImport(_ objects: [Observation]) throws -> Int {
-        guard !objects.isEmpty else { return 0 }
-        for o in objects {
-            guard Self.isImportObject(o) else { throw ImportUploadError.notAnImportObject }
-            try egress.inspect(o)
+    /// Moves staged import objects into batches under the next seqs. Objects a detector stops now are set aside and
+    /// counted as blocked, never sent. Imports keep their real (old) times: no 7-day drop, the server files them under
+    /// the import day (ADR 0020). Returns the ids taken out of the outbox. Synchronous: no send can interleave.
+    private func batchStagedImports(_ state: inout UploadState, _ report: inout FlushReport, now: Date) throws -> Set<String> {
+        guard let importOutbox, let staged = try? importOutbox.staged(), !staged.isEmpty else { return [] }
+        var clean: [Observation] = []
+        for o in staged {
+            if ImportOutbox.isImportObject(o), (try? egress.inspect(o)) != nil { clean.append(o) } else {
+                state.counters.blocked += 1
+                report.blocked += 1
+            }
         }
-        if flushing {
-            importOutbox.append(contentsOf: objects)
-        } else {
-            try queueImportBatches(objects)
-        }
-        return objects.count
-    }
-
-    /// Load, append, save with no suspension in between, so no flush can interleave.
-    private func queueImportBatches(_ objects: [Observation]) throws {
-        var state = try stateStore.load()
-        let now = time.now
         var index = 0
-        while index < objects.count {
-            var n = min(config.maxObjects, objects.count - index)
-            var body = try envelope(Array(objects[index..<index + n]), seq: state.nextSeq, now: now)
+        while index < clean.count {
+            var n = min(config.maxObjects, clean.count - index)
+            var body = try envelope(Array(clean[index..<index + n]), seq: state.nextSeq, now: now)
             while body.count > config.maxBytes, n > 1 {
                 n = max(1, n * 2 / 3)
-                body = try envelope(Array(objects[index..<index + n]), seq: state.nextSeq, now: now)
+                body = try envelope(Array(clean[index..<index + n]), seq: state.nextSeq, now: now)
             }
-            state.pending.append(PendingBatch(seq: state.nextSeq, body: body, lastId: objects[index + n - 1].id, objectCount: n, kind: "observation_batch"))
+            state.pending.append(PendingBatch(seq: state.nextSeq, body: body, lastId: clean[index + n - 1].id, objectCount: n, kind: "observation_batch"))
             state.nextSeq += 1
             index += n
         }
-        try stateStore.save(state)
-    }
-
-    /// Queues what arrived during a flush; on failure it stays for the next flush.
-    private func queueOutbox() {
-        guard !importOutbox.isEmpty else { return }
-        if (try? queueImportBatches(importOutbox)) != nil { importOutbox = [] }
-    }
-
-    private static func isImportObject(_ o: Observation) -> Bool {
-        let tags: (ObservationSource?, String?)
-        switch o {
-        case .focus(let v): tags = (v.source, v.importId)
-        case .idleStart(let v): tags = (v.source, v.importId)
-        case .idleEnd(let v): tags = (v.source, v.importId)
-        case .inputCounts(let v): tags = (v.source, v.importId)
-        case .textSnapshot(let v): tags = (v.source, v.importId)
-        case .pause(let v): tags = (v.source, v.importId)
-        case .resume(let v): tags = (v.source, v.importId)
-        case .permissionChange(let v): tags = (v.source, v.importId)
-        }
-        return tags.0 == .import && !(tags.1 ?? "").isEmpty
+        return Set(staged.map(\.id))
     }
 
     private static func requestBody(_ fields: [String: String]) throws -> Data {
