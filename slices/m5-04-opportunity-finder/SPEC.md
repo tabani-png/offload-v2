@@ -182,6 +182,9 @@ into `offload serve` (m1-06), `remove_step` and `small_app` rules, track record 
   Deferred to a later slice; `opportunities.source = 'instant_read'` stays unused.
 - `fixes` gets `member_id` (DATA_MODEL section 6 had none) so the restrictive member wall applies like every brain
   table, plus `rule`, `figures` and `steps`; `episodes` gets `hosts` (DATA_MODEL section 4). DATA_MODEL is updated.
+- PERSIST "options of a chosen opportunity are not touched" was strengthened after the red commit (self-review
+  mutation check): it now also keeps an `open` opportunity whose option has `chosen_at`, so each of the two guards in
+  `saveOptions` is tested on its own. No assertion was weakened.
 - The stand-in `estimateFor` path (p43b tests) also stores one option, built from the bare estimate, so every ranked
   finder opportunity has at least one option row.
 
@@ -191,7 +194,10 @@ into `offload serve` (m1-06), `remove_step` and `small_app` rules, track record 
 - [x] connectors, evidence, rules, estimate, options (d95edd3)
 - [x] migration 0002, repository, job wiring (46205ec): 21 slice tests pass, full suite 671 pass
 - [x] docs: ARCHITECTURE section 6 (fix rules), DATA_MODEL sections 4 and 6, API.md `Opportunity`, GLOSSARY
-- [ ] self-review, verify.sh, verify-all
+- [x] self-review: mutation spot-checks (adapter order swapped → CONNECTOR, RULE fail; cloud-kind connector gate
+  removed → RULE, ESTIMATE fail; episode hosts dropped → PERSIST, FINDER fail; stand-in filter removed → EVIDENCE fails;
+  either saveOptions guard removed → PERSIST fails)
+- [ ] verify.sh, verify-all, then an independent review
 
 Known limits (for the next slices):
 - Steps are listed in system id order, not in the workflow's order: episodes keep the set of apps and hosts, not

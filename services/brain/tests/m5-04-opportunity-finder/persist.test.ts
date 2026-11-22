@@ -72,16 +72,21 @@ t("PERSIST: options of a chosen opportunity are not touched and members read onl
   const rules = fixRules();
   await update(rules);
   const vs = await views();
+  // One opportunity moved on to `chosen`; another still `open` but with an option already picked.
   const chosen = vs[0]!;
+  const picked = vs[1]!;
   await db.sql.unsafe(`UPDATE ${db.schema}.opportunities SET state = 'chosen' WHERE id = $1`, [chosen.id]);
-  await db.sql.unsafe(`UPDATE ${db.schema}.fixes SET chosen_at = now() WHERE opportunity_id = $1 AND option_no = 1`, [chosen.id]);
-  const before = await db.sql.unsafe(`SELECT to_jsonb(x) AS row FROM ${db.schema}.fixes x WHERE opportunity_id = $1 ORDER BY 1`, [chosen.id]);
+  await db.sql.unsafe(`UPDATE ${db.schema}.fixes SET chosen_at = now() WHERE opportunity_id = $1 AND option_no = 1`, [picked.id]);
+  const fixRows = (id: string) => db.sql.unsafe(`SELECT to_jsonb(x) AS row FROM ${db.schema}.fixes x WHERE opportunity_id = $1 ORDER BY 1`, [id]);
+  const before = [await fixRows(chosen.id), await fixRows(picked.id)];
   const renamed: FixRules = { propose: (e) => { const p = rules.propose(e); return p === null ? null : { ...p, options: p.options.map((o) => ({ ...o, title: `${o.title} again` })) }; } };
   await update(renamed);
-  expect(await db.sql.unsafe(`SELECT to_jsonb(x) AS row FROM ${db.schema}.fixes x WHERE opportunity_id = $1 ORDER BY 1`, [chosen.id])).toEqual(before);
+  expect([await fixRows(chosen.id), await fixRows(picked.id)]).toEqual(before);
   const after = await views();
-  for (const v of after.filter((x) => x.id !== chosen.id)) for (const o of v.options) expect(o.title.endsWith(" again")).toBe(true);
-  expect(after.find((x) => x.id === chosen.id)!.options[0]!.chosen_at).not.toBeNull();
+  const others = after.filter((x) => x.id !== chosen.id && x.id !== picked.id);
+  expect(others.length).toBeGreaterThan(0);
+  for (const v of others) for (const o of v.options) expect(o.title.endsWith(" again")).toBe(true);
+  expect(after.find((x) => x.id === picked.id)!.options[0]!.chosen_at).not.toBeNull();
   // The member wall.
   expect(await views(db.A2)).toEqual([]);
   expect(await db.run(db.A2, (tx) => getOpportunityView(tx, chosen.id))).toBeNull();
