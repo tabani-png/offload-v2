@@ -24,7 +24,8 @@ export interface FixRule {
 }
 
 const isEmail = (s: System) => s.work_kind === "email";
-const hasWeb = (e: TaskEvidence) => e.systems.some((s) => s.surface === "web");
+// Browser automation runs in the user's browser: it is offered only when every step is a web app (review 1 finding 2).
+const allWeb = (e: TaskEvidence) => e.systems.every((s) => s.surface === "web");
 const hasDesktop = (e: TaskEvidence) => e.systems.some((s) => s.surface === "desktop");
 const when = <T>(c: boolean, x: T): T[] => (c ? [x] : []);
 
@@ -42,12 +43,12 @@ export const FIX_RULES: readonly FixRule[] = [
   {
     kind: "email_to_records",
     matches: (e) => e.systems.some(isEmail) && e.systems.some((s) => !isEmail(s)),
-    options: (e) => ["agent_workflow", "api_integration", ...when(hasWeb(e), "browser_automation" as const), ...when(hasDesktop(e), "script" as const)],
+    options: (e) => ["agent_workflow", "api_integration", ...when(allWeb(e), "browser_automation" as const), ...when(hasDesktop(e), "script" as const)],
   },
   {
     kind: "app_to_app_copy",
     matches: (e) => e.systems.filter((s) => !isEmail(s)).length >= 2,
-    options: (e) => ["api_integration", ...when(hasWeb(e), "browser_automation" as const), ...when(hasDesktop(e), "script" as const)],
+    options: (e) => ["api_integration", ...when(allWeb(e), "browser_automation" as const), ...when(hasDesktop(e), "script" as const)],
   },
   {
     kind: "single_app_entry",
@@ -83,7 +84,8 @@ export function stepsFor(kind: ProposedFixKind, systems: readonly System[], cata
 }
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-const ADAPTER_WORDS = { mcp: "MCP", composio: "Composio", openapi: "direct API", browser: "browser, on your Mac" } as const;
+// Plain mechanics in option text (PRODUCT copy rules): the adapter itself stays in `steps`.
+const ADAPTER_WORDS = { mcp: "through a connector", composio: "through a connector", openapi: "through a connector", browser: "in your browser, on your Mac" } as const;
 const hh = (h: number) => `${String(h).padStart(2, "0")}:00`;
 
 function joinLabels(labels: readonly string[]): string {
@@ -135,7 +137,10 @@ export function fixRules(opts: { catalog?: TenantCatalog } = {}): FixRules {
         candidates.push({ order, option: { option_no: 0, kind, rule: rule.kind, recommended: false, title: titleOf(kind, e, steps), detail: detailOf(e, steps), steps, figures } });
       }
       if (candidates.length === 0) return null;
-      candidates.sort((a, b) => optionValue(b.option) - optionValue(a.option) || a.order - b.order);
+      // Options that save at least LEAVE_ALONE_BELOW_HOURS come first, so a recommended option always clears it
+      // (review 1 finding 3); within each group by value, then the rule's order.
+      const clears = (o: FixOption) => (o.figures.weekly_hours_saved.value >= LEAVE_ALONE_BELOW_HOURS ? 1 : 0);
+      candidates.sort((a, b) => clears(b.option) - clears(a.option) || optionValue(b.option) - optionValue(a.option) || a.order - b.order);
       const kept = candidates.slice(0, MAX_OPTIONS).map((c) => c.option);
       const leaveAloneFirst = Math.max(...kept.map((o) => o.figures.weekly_hours_saved.value)) < LEAVE_ALONE_BELOW_HOURS;
       const options = kept.map((o, i): FixOption => ({ ...o, option_no: i + 1, recommended: i === 0 && !leaveAloneFirst }));

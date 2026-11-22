@@ -96,7 +96,8 @@ export async function runMemberUpdate(tx: Tx, input: MemberUpdateInput): Promise
         const e = input.estimateFor(t);
         if (e === null) continue;
         estimates.push({ ...e, taskKey: t.task_key });
-        options.set(t.task_key, [e.option ?? bareOption({ ...e, taskKey: t.task_key }, latest)]);
+        const option = e.option ?? bareOption({ ...e, taskKey: t.task_key }, latest);
+        if (option !== null) options.set(t.task_key, [option]);
       }
     } else {
       // Fix rules (m5-04): the episodes of the last 8 weeks, read through the day records, give each task's evidence.
