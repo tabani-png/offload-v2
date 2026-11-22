@@ -87,6 +87,20 @@ describe("p45a Postgres build store", () => {
     await store.heartbeat(TENANT, live.id, T0 + STALE);
   });
 
+  test("LOCK: (Postgres) after a stale build, the second of two concurrent OKs with the same fresh held-out check gets already_running, not held-out-used (review 5 finding 7)", async () => {
+    // several rounds: the loser must be BuildConflict whether it waited on the stale row's lock or came after the commit
+    for (let i = 0; i < 6; i++) {
+      const brief = `brief_stale_pair_${i}`;
+      await store.insertQueued(newBuild(brief), T0, STALE);
+      const a = newBuild(brief);
+      const b = { ...newBuildRaw(brief), bound_hashes: a.bound_hashes };
+      const rs = await Promise.allSettled([a, b].map((x) => store.insertQueued(x, T0 + STALE + 1, STALE)));
+      expect(rs.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const lost = rs.find((r) => r.status === "rejected") as PromiseRejectedResult;
+      expect([i, lost.reason instanceof BuildConflict, (lost.reason as BuildConflict).code]).toEqual([i, true, "already_running"]);
+    }
+  });
+
   test("CAP: (Postgres) three parallel reservations cannot exceed the remaining cap", async () => {
     const b = await store.insertQueued(newBuild("brief_cap"), T0, STALE);
     const got = await Promise.all([1, 2, 3].map((i) => store.reserve({ tenant_id: TENANT, build_id: b.id, attempt_id: `att${i}`, call_id: `attempt:att${i}`, kind: "model", usd4: 7_000, ceiling_usd4: 17_000 }, T0)));
