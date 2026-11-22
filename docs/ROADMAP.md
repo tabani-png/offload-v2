@@ -544,7 +544,7 @@ Tasks after the two slices:
 | [m5-01](../slices/m5-01-understanding/SPEC.md) | Sessionize, describe, embed, induce, task ledger | M3 | Opus plan, Sonnet build | L | M5-A | `services/brain/**` |
 | m5-02 | Episodes, day and week records, narrative check | m5-01 | Sonnet | M | M5-A | `services/brain/**` |
 | [m5-03](../slices/m5-03-model-router/SPEC.md) | Model router (masking, budgets, escalation, labels) | M1, m3-01 (leak scan) | Sonnet | M | M5-A | `services/brain/src/models/**`, `packages/masking/src/names/**` |
-| m5-04 | Opportunity finder, instant read, options | m5-02, m2-01 | Sonnet | M | M5-B | `services/brain/**` |
+| [m5-04](../slices/m5-04-opportunity-finder/SPEC.md) | Opportunity finder, instant read, options | m5-02, m2-01 | Sonnet | M | M5-B | `services/brain/**` |
 | m5-05 | Today and weekly review APIs and Mac screens | m5-04 | Sonnet | L | M5-B | `services/api/**`, `apps/mac/**` |
 | m5-06 | Pseudonym match flow and Build progress on the Mac | m5-04, m3-06 | Sonnet | M | M5-B | `apps/mac/**`, `services/api/**` |
 
