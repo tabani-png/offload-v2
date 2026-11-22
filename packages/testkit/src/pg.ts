@@ -211,6 +211,11 @@ async function seedMember(tx: Tx, t: FixtureTenant, memberId: string, deviceId: 
   const eventId = uuidv7();
   await q("insert into events_outbox (tenant_id, id, type, payload) values ($1, $2, 'import.wiped', $3)", [t.tenantId, eventId, JSON.stringify({ import_id: importId })]);
   await q("insert into outbox_deliveries (tenant_id, event_id, consumer, attempts) values ($1, $2, 'webhook:fixture', 0)", [t.tenantId, eventId]);
+  const connectionId = uuidv7();
+  await q(`insert into connections (tenant_id, id, workspace_id, member_id, adapter, provider, account_label, capabilities, account_hash, state)
+           values ($1, $2, $3, $4, 'openapi', 'stripe', 'Fixture Stripe', '{payouts.list}', $5, 'active')`,
+    [t.tenantId, connectionId, t.workspaceId, memberId, hex()]);
+  await q("insert into connection_tool_pins (tenant_id, connection_id, tool_name, pin_hash) values ($1, $2, 'list_payouts', $3)", [t.tenantId, connectionId, hex()]);
   return seeds;
 }
 

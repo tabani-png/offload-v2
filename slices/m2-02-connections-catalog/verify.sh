@@ -11,7 +11,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m2-02-connections-catalog"
-BASE=""                                  # commit this slice stacks on (required once status is in_progress)
+BASE="8f33ac69c2c64fa9d477e0f0f9a25a039c5e8792"                                # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="packages/connectors-sdk/tests/m2-02-connections-catalog services/api/tests/m2-02-connections-catalog"   # one or more folders, space separated
 NEEDS_POSTGRES=1                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 # -------------------------------------------------------------------------

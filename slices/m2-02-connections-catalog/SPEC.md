@@ -2,7 +2,7 @@
 id: m2-02-connections-catalog
 title: Connections API, the launch catalog as data, capabilities, and connection pins (tool pin hashes stored at connect, compared before a run)
 milestone: M2
-status: ready
+status: done
 depends_on: [m1-02-contracts-ingest, m1-03-tenancy-rls, m1-04-login-devices, m1-05-routine-contract]
 parallel_safe: true
 human_gated: true
@@ -12,7 +12,7 @@ parallel_group: M2-A
 owns: [packages/connectors-sdk/**, services/api/src/connections/**, services/api/src/app.ts, packages/contracts/src/connections/**, packages/contracts/scripts/gen-json-schema.ts, packages/contracts/schemas/**, packages/db/migrations/0200_connections.sql, packages/testkit/src/connectors/**, docs/API.md]
 verify: bash slices/m2-02-connections-catalog/verify.sh
 min_tests: 21
-paths_in_scope: [packages/connectors-sdk/**, services/api/src/connections/**, services/api/src/app.ts, services/api/tests/m2-02-connections-catalog/**, packages/contracts/src/connections/**, packages/contracts/scripts/gen-json-schema.ts, packages/contracts/schemas/**, packages/db/migrations/0200_connections.sql, packages/testkit/src/connectors/**, slices/m2-02-connections-catalog/**, docs/API.md, package.json, bun.lock]
+paths_in_scope: [packages/connectors-sdk/**, services/api/src/connections/**, services/api/src/app.ts, services/api/tests/m2-02-connections-catalog/**, packages/contracts/src/connections/**, packages/contracts/scripts/gen-json-schema.ts, packages/contracts/schemas/**, packages/db/migrations/0200_connections.sql, packages/testkit/src/connectors/**, slices/m2-02-connections-catalog/**, docs/API.md, package.json, bun.lock, services/api/package.json, packages/testkit/package.json, packages/testkit/src/pg.ts]
 paths_out_of_scope: [ee/**, apps/**, services/broker/**, services/brain/**, services/builder/**, services/runtime/**, services/api/src/ingest/**, services/api/src/audit/**, packages/masking/**, packages/db/src/**, packages/contracts/src/index.ts, packages/testkit/src/index.ts, docs/adr/**]
 red_tests: [CONNECTION, CATALOG, PIN, CAPABILITY, COMPOSIO]
 ---
@@ -162,4 +162,17 @@ run and pausing the routine (runtime, m2-10, using `comparePins`); browser adapt
 `bash slices/m2-02-connections-catalog/verify.sh` (needs `DATABASE_URL`, Postgres 17).
 
 ## Scope changes
-None.
+- Added `services/api/package.json` and `packages/testkit/package.json` to `paths_in_scope`: the workspace uses
+  isolated installs, so `@offload/api` and `@offload/testkit` must declare `@offload/connectors-sdk` (`workspace:*`)
+  to import it. No third-party dependency is added (`packages/connectors-sdk/package.json` declares the already pinned
+  `zod` 4.6.7 and `@offload/contracts`).
+- Added `packages/testkit/src/pg.ts` to `paths_in_scope`: m1-03's RLS test requires every tenant table to be seeded
+  for both tenants by `seedTenantRows`, so the new `connections` and `connection_tool_pins` tables get one seeded row
+  each there. No other helper in the file changes.
+- `ConnectionCreate`, `CatalogEntry`: `provider` is the stable slug that names one catalog entry (`gmail`,
+  `google_sheets`, `stripe`, ...) and `app` is its display name. `POST /v1/connections` finds the entry by `provider`
+  and refuses an `adapter` that differs from the entry's.
+- `BrokerPort.oauthBegin` and `BrokerPort.listTools` take an optional `composio: { user_id, toolkit, tools[] }` session
+  for Composio connections (the COMPOSIO red tests need the session to reach the broker). The toolkit and tool
+  allowlist come from code (`packages/connectors-sdk/src/composio.ts`), keyed by catalog provider and capability, so
+  `CatalogEntry` keeps the exact fields above.
