@@ -159,6 +159,16 @@ describe("p45a Postgres build store", () => {
     expect(await store.attempts(TENANT, b.id)).toEqual([{ ...att, turns: 8 }]);
   });
 
+  test("READY: (Postgres) worker_attempts has every DATA_MODEL column; an attempt keeps its shard proofs and wall time", async () => {
+    const cols = (await sql`SELECT column_name FROM information_schema.columns WHERE table_schema = ${SCHEMA} AND table_name = 'worker_attempts'`).map((r: { column_name: string }) => r.column_name);
+    for (const c of ["model", "wall_seconds", "replay_pass", "verifier_verdict", "repaired", "diff_lines", "proof", "frozen_pass", "held_out_pass", "check_groups", "outcome"]) expect([c, cols.includes(c)]).toEqual([c, true]);
+    const b = await store.insertQueued(newBuild("brief_proof"), T0, STALE);
+    const proof = { frozen: { status: "pass", exit: 0, tests: 2, completed: true, swept: true, split: true }, held_out: { status: "fail", exit: 1, tests: 1, completed: false, swept: true, split: true } };
+    const att = { tenant_id: TENANT, id: uuid(), build_id: b.id, ordinal: 1, sandbox_provider: "docker", sandbox_id: "sbx_1", outcome: "fail" as const, spent_usd4: 0, tries: 1, turns: 1, frozen_pass: true, held_out_pass: false, check_groups: [], artifact_sha256: null, artifact_bytes: 0, artifact_files: [], note: "", proof, wall_seconds: 42 };
+    await store.putAttempt(att);
+    expect((await store.attempts(TENANT, b.id))[0]).toEqual(att);
+  });
+
   test("RLS: (Postgres) every builder table has row level security enabled and forced", async () => {
     const rows = await admin`SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = ${SCHEMA} AND c.relkind = 'r' ORDER BY c.relname`;
     expect(rows.map((r: { relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }) => [r.relname, r.relrowsecurity, r.relforcerowsecurity])).toEqual([...TABLES].sort().map((t) => [t, true, true]));

@@ -74,6 +74,10 @@ describe("p45a OK, build", () => {
     expect(build.state).toBe("ready");
     expect(attempts[0]!.check_groups).toEqual([{ name: "frozen", passed: 1, failed: 0 }, { name: "held_out", passed: 1, failed: 0 }]);
     expect(attempts[0]).toMatchObject({ frozen_pass: true, held_out_pass: true, outcome: "pass", ordinal: 1 });
+    // the shard proofs are kept (DATA_MODEL worker_attempts.proof), never their one-time nonce
+    expect(attempts[0]!.proof).toEqual({ frozen: { status: "pass", exit: 0, tests: 1, completed: true, swept: false, split: false }, held_out: { status: "pass", exit: 0, tests: 1, completed: true, swept: false, split: false } });
+    expect(JSON.stringify(attempts[0])).not.toContain("nonce");
+    expect(attempts[0]!.wall_seconds).toBe(0);
     expect(build.winner_attempt_id).toBe(attempts[0]!.id);
   });
 
