@@ -15,3 +15,15 @@ One line per slice step: slice | decision | tests | reviewer verdict.
   Navigation/ShellViews.swift and M310WiringTests.swift and fail the same way until they rebase onto this fix.
 - `durable: workflow "sleeper" failed (Error)` in the `core` job is the expected log of the passing test
   "DURABLE: cancel stops a sleeping workflow before its next step"; the `core` job passed. No change.
+- 2026-11-22 CI run 2 (run 45046523482, `mac`): the module built; the test target failed to compile with three Swift 6
+  isolation errors, all in m3-10's own tests (fixed, b2cbe26 and dc9fefb):
+  - M310BackendTests.swift:321 `reference to captured var 'patch' in concurrently-executing code`: `M310B.error` takes
+    a `@Sendable` closure, which may not capture a `var`. The test now passes a `let` copy.
+  - M310Review1Tests.swift:81 and :85 `main actor-isolated property 'insights'/'snapshot'` read from the nonisolated
+    helpers `slackCounted`/`neverWatchCounted`. They now take the `InsightsSnapshot` (Sendable), which the
+    `@MainActor` tests read and pass in.
+  - M310Review2Tests.swift:107 and :109 `call to main actor-isolated static method 'importsOnThisMac(mode:)'` from a
+    nonisolated test: `LocalAnalysis` is `@MainActor`, so its pure static rule was too. It is now `nonisolated`.
+  Not yet seen green: region-isolation (SIL) diagnostics run only once a file type-checks, so the next run is the
+  first to check those three files fully. `durable: workflow "sleeper"`/`"waiter-msg" failed (Error)` are again the
+  expected logs of passing `core` tests; `core` passed.
