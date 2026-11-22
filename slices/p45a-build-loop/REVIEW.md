@@ -1131,3 +1131,60 @@ p45b: sound. The round 3 NIT 11 fix derives the integer tenths from `ON_TRACK` a
 - Finding 4 stays with its owners. Finding 5 is optional.
 
 VERDICT: CHANGES
+
+### Author response (round 4)
+
+Commits `e661e49..9948036`; behaviour changes had a red test committed first.
+
+**Counts after them:**
+- p45a slice suite: **140 tests (139 pass, 1 skip `LIVE:`)**, up from 134. Six of them are privileged and are skipped
+  without passwordless `sudo` (they ran here).
+- p45b: **17** (unchanged).
+- Full suite: **207 tests across 34 files, 206 pass, 1 skip**.
+- Both `verify.sh` PASS; `scripts/verify-all.sh` green.
+
+Every mutation below was run on a copy in `/tmp`, never in the repo.
+
+1. **MAJOR, fixed.**
+   - `ExecOptions.harness` is new. Only `shards.ts` and the advisory run in `attempt.ts` set it.
+   - On a split provider only that exec gets `--user 0:0 --cap-add CHOWN --cap-add SETGID --cap-add SETUID` and the
+     `OFFLOAD_*_UID` env. Every other exec (a worker's command above all, any role) runs as `--user 65534:65534` with no
+     `--cap-add`, as before round 3.
+   - `destroy()` forgets the sandbox even when its folder cannot be removed. The folder is left for the reaper; nothing
+     is thrown at the ending build.
+   - DESIGN.md hole 12 and section 3, and the `docker.ts` header, now say exactly who runs as root.
+   - New tests:
+     - `SANDBOX:` a split provider's non-harness exec (worker and verification roles) runs as `65534:65534` with no
+       `--cap-add` and no uid env, and its harness exec gets exactly the three capabilities;
+     - shard and advisory execs carry `harness: true`;
+     - `destroy` copes with a folder it cannot remove.
+   - Mutations:
+     - root for every exec on a split provider: 1 fail;
+     - shards not flagged as harness: 6 fail;
+     - `destroy` throwing again: 1 fail.
+   - (`5d682f1`, red `e661e49`)
+2. **MINOR, fixed.**
+   - Before the check runs, the harness spawns a probe as `TOOL_UID` (cwd `/`, `--no-env-file`) that opens
+     `/check/<FILE>`. The proof says `split: true` only when that got `EACCES`.
+   - New privileged test: with a mount that ignores modes (the check written `0444`), an honest check that passes still
+     reports `split: false`, and the isolating provider refuses the pass.
+   - Mutation: probe ignored, 2 fail.
+   - (`0f206a7`, red `433e4de`)
+3. **MINOR, fixed (tests).** Privileged tests, each pinning a broker rule:
+   - a tool cwd outside `/work` is refused (exit 126, "refused");
+   - the tool's environment is `HOME`, `PATH` and `TMPDIR` only, apart from the `NODE` and `npm_*` that `bun run` adds
+     to its own process;
+   - the tool's user cannot connect to the broker socket.
+
+   Each fails with its rule removed: cwd rule off, the harness env inherited, the socket `0666` (1 fail each). The
+   optional three (killing the broker's tools, the `kill(-1)` sweep, the report folder mode) are not pinned: the first
+   two need a PID-1 container (`LIVE:`), and the third is not a leak path. (`433e4de`)
+4. **Owner actions, carried.** DESIGN.md section 7 now says the `LIVE:` run on a Linux Docker engine is the only proof of
+   the production split path (recorded in `9948036`), as well as network and registry denial, `swept` and the cheat case, and must run before
+   m2-07/m2-08 rely on it. Unchanged and recorded: the `LOCAL:` tests for m5-03, the winner order, sandbox-time billing
+   (m2-08), start before claim (W1-C).
+5. **NIT, fixed.** `HELDOUT_WRITER_SYSTEM` now tells the writer:
+   - the tool gets no environment variables from the check (give input as arguments, a stdin string or files);
+   - the tool can read the temp folder, so the expected values are never written there.
+
+   New assertion in the held-out writer test. (`ab11acf`, red `e0813d7`)
