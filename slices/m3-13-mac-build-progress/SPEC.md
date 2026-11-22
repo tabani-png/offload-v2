@@ -197,5 +197,25 @@ sheet?" (m5-06); any change to m3-10's folders.
 - **`install` renamed `installState`**: the model's property and its `install()` method cannot share a name in Swift
   (a redeclaration), so the property is `installState`; the red tests were written against the SPEC's name and were
   changed with this note.
+- **Implementation notes and small divergences** (m3-13 author):
+  - No third-party code was ported. The sample's timeline (`SampleTimeline.state(at:)`) is the owner's mockup
+    (`source.canvas.tsx`, "4. Build progress") ported tick for tick, with one change: a worker shows as waiting until
+    its start tick (the mockup's failing worker showed as running from tick 0). Clicky and the old Offload repo have no
+    build progress screen to pull from; m3-10's `BuildsClient`, `RequestSigner`, `RecordingTransport` and
+    `SampleDataLabel` are used as they are.
+  - The build loop's own stage names (`teeth_gate`, `worker`, `verification`, `fan_out`, `winner`, and `end` or
+    `recovered` when a build ends outside a stage) were read from the port's `loop.ts`. In the loop a first worker
+    that fails marks `verification` failed and then runs `fan_out`, so a failed stage of a build that is still live is
+    drawn as waiting (it is being fixed), and failed only once the build has ended. `end` and `recovered` are unknown
+    names here and are listed under row 3.
+  - Dots: `cancelled` and an unknown state are amber (needs you), as nothing was installed; a gone build's row is amber.
+  - The plan panel has **Not now** (closes the plan, nothing posted). In `.cloud`, a `.localRepeat` hand-off says
+    "“<name>” was counted on this Mac. Build it from a suggestion in Today once Offload has seen it." and shows no
+    sample (sample data exists only in `.local`).
+  - The start time in the list ("started 22 Nov, 11:50") is a date in the person's time zone, not a caption: its
+    month keeps its capital.
+  - The meter's elapsed time is recomputed on each poll (every 2 s while live), not every second.
+  - Views (`BuildProgressViews.swift`, `BuildProgressScreen.swift`) are not unit tested; everything they show comes
+    from the tested model and pure types.
 - `BASE` is set after m3-10 is `done`, so m3-10's placeholder commit in `BuildProgress/` is not counted against this
   slice's `owns`.
