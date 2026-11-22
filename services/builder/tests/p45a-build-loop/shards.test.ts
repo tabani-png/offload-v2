@@ -34,7 +34,9 @@ describe("p45a shards", () => {
     expect(files.map((f) => text(f))).toEqual(before);
     expect(provider.sandboxes.every((s) => s.destroyed)).toBe(true);
     // each sandbox got the check it runs, the guard and the harness, in the read-only check folder
-    for (const s of provider.sandboxes) expect([...s.check.keys()].sort()).toEqual(["accept.test.ts", "bunfig.toml", "guard.ts", "harness.ts"]);
+    for (const s of provider.sandboxes) expect([...s.check.keys()].sort()).toEqual(["accept.test.ts", "bunfig.toml", "guard.ts", "harness.ts", "spawn-client.ts"]);
+    // the check, its guard and bunfig are readable only by the check's user; harness and spawn client by every user
+    for (const s of provider.sandboxes) expect(Object.fromEntries([...s.modes].sort())).toEqual({ "accept.test.ts": 0o400, "bunfig.toml": 0o400, "guard.ts": 0o400, "harness.ts": 0o444, "spawn-client.ts": 0o444 });
   });
 
   test("SHARDS: an exec error is a failed shard, never a pass", async () => {
@@ -63,6 +65,17 @@ describe("p45a shards", () => {
     expect(parseProof('OFFLOAD_PROOF {"nonce":"n1","status":"pass","exit":0,"completed":true,"tests":2,"swept":true}\n', nonce)).toMatchObject({ ok: true, swept: true });
     expect(parseProof('OFFLOAD_PROOF {"nonce":"n1","status":"pass","exit":1,"completed":true,"tests":2}\n', nonce)).toMatchObject({ ok: false });
     expect(parseProof("OFFLOAD_PROOF not json\n", nonce)).toMatchObject({ ok: false });
+  });
+
+  test("PROOF: when the provider isolates the tool from the check, a pass also needs the harness's split proof", async () => {
+    const strict = (split: boolean) => {
+      const provider = new FakeProvider(() => ({ pass: true, split }));
+      provider.isolates_tool = true;
+      return runShards({ provider, spec: SPEC, artifact: artifact(), shards: SHARDS, timeout_ms: 1000 });
+    };
+    expect((await strict(false)).map((x) => x.passed)).toEqual([false, false]);
+    expect((await strict(true)).map((x) => x.passed)).toEqual([true, true]);
+    expect(parseProof('OFFLOAD_PROOF {"nonce":"n","status":"pass","exit":0,"completed":true,"tests":1,"split":true}', "n")).toMatchObject({ ok: true, split: true });
   });
 
   test("PROOF: a proof with the right nonce but no test run is not a pass", async () => {

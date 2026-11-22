@@ -3,7 +3,7 @@
 // the old runner: non-root user, no-new-privileges, pids limit, env allowlist, a timed-out container is removed.
 // The executor is faked to pin the exact argv; a LIVE: test runs real Docker and skips when it is absent.
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DockerProvider, spawnExecutor, type Executor } from "../../src/sandbox/docker.ts";
 import { cloudProvider, sandboxProviderFromEnv } from "../../src/sandbox/cloud.ts";
@@ -37,6 +37,9 @@ describe("p45a docker provider", () => {
     await p.exec(sb, { argv: ["bun", "/check/harness.ts"], cwd: "/check", stdin: "nonce\n", env: { OFFLOAD_WS: "/work", OFFLOAD_CHECK_DIR: "/check" }, timeout_ms: 1000 });
     const a = calls[0]!.argv;
     const name = a[a.indexOf("--name") + 1]!;
+    const uid = process.getuid!();
+    const gid = process.getgid!();
+    const tool = uid === 65534 ? 65533 : 65534;
     expect(a).toEqual([
       "/usr/bin/docker", "run", "--rm", "-i",
       "--name", name,
@@ -51,10 +54,17 @@ describe("p45a docker provider", () => {
       "--pids-limit", "256",
       "--memory", "1024m",
       "--cpus", "1",
-      "--user", "65534:65534",
+      // the harness starts as root with only what it needs to run the check and the tool as two other users
+      "--user", "0:0",
+      "--cap-add", "CHOWN",
+      "--cap-add", "SETGID",
+      "--cap-add", "SETUID",
       "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m",
       "--env", "HOME=/tmp",
       "--env", "TMPDIR=/tmp",
+      "--env", `OFFLOAD_CHECK_UID=${uid}`,
+      "--env", `OFFLOAD_CHECK_GID=${gid}`,
+      "--env", `OFFLOAD_TOOL_UID=${tool}`,
       "--env", "OFFLOAD_CHECK_DIR=/check",
       "--env", "OFFLOAD_WS=/work",
       "--mount", `type=bind,source=${dirs.work},target=/work`,
@@ -68,6 +78,29 @@ describe("p45a docker provider", () => {
     expect(name).toMatch(/^offload-sbx_[0-9a-f]+-\d+$/);
     expect(calls[0]!.stdin).toBe("nonce\n");
     expect(a.join(" ")).not.toContain("nonce");
+  });
+
+  test("SANDBOX: without the user split (development only) the container runs as nobody with no added capability", async () => {
+    const calls: string[][] = [];
+    const p = new DockerProvider({ executor: async (argv) => (calls.push(argv), { exit: 0, stdout: "", stderr: "", timed_out: false }), docker: "docker", privilege_split: false });
+    expect(p.isolates_tool).toBe(false);
+    const sb = await p.create(SPEC);
+    await p.exec(sb, { argv: ["bun", "/check/harness.ts"], cwd: "/check", timeout_ms: 10 });
+    const a = calls[0]!.join(" ");
+    expect(a).toContain("--user 65534:65534");
+    expect(a).not.toContain("--cap-add");
+    expect(a).not.toContain("OFFLOAD_CHECK_UID");
+    await p.destroy(sb);
+    expect(new DockerProvider({ executor: async () => ({ exit: 0, stdout: "", stderr: "", timed_out: false }) }).isolates_tool).toBe(true);
+  });
+
+  test("SANDBOX: check files keep the mode asked for: the check readable only by its user, the harness by all", async () => {
+    const { p } = fake();
+    const sb = await p.create(SPEC);
+    await p.putFiles(sb, "check", [{ ...file("accept.test.ts", "// secret\n"), mode: 0o400 }, file("harness.ts", "// h\n")]);
+    const dirs = p.paths(sb);
+    expect(statSync(join(dirs.check, "accept.test.ts")).mode & 0o777).toBe(0o400);
+    expect(statSync(join(dirs.check, "harness.ts")).mode & 0o777).toBe(0o444);
   });
 
   test("SANDBOX: a timed-out exec is a failed shard and its container is removed", async () => {
@@ -189,5 +222,11 @@ describe.skipIf(!dockerUp)("p45a docker provider (live)", () => {
     expect(r.map((x) => x.proof?.swept)).toEqual([true, true]);
     const f = await runShards({ provider: p, spec, artifact: art, shards: [{ name: "frozen", check: checkSet("frozen", failing) }], timeout_ms: 120_000 });
     expect(f[0]!.passed).toBe(false);
+    expect(r.map((x) => x.proof?.split)).toEqual([true, true]);
+    // a tool that reads /check to learn the expected answer cannot (the check runs as another user)
+    const secret = 'import { expect, test } from "bun:test";\ntest("edge", () => { const r = Bun.spawnSync([process.execPath, "run", "tool.ts"]); expect(r.stdout.toString().trim()).toBe("zq-7781-unguessable"); });\n';
+    const cheat = 'let out = "I do not know"; try { const m = /toBe\\("([^"]+)"\\)/.exec(require("fs").readFileSync("/check/accept.test.ts", "utf8")); if (m) out = m[1]; } catch {} console.log(out);\n';
+    const c = await runShards({ provider: p, spec, artifact: [file("tool.ts", cheat)], shards: [{ name: "held_out", check: checkSet("held_out", secret) }], timeout_ms: 120_000 });
+    expect(c[0]!.passed).toBe(false);
   }, 300_000);
 });

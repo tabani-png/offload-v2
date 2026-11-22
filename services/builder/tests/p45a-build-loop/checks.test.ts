@@ -40,6 +40,26 @@ describe("p45a checks", () => {
     expect("reason" in parseCheckReply(reply('import x from "helper";\n'))).toBe(true);
   });
 
+  test("CHECKS: a check may start the built tool only with Bun.spawn or Bun.spawnSync (the guard routes those to the tool's own user)", () => {
+    const ok = 'import { expect, test } from "bun:test";\ntest("t", () => { Bun.spawnSync([process.execPath, "run", "t.ts"]); Bun.spawn(["true"]); });\n';
+    expect(parseCheckReply(reply(ok))).toEqual({ file: "accept.test.ts", content: ok });
+    for (const bad of [
+      'import { execSync } from "node:child_process";',
+      'import cp from "child_process";',
+      'const cp = require("node:child_process");',
+      'import { $ } from "bun";',
+      "await Bun.$`ls`;",
+      'import { dlopen } from "bun:ffi";',
+      'import { Worker } from "node:worker_threads";',
+      'const w = new Worker("./x.ts");',
+      'process.dlopen(module, "x.node");',
+      'import cluster from "node:cluster";',
+    ]) {
+      const r = parseCheckReply(reply(`${bad}\nimport { test } from "bun:test";\ntest("t", () => {});\n`));
+      expect([bad, "reason" in r]).toEqual([bad, true]);
+    }
+  });
+
   test("HELDOUT: never shown in BUILD.md (the builder-facing text): neither its content nor its hash", () => {
     const held = checkSet("held_out", HELDOUT_CONTENT);
     const md = renderBuildMd(BRIEF, visible);

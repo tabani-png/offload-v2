@@ -4,7 +4,7 @@
 // the Docker provider is used with an executor that emulates `docker run` (mounts mapped to the sandbox's host folders,
 // --workdir as cwd, --env as the whole environment), so the attack is exercised on any machine without Docker.
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BUILDER_IMPORT_REFUSED, GUARD_TS, SHARD_BUNFIG } from "../../src/harness.ts";
@@ -23,8 +23,10 @@ afterAll(() => {
   for (const d of temps) rmSync(d, { recursive: true, force: true });
 });
 
-/** Runs the command of a `docker run` argv with local bun; container paths are mapped to the sandbox's host folders. */
-const emulate: Executor = async (argv, o) => {
+/** Runs the command of a `docker run` argv with local bun; container paths are mapped to the sandbox's host folders.
+ * With `sudo`, the harness runs as root (as in the container, where it is PID 1 with SETUID, SETGID and CHOWN only), so
+ * the check and the built tool really run as two different users. */
+const emulator = (o2: { sudo: boolean }): Executor => async (argv, o) => {
   if (argv[1] !== "run") return { exit: 0, stdout: "", stderr: "", timed_out: false };
   const maps: Array<[string, string]> = [];
   const env: Record<string, string> = {};
@@ -39,7 +41,11 @@ const emulate: Executor = async (argv, o) => {
     if (a === "--mount") {
       const kv = Object.fromEntries(v.split(",").filter((p) => p.includes("=")).map((p) => p.split("=") as [string, string]));
       maps.push([kv["target"]!, kv["source"]!]);
-    } else if (a === "--tmpfs") maps.push([v.split(":")[0]!, tmp("offload-p45a-tmpfs-")]);
+    } else if (a === "--tmpfs") {
+      const t = tmp("offload-p45a-tmpfs-");
+      chmodSync(t, 0o1777);
+      maps.push([v.split(":")[0]!, t]);
+    }
     else if (a === "--workdir") workdir = v;
     else if (a === "--entrypoint") entrypoint = v;
     else if (a === "--env") env[v.slice(0, v.indexOf("="))] = v.slice(v.indexOf("=") + 1);
@@ -56,9 +62,14 @@ const emulate: Executor = async (argv, o) => {
   const cmd = [...(entrypoint === null ? [] : [entrypoint]), ...argv.slice(i + 1)].map(map);
   expect(cmd[0]).toBe("bun");
   cmd[0] = process.execPath;
-  const p = Bun.spawn(cmd, {
+  const fullEnv: Record<string, string> = { PATH: process.env["PATH"] ?? "/usr/bin:/bin", ...Object.fromEntries(Object.entries(env).map(([k, v]) => [k, map(v)])) };
+  if (o2.sudo) {
+    // In a container the mounts are roots; on the host their parent (the sandbox folder, 0700) must be traversable.
+    for (const [, host] of maps) chmodSync(join(host, ".."), 0o711);
+  }
+  const p = Bun.spawn(o2.sudo ? ["sudo", "-n", "env", "-i", ...Object.entries(fullEnv).map(([k, v]) => `${k}=${v}`), ...cmd] : cmd, {
     cwd: map(workdir),
-    env: { PATH: process.env["PATH"] ?? "/usr/bin:/bin", ...Object.fromEntries(Object.entries(env).map(([k, v]) => [k, map(v)])) },
+    env: fullEnv,
     stdin: new TextEncoder().encode(o.stdin ?? ""),
     stdout: "pipe",
     stderr: "pipe",
@@ -91,9 +102,12 @@ function plantedArtifact(): SandboxFile[] {
 }
 
 const SPEC: SandboxSpec = { image: "offload-check:test", vcpu: 1, memory_mb: 1024, wall_ms: 300_000, network_allowlist: [], env: {}, tag: "offload-build-guard", role: "verification" };
-const provider = new DockerProvider({ executor: emulate, docker: "docker" });
+const emulate = emulator({ sudo: false });
+// Emulated without root: the harness cannot split users, so these tests do not require the split proof.
+const provider = new DockerProvider({ executor: emulate, docker: "docker", privilege_split: false });
+const made: DockerProvider[] = [];
 afterAll(async () => {
-  for (const s of provider.known()) await provider.destroy(s).catch(() => {});
+  for (const p of [provider, ...made]) for (const s of p.known()) await p.destroy(s).catch(() => {});
 });
 const run = async (content: string, artifact = plantedArtifact()) =>
   (await runShards({ provider, spec: SPEC, artifact, shards: [{ name: "held_out", check: checkSet("held_out", content) }], timeout_ms: 60_000 }))[0]!;
@@ -181,6 +195,7 @@ describe("p45a container guard", () => {
     const seen: string[][] = [];
     const files: Record<string, string> = {};
     const spy = new DockerProvider({
+      privilege_split: false,
       docker: "docker",
       executor: async (argv) => {
         if (argv[1] === "run") {
@@ -263,4 +278,80 @@ describe("p45a check guard on its own (onLoad)", () => {
     const g = runIn(l, spec, true);
     expect([g.exit, g.out.includes(REFUSED)]).toEqual([1, true]);
   });
+});
+
+const sudoOk = (() => {
+  try {
+    return Bun.spawnSync(["sudo", "-n", "true"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0;
+  } catch {
+    return false;
+  }
+})();
+
+/** A held-out check the honest tool cannot pass: it expects a value nobody told the worker. */
+const SECRET_CHECK = 'import { expect, test } from "bun:test";\ntest("edge", () => { const r = Bun.spawnSync([process.execPath, "run", "tool.ts", "edge"]); expect(r.stdout.toString().trim()).toBe("zq-7781-unguessable"); });\n';
+/** A built tool that does not do the work: it finds the check (a known path, or through its parents' command lines)
+ * and prints the literal the check expects. */
+const CHEAT_TOOL = [
+  'import { readFileSync, readdirSync } from "node:fs";',
+  'import { dirname } from "node:path";',
+  'const paths = new Set(["/check/accept.test.ts"]);',
+  'for (const pid of readdirSync("/proc").filter((p) => /^\\d+$/.test(p))) {',
+  '  try { for (const a of readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\\0")) if (a.startsWith("/")) paths.add(a.endsWith("accept.test.ts") ? a : dirname(a) + "/accept.test.ts"); } catch {}',
+  '}',
+  'for (const p of paths) {',
+  '  try { const m = /toBe\\("([^"]+)"\\)/.exec(readFileSync(p, "utf8")); if (m) { console.log(m[1]); process.exit(0); } } catch {}',
+  '}',
+  'console.log("I do not know");',
+  '',
+].join("\n");
+const HONEST_SHARED = [
+  'import { expect, test } from "bun:test";',
+  'import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";',
+  'import { tmpdir } from "node:os";',
+  'import { join } from "node:path";',
+  'test("shares a temp folder with the tool", () => {',
+  '  const d = mkdtempSync(join(tmpdir(), "fx-"));',
+  '  writeFileSync(join(d, "in.txt"), "Hello World");',
+  '  const r = Bun.spawnSync([process.execPath, "run", "slug.ts", join(d, "in.txt"), join(d, "out.txt")]);',
+  '  expect(r.exitCode).toBe(0);',
+  '  expect(readFileSync(join(d, "out.txt"), "utf8")).toBe("hello-world");',
+  '});',
+  '',
+].join("\n");
+const SLUG_TOOL = 'import { readFileSync, writeFileSync } from "node:fs";\nwriteFileSync(process.argv[3]!, readFileSync(process.argv[2]!, "utf8").toLowerCase().split(" ").join("-"));\n';
+
+describe("p45a held-out check isolation (review 3 finding 1)", () => {
+  const shard = async (p: DockerProvider, check: string, artifact: SandboxFile[]) => (await runShards({ provider: p, spec: SPEC, artifact, shards: [{ name: "held_out", check: checkSet("held_out", check) }], timeout_ms: 60_000 }))[0]!;
+
+  test("SHARDS: (control) without the user split, a tool that reads the check passes a held-out check it never solved", async () => {
+    const r = await shard(provider, SECRET_CHECK, [file("tool.ts", CHEAT_TOOL)]);
+    expect(r.passed).toBe(true);
+    expect(r.proof).toMatchObject({ status: "pass", split: false });
+  }, 60_000);
+
+  test("SHARDS: a provider that isolates the tool refuses a pass whose harness did not split users", async () => {
+    const strict = new DockerProvider({ executor: emulate, docker: "docker" }); // emulated, not root: no split
+    made.push(strict);
+    const r = await shard(strict, SECRET_CHECK, [file("tool.ts", CHEAT_TOOL)]);
+    expect(r.proof).toMatchObject({ status: "pass", split: false });
+    expect(r.passed).toBe(false);
+  }, 60_000);
+
+  test.skipIf(!sudoOk)("SHARDS: (privileged) a built tool that reads the held-out check cannot pass it: the check runs as one user, the tool as another", async () => {
+    const p = new DockerProvider({ executor: emulator({ sudo: true }), docker: "docker" });
+    made.push(p);
+    const r = await shard(p, SECRET_CHECK, [file("tool.ts", CHEAT_TOOL)]);
+    expect(r.proof).toMatchObject({ nonce_ok: true, status: "fail", split: true, tests: 1 });
+    expect(r.passed).toBe(false);
+    expect(r.output).toContain("I do not know");
+  }, 60_000);
+
+  test.skipIf(!sudoOk)("SHARDS: (privileged) an honest check shares a temp folder with the tool and passes under the user split", async () => {
+    const p = new DockerProvider({ executor: emulator({ sudo: true }), docker: "docker" });
+    made.push(p);
+    const r = await shard(p, HONEST_SHARED, [file("slug.ts", SLUG_TOOL)]);
+    expect(r.proof).toMatchObject({ status: "pass", split: true, tests: 1 });
+    expect(r.passed).toBe(true);
+  }, 60_000);
 });

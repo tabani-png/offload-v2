@@ -86,13 +86,15 @@ export interface FakeSandbox {
   spec: SandboxSpec;
   work: Map<string, Uint8Array>;
   check: Map<string, Uint8Array>;
+  /** File modes asked for in the read-only check folder. */
+  modes: Map<string, number>;
   destroyed: boolean;
   execs: Array<{ argv: string[]; stdin: string | undefined; env: Record<string, string> }>;
 }
 
 /** Decides one harness run. `work` is the sandbox's /work, `shard` which check ran, `role` worker or verification. */
 export type Verdict = (a: { work: Map<string, Uint8Array>; shard: "frozen" | "held_out"; role: SandboxSpec["role"]; sandbox: FakeSandbox }) =>
-  | { pass: boolean; tests?: number; write?: boolean; output?: string; exit?: number; noProof?: boolean; wrongNonce?: boolean }
+  | { pass: boolean; tests?: number; write?: boolean; output?: string; exit?: number; noProof?: boolean; wrongNonce?: boolean; split?: boolean }
   | "throw";
 
 /** Default verdict: an empty workspace fails; otherwise slug.ts containing "good" passes both checks. */
@@ -108,6 +110,8 @@ export class FakeProvider implements SandboxProvider {
   live = 0;
   maxLiveVerification = 0;
   createError: Error | null = null;
+  /** Like the Docker provider with the user split: verification passes need the harness's split proof. */
+  isolates_tool = false;
   constructor(public verdict: Verdict = goodSlug) {}
 
   private sb(s: Sandbox): FakeSandbox {
@@ -117,7 +121,7 @@ export class FakeProvider implements SandboxProvider {
   }
   async create(spec: SandboxSpec): Promise<Sandbox> {
     if (this.createError) throw this.createError;
-    const f: FakeSandbox = { id: `sbx_${this.sandboxes.length + 1}`, spec, work: new Map(), check: new Map(), destroyed: false, execs: [] };
+    const f: FakeSandbox = { id: `sbx_${this.sandboxes.length + 1}`, spec, work: new Map(), check: new Map(), modes: new Map(), destroyed: false, execs: [] };
     this.sandboxes.push(f);
     if (spec.role === "verification") {
       this.live++;
@@ -130,6 +134,7 @@ export class FakeProvider implements SandboxProvider {
     for (const x of files) {
       if (x.path.startsWith("/") || x.path.split("/").includes("..")) throw new Error("path escapes the sandbox folder");
       (mount === "work" ? f.work : f.check).set(x.path, x.bytes);
+      if (mount === "check") f.modes.set(x.path, x.mode ?? 0o444);
     }
   }
   async getFiles(s: Sandbox, mount: Mount): Promise<SandboxFile[]> {
@@ -152,7 +157,7 @@ export class FakeProvider implements SandboxProvider {
     const nonce = v.wrongNonce ? "not-the-nonce" : (o.stdin ?? "").trim();
     const tests = v.tests ?? 1;
     const status = v.pass ? "pass" : "fail";
-    const proof = v.noProof ? "" : `\nOFFLOAD_PROOF ${JSON.stringify({ nonce, status, exit: v.pass ? 0 : 1, completed: v.pass && tests > 0, tests })}\n`;
+    const proof = v.noProof ? "" : `\nOFFLOAD_PROOF ${JSON.stringify({ nonce, status, exit: v.pass ? 0 : 1, completed: v.pass && tests > 0, tests, split: v.split ?? false })}\n`;
     return { exit: v.exit ?? (v.pass ? 0 : 1), stdout: `${v.output ?? (v.pass ? "1 pass" : "1 fail")}${proof}`, stderr: "", timed_out: false };
   }
   async destroy(s: Sandbox): Promise<void> {
