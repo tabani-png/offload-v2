@@ -77,6 +77,18 @@ $(git show --no-renames --format= --name-only "$c")"
   echo "scope checked ($(printf '%s\n' "$SLICE_FILES" | grep -c .) files)"
 fi
 
+echo "== swift file names"
+# SwiftPM names each object file after its source file's basename, so two files with one basename in one target (for
+# example M302/ExcludeTests.swift and M314/ExcludeTests.swift) fail the build with "multiple producers". Swift only
+# compiles in CI, so this runs on every platform.
+for t in "$PKG"/Sources/* "$PKG"/Tests/*; do
+  [ -d "$t" ] || continue
+  dups="$(find "$t" -name '*.swift' -type f | awk -F/ '{print $NF}' | sort | uniq -d)"
+  for d in $dups; do
+    fail "two files named $d in target $(basename "$t"): $(find "$t" -name "$d" -type f | tr '\n' ' ')"
+  done
+done
+
 if [ "$(uname -s)" != "Darwin" ]; then
   if [ "${REQUIRE_MAC:-0}" = "1" ]; then echo "FAIL $SLICE_ID needs macOS and REQUIRE_MAC=1 is set"; exit 1; fi
   [ "$fails" -eq 0 ] || { echo "$SLICE_ID: $fails failing check(s)"; exit 1; }
