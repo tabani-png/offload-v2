@@ -2,7 +2,7 @@
 id: m3-10-mac-recordings-analysis
 title: Recordings read and analysed on this Mac (Vision OCR, interim masker, local import sink, local insights with things you repeat), default recordings folders, the navigation shell, backend mode and the brain and builds clients
 milestone: M3
-status: ready
+status: in_progress
 depends_on: [m3-04-mac-onboarding, m3-05-recordings-import]
 parallel_safe: false
 human_gated: true
