@@ -48,5 +48,6 @@ on this Mac through `LocalAnswerStore`, so local ranking reads them at once. In 
 `GET /v1/review/week?w=` and posts `POST /v1/review/answers`. `ISOWeek`, `ReviewSlot` and `ReviewSchedule` decide which
 week is shown; `ReviewScheduler` keeps one repeating notification (`ai.offload.weekly-review`) at the review slot while
 "Tell me when my review is ready" is on (off by default); `AppModel.live()` starts it through `WeeklyReviewHub`.
-Settings keys: `ai.offload.review.day`, `ai.offload.review.time`, `ai.offload.review.notify`. Tests:
+Settings keys: `ai.offload.review.day`, `ai.offload.review.time`, `ai.offload.review.notify`,
+`ai.offload.review.offered`. The screen offers the notification once; clicking it opens this week's review. Tests:
 `Tests/OffloadMacTests/M312/`.

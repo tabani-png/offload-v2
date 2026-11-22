@@ -42,7 +42,7 @@ Scope changes). `human_gated: true`: the owner answers real questions about his 
     daylight saving changes) and `ReviewSchedule.shownWeek(now:slot:)`: the current week once its slot has passed,
     else the previous week.
   - `WeeklyReviewModel` (@MainActor): `week`, `content: ReviewContent?`, `state` (`.loading`, `.ready`, `.empty`,
-    `.notYet(week)`, `.failed(ReviewError)`), `previousWeek()`, `nextWeek()`, `answer(_ question:, _ choice:)`,
+    `.notYet(week)`, `.noReview(week)`, `.failed(ReviewError)`), `previousWeek()`, `nextWeek()`, `answer(_ question:, _ choice:)`,
     `refresh()`.
   - `ReviewContent` (pure, Equatable): `title` ("Week of Nov 9 · review"), `sentence`, `subtitleItems` ("week 8 of
     what Offload knows about you", "every number opens to how it was counted"), `tiles: [ReviewTile]` (label, value
@@ -87,7 +87,7 @@ Scope changes). `human_gated: true`: the owner answers real questions about his 
   `answers` and `answered`; chip labels by answer: `keep` "Keep", `not_now` "Not now", `build` "OK, build", `never`
   "Never", `leave_alone` "Leave it alone", `other_goal` "It's for another goal". Answering posts
   `POST /v1/review/answers` with `{ iso_week, subject_key, question_kind, answer, goal_id? }` (`goal_id` only with
-  `keep`, `build` or `other_goal`, required with `other_goal`). A 404 is `.notYet` (a future week). The slot comes from
+  `keep`, `build` or `other_goal`, required with `other_goal`). A 404 is `.noReview` (weeks before their slot are `.notYet` and never requested; review 1). The slot comes from
   `GET /v1/profile` and changes go through `PATCH /v1/profile` `{ review_slot: { day, time } }`.
 - **After an answer** (both modes): `build` adds "queued · same build screen as today" and calls m3-10's
   `navigation.startBuild` (`.localRepeat` or the opportunity); `never` adds "it won't come back unless the hours rise
@@ -105,7 +105,9 @@ Scope changes). `human_gated: true`: the owner answers real questions about his 
   the toggle turns off and the line reads "Notifications are off for Offload in System Settings." The notification
   says "Your weekly review is ready." with no numbers and no names (it shows on a locked screen).
 - **States**: `.empty` (`.local`, no data in the week): "Nothing counted this week yet." with **Choose recordings**;
-  `.notYet`: "Your review for this week lands Friday at 4:00 PM."; `.failed`: one sentence per `APIError` code with
+  `.notYet` (the current week before its slot): "Your review for this week lands Friday at 4:00 PM."; `.noReview`
+  (`.cloud`, a 404 after the slot): "There is no review for this week."; `.loading` also while local insights are
+  being counted and the week is still empty; `.failed`: one sentence per `APIError` code with
   **Try again**. No state shows a number that was not counted; sample data is never shown here.
 - **Provenance**: `.local` shows "counted on this Mac" (m3-10's caption).
 
@@ -161,7 +163,7 @@ Scope changes). `human_gated: true`: the owner answers real questions about his 
   "See the week of Oct 5" for the latest week with data (added after self-review, with its own red test).
 - **Settings**: the slot is edited with a day picker and an hour-and-minute picker (minute precision, so the owner can
   set it two minutes ahead). `.local` saves to `UserDefaults` (`ai.offload.review.day`, `ai.offload.review.time`,
-  `ai.offload.review.notify`); `.cloud` sends `PATCH /v1/profile` with only `review_slot`, and reads the slot from
+  `ai.offload.review.notify`, `ai.offload.review.offered`); `.cloud` sends `PATCH /v1/profile` with only `review_slot`, and reads the slot from
   `GET /v1/profile` when Settings or the screen loads. The notification toggle is kept on this Mac in both modes.
 
 ## Red tests (write these first, run them, see them fail)
@@ -182,7 +184,7 @@ fixtures.
 | NOTES | build note and `navigation.startBuild` with the right request; never note; counter text |
 | NOTIFY | toggle off by default; turning on asks once and schedules one weekly trigger at the slot; denied turns it off with the line; slot change reschedules (still one); turning off removes it; the text has no number |
 | SETTINGS | the Settings section shows the slot and the toggle; editing the slot in `.local` saves to the store, in `.cloud` sends `PATCH /v1/profile` with only `review_slot` |
-| CLOUD | `GET /v1/review/week?w=2026-W47` request; WeekReview fixture maps to content; 404 is `.notYet`; no request in `.local` |
+| CLOUD | `GET /v1/review/week?w=2026-W47` request; WeekReview fixture maps to content; 404 is `.noReview`, a week before its slot is `.notYet` without a request; no request in `.local` |
 | STATES | empty with Choose recordings; not yet line with the slot in words; failed sentences with Try again |
 | FIGURES | every number in `ReviewContent` traces to a Figure with arithmetic |
 | COPY | strings have no em dash, banned word or ADR 0016 term; captions lowercase with `·` items as separate items |
@@ -233,5 +235,26 @@ folders.
 - Reference repos: nothing ported. The old repo's `ReviewModel`/`ReviewView` (release/mac-testable) are the workflow
   approval review built around the run mode ADR 0016 removes, not the weekly review; Clicky has no notification or
   week code. The layout follows the owner-approved mockup (`Weekly`, lines 629 to 709). No NOTICE change.
-- Not verified here: Swift does not build on Linux; the slice suite (69 tests) and the UserNotifications delegate
+- Not verified here: Swift does not build on Linux; the slice suite (79 tests) and the UserNotifications delegate
   conformance under Swift 6 are first checked by the macOS CI run.
+- Review 1 (2026-11-22, independent Opus 5.5 review, `VERDICT: CHANGES`), red tests first (`b0c58a4`), then fixes:
+  1. (major) The notification is now offered on the review screen (ONBOARDING section 12): a line with **Tell me when
+     my review is ready** and **No thanks** on the ready and not-yet states, until answered or the Settings toggle is
+     used (`ReviewSettingsModel.showsNotificationOffer`, kept as `ai.offload.review.offered`).
+  2. (major) Clicking the notification calls `WeeklyReviewHub.openFromNotification()`: Weekly review opens on the week
+     the slot shows, also from another week. A screen left open moves at the slot (`startFollowingSlot()`, a
+     main-actor sleep until `ReviewSchedule.next`).
+  3. The delegate's completion handlers are `@Sendable`; the presenter is installed when the hub is made (a click that
+     launches Offload finds it); `SlotHolder` is `@MainActor`; `ReviewCopy.all` is built from smaller lists.
+  4. An empty local week reads `.loading` while insights are being counted.
+  5. `.cloud`: a 404 after the slot is `.noReview` ("There is no review for this week."), not "lands Friday"; the
+     SPEC's "A 404 is `.notYet`" is changed (only weeks before their slot are not yet, and those are never requested).
+  6. A slot read from the profile (or a changed rhythm) moves the notification and tells the screen; at launch the
+     screen's week moves without a request.
+  7. Tests: next week's questions are checked on real W48 data; each line's numbers are checked against its own
+     figures; the hub at launch, `.cloud` without a client and the click handler are tested. (The red-test commit
+     `8a8bda3` said 72 tests; it added 68.)
+  8. Switches per hour is switches ÷ active minutes × 60 ("20 switches ÷ 160 min active × 60 = 7.5 an hour"), so the
+     arithmetic reproduces the value. m3-10's day figure keeps its own rule (`Analysis/` is out of this slice's scope).
+  9. Saved by fixes is a plain view (not a dimmed button); goal rows use `.contain` so the hours button stays reachable.
+  10. The note after an answer sits beside the chips, as the mockup's `k0`.
