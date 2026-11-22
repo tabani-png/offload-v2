@@ -11,7 +11,7 @@ size: M
 parallel_group: M3-C
 owns: [services/api/src/imports/**]
 verify: bash slices/m3-05b-imports-server/verify.sh
-min_tests: 16
+min_tests: 20
 paths_in_scope: [services/api/src/**, services/api/tests/m3-05b-imports-server/**, packages/contracts/src/**, packages/contracts/schemas/**, packages/contracts/scripts/**, packages/db/migrations/0007_imports.sql, slices/m3-05b-imports-server/**, docs/API.md, docs/DATA_MODEL.md, docs/ARCHITECTURE.md, docs/ROADMAP.md, docs/SECURITY_PRIVACY.md]
 paths_out_of_scope: [ee/**, apps/**, services/brain/**, services/builder/**, services/runtime/**, services/broker/**, services/api/tests/m3-01-ingest-batches/**, .github/**, docs/adr/**]
 red_tests: [IMPORT]

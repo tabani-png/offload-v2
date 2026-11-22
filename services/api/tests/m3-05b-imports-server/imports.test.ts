@@ -365,3 +365,66 @@ test("IMPORT: the contracts accept the API.md bodies and the JSON Schemas agree"
     expect(s.additionalProperties).toBe(false);
   }
 });
+
+test("IMPORT: two devices of one member ingest into one import space at the same time without a deadlock", async () => {
+  const one = await consentingDevice(h, h.fx.b, h.fx.b.owner);
+  const two = await consentingDevice(h, h.fx.b, h.fx.b.owner);
+  const importId = await openImport(h, one);
+  await h.token(one, "device");
+  await h.token(two, "device");
+  for (let round = 0; round < 15; round++) {
+    const [a, b] = await Promise.all([
+      ingestObjects(h, one, imported(importId, daysAgo(9 + (round % 3)))),
+      ingestObjects(h, two, imported(importId, daysAgo(2 + (round % 2)))),
+    ]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+  }
+  expect(await rowsWithImport(h, "observations", importId)).toBe(30);
+  expect((await listImports(one)).find((i) => i.id === importId)).toMatchObject({ first_day: daysAgo(11).slice(0, 10), last_day: daysAgo(2).slice(0, 10) });
+});
+
+test("IMPORT: an import_id sent in upper case is the same import space for ingest and forget", async () => {
+  const dev = await consentingDevice(h, h.fx.a, h.fx.a.owner);
+  const importId = await openImport(h, dev);
+  const objects = imported(importId.toUpperCase(), daysAgo(9));
+  expect(await receiptOf(await ingestObjects(h, dev, objects))).toEqual({ accepted: objects.map((o) => o.id), rejected: [] });
+  expect(await rowsWithImport(h, "observations", importId)).toBe(1);
+  expect(await outboxWithImport(h, importId)).toBe(1);
+  await forgetImport(h, dev, importId.toUpperCase());
+  expect(await rowsWithImport(h, "observations", importId)).toBe(0);
+  expect(await rowsWithImport(h, "observation_texts", importId)).toBe(0);
+  expect(await outboxWithImport(h, importId)).toBe(0);
+});
+
+test("IMPORT: forget waits for a dispatcher that holds the import's outbox event and still wipes it", async () => {
+  const dev = await consentingDevice(h, h.fx.a, h.fx.a.member);
+  const importId = await openImport(h, dev);
+  expect((await ingestObjects(h, dev, imported(importId, daysAgo(9)))).status).toBe(200);
+  const event = (await h.fx.admin.query("select tenant_id, id from events_outbox where payload->>'import_id' = $1", [importId])).rows[0];
+  // A dispatcher holds the event row (as outbox_claim does) and records its delivery only after forget has started.
+  const dispatcher = await h.fx.admin.connect();
+  try {
+    await dispatcher.query("begin");
+    await dispatcher.query("select 1 from events_outbox where tenant_id = $1 and id = $2 for update", [event.tenant_id, event.id]);
+    const forgetting = forgetRes(h, dev, { scope: "import", import_id: importId });
+    await Bun.sleep(300);
+    await dispatcher.query(
+      "insert into outbox_deliveries (tenant_id, event_id, consumer, attempts) values ($1, $2, 'workflow:outbox_dispatch', 0)",
+      [event.tenant_id, event.id]);
+    await dispatcher.query("commit");
+    const res = await forgetting;
+    expect(res.status).toBe(202);
+  } finally {
+    dispatcher.release();
+  }
+  expect(await outboxWithImport(h, importId)).toBe(0);
+  expect((await h.fx.admin.query("select count(*)::int as n from outbox_deliveries where event_id = $1", [event.id])).rows[0].n).toBe(0);
+  expect(await rowsWithImport(h, "observations", importId)).toBe(0);
+});
+
+test("IMPORT: forget finds an import's outbox events through an index, not a scan of the outbox", async () => {
+  const idx = (await h.fx.admin.query(
+    "select indexdef from pg_indexes where schemaname = 'public' and tablename = 'events_outbox' and indexdef like '%import_id%'")).rows;
+  expect(idx).toHaveLength(1);
+  expect(idx[0].indexdef).toContain("WHERE (payload ? 'import_id'::text)");
+});
