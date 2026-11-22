@@ -198,6 +198,7 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
   const attemptOnce = async (ordinal: number, feedback: string | null): Promise<Ran | null> => {
     const id = d.ids();
     if (!(await d.store.reserve({ tenant_id: i.tenant_id, build_id: b.id, attempt_id: id, call_id: `attempt:${id}`, kind: "model", usd4: cap, ceiling_usd4: ceiling }, d.now()))) return null;
+    const startedAt = d.now();
     const row: AttemptRow = { tenant_id: i.tenant_id, id, build_id: b.id, ordinal, sandbox_provider: d.provider.name, sandbox_id: null, outcome: "error", spent_usd4: 0, tries: 0, turns: 0, frozen_pass: null, held_out_pass: null, check_groups: [], artifact_sha256: null, artifact_bytes: 0, artifact_files: [], note: "" };
     let res: AttemptResult | null = null;
     let infra = false;
@@ -247,6 +248,7 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
         row.frozen_pass = f.passed;
         row.held_out_pass = h.passed;
         row.check_groups = v.map((x) => ({ name: x.shard, passed: x.passed ? 1 : 0, failed: x.passed ? 0 : 1 }));
+        row.proof = Object.fromEntries(v.map((x) => [x.shard, x.proof === null ? null : { status: x.proof.status, exit: x.proof.exit, tests: x.proof.tests, completed: x.proof.completed, swept: x.proof.swept, split: x.proof.split }]));
         frozenOutput = feedbackText(f.output);
         heldOutFailed = !h.passed;
         if (f.passed && h.passed) {
@@ -269,6 +271,7 @@ async function runBuildInner(d: BuildDeps, i: { tenant_id: string; build_id: str
     } finally {
       // Spend during a provider outage is recorded as infra and never billed to the cap (ADR 0031).
       spentAny += row.spent_usd4;
+      row.wall_seconds = Math.max(0, Math.round((d.now() - startedAt) / 1000));
       await d.store.settle({ tenant_id: i.tenant_id, build_id: b.id, call_id: `attempt:${id}`, idempotency_key: `attempt:${id}`, scope: infra ? "infra" : "build", usd4: row.spent_usd4 }, d.now()).catch(() => undefined);
       await d.store.putAttempt(row).catch(() => undefined);
     }

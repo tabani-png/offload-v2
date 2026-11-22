@@ -49,6 +49,14 @@ CREATE TABLE worker_attempts (
   artifact_bytes bigint NOT NULL DEFAULT 0,
   artifact_files jsonb NOT NULL DEFAULT '[]'::jsonb,
   note text NOT NULL DEFAULT '',
+  proof jsonb,
+  wall_seconds int,
+  -- written by m2-07/m2-08 (the Agent SDK worker, replay fixtures, verifier and repair turn); null until then
+  model text,
+  replay_pass boolean,
+  verifier_verdict text CHECK (verifier_verdict IN ('pass','fail')),
+  repaired boolean NOT NULL DEFAULT false,
+  diff_lines int,
   PRIMARY KEY (tenant_id, id),
   FOREIGN KEY (tenant_id, build_id) REFERENCES builds (tenant_id, id)
 );

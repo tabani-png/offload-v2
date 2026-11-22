@@ -67,6 +67,8 @@ function rowToAttempt(r: Record<string, unknown>): AttemptRow {
     artifact_bytes: Number(r["artifact_bytes"]),
     artifact_files: asJson<string[]>(r["artifact_files"]),
     note: r["note"] as string,
+    ...(r["proof"] === null || r["proof"] === undefined ? {} : { proof: asJson<Record<string, unknown>>(r["proof"]) }),
+    ...(r["wall_seconds"] === null || r["wall_seconds"] === undefined ? {} : { wall_seconds: Number(r["wall_seconds"]) }),
   };
 }
 
@@ -141,12 +143,14 @@ export class PgBuildStore implements BuildStore {
 
   async putAttempt(a: AttemptRow): Promise<void> {
     await this.tx(a.tenant_id, async (tx) => {
-      await tx`INSERT INTO worker_attempts (tenant_id, id, build_id, ordinal, sandbox_provider, sandbox_id, outcome, spent_usd, tries, turns, frozen_pass, held_out_pass, check_groups, artifact_sha256, artifact_bytes, artifact_files, note)
+      await tx`INSERT INTO worker_attempts (tenant_id, id, build_id, ordinal, sandbox_provider, sandbox_id, outcome, spent_usd, tries, turns, frozen_pass, held_out_pass, check_groups, artifact_sha256, artifact_bytes, artifact_files, note, proof, wall_seconds)
                VALUES (${a.tenant_id}, ${a.id}, ${a.build_id}, ${a.ordinal}, ${a.sandbox_provider}, ${a.sandbox_id}, ${a.outcome}, ${usd(a.spent_usd4)}::numeric, ${a.tries}, ${a.turns}, ${a.frozen_pass}, ${a.held_out_pass},
-                       ${jsonb(a.check_groups)}::text::jsonb, ${a.artifact_sha256}, ${a.artifact_bytes}, ${jsonb(a.artifact_files)}::text::jsonb, ${a.note})
+                       ${jsonb(a.check_groups)}::text::jsonb, ${a.artifact_sha256}, ${a.artifact_bytes}, ${jsonb(a.artifact_files)}::text::jsonb, ${a.note},
+                       ${a.proof === undefined || a.proof === null ? null : jsonb(a.proof)}::text::jsonb, ${a.wall_seconds ?? null})
                ON CONFLICT (tenant_id, id) DO UPDATE SET sandbox_id = EXCLUDED.sandbox_id, outcome = EXCLUDED.outcome, spent_usd = EXCLUDED.spent_usd, tries = EXCLUDED.tries, turns = EXCLUDED.turns,
                  frozen_pass = EXCLUDED.frozen_pass, held_out_pass = EXCLUDED.held_out_pass, check_groups = EXCLUDED.check_groups, artifact_sha256 = EXCLUDED.artifact_sha256,
-                 artifact_bytes = EXCLUDED.artifact_bytes, artifact_files = EXCLUDED.artifact_files, note = EXCLUDED.note`;
+                 artifact_bytes = EXCLUDED.artifact_bytes, artifact_files = EXCLUDED.artifact_files, note = EXCLUDED.note,
+                 proof = EXCLUDED.proof, wall_seconds = EXCLUDED.wall_seconds`;
     });
   }
 

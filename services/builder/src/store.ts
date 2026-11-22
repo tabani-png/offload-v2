@@ -72,6 +72,9 @@ export interface AttemptRow {
   artifact_bytes: number;
   artifact_files: string[];
   note: string;
+  /** Per shard, from the fresh verification sandboxes: status, exit, tests, completed, swept, split. Never the nonce. */
+  proof?: Record<string, unknown> | null;
+  wall_seconds?: number | null;
 }
 
 export interface Reservation {
