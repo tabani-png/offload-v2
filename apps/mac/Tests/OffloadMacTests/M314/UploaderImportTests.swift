@@ -321,6 +321,32 @@ extension M314 {
     #expect(Set(rig.sentIDs) == Set(clean.map(\.id)))
     #expect(!rig.sentIDs.contains(hit.id))
   }
+
+  @Test("UPLOAD: a flush that starts while another waits on the network does nothing, so staged imports are never lost", .timeLimit(.minutes(1)))
+  func overlappingFlushIsSkipped() async throws {
+    let rig = ImportRig(server: ImportServer(holdFirstBatch: true))
+    let live = try rig.addLiveFocus()
+    let uploader = rig.uploader
+    let first = Task { await uploader.flush() }
+    var arrivals = rig.server.arrived.makeAsyncIterator()
+    _ = await arrivals.next()
+    // A runtime turn comes while A is held: the 300 s gate has long passed in this scenario.
+    let objects = rig.importObjects()
+    try rig.outbox.stage(objects, checkedBy: rig.egress)
+    let second = await uploader.flush()
+    #expect(second.skipped)
+    #expect(second.sentObjects == 0)
+    #expect(await uploader.tick() == nil)
+    // B took nothing: the staged objects are still in the outbox.
+    #expect(try rig.outbox.staged().map(\.id) == objects.map(\.id))
+    rig.server.releaseHeldBatch()
+    let a = await first.value
+    #expect(!a.skipped && a.sentObjects == 1)
+    let third = await uploader.flush()
+    #expect(third.sentObjects == objects.count)
+    #expect(rig.sentIDs == [live.id] + objects.map(\.id))
+    #expect(try rig.outbox.staged().isEmpty)
+  }
 }
 
 /// Answers the device challenge and token routes; records requests.

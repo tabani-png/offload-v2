@@ -222,4 +222,29 @@ extension M314 {
     #expect(ImportOffer.isOffered(choice: .uploader, hasOnDeviceSink: false, uploadsAvailable: true, state: M314State.sending))
     #expect(!ImportOffer.isOffered(choice: .uploader, hasOnDeviceSink: false, uploadsAvailable: false, state: M314State.sending))
   }
+
+  @Test("IMPORT: when the masker cannot load its key, the import opens no space, writes nothing and records no file")
+  @MainActor func maskerKeyMissingStopsTheImport() async throws {
+    let root = M305Files.folder()
+    defer { M305Files.remove(root) }
+    M305Files.screenwatchDay(root, "2026-09-01", start: (9, 0), minutes: 10, apps: M305Files.watchApps)
+    // Written an hour ago: the real clock's stable-file gate takes it at once.
+    M305Files.setModified(root.appendingPathComponent("days/2026-09-01/log.jsonl"), Date().addingTimeInterval(-3600))
+    let sink = InMemoryImportSink()
+    let ledger = MemoryRecordingLedger()
+    let importer = try #require(ImportComposition.importer(
+      recognizer: M314Recognizer(), masker: ImportMaskerAdapter(load: { throw LoadFailed() }), sink: sink, ledger: ledger,
+      neverWatch: NeverWatchStore(), protected: []))
+    let report = await importer.run(folder: root) { _ in }
+    #expect(report == nil)
+    #expect(sink.spaces.isEmpty)
+    #expect(ledger.entries.isEmpty)
+    // With a key, the same folder imports.
+    let ok = try #require(ImportComposition.importer(
+      recognizer: M314Recognizer(),
+      masker: ImportMaskerAdapter(masker: TextMasker(pseudonymizer: Pseudonymizer(key: PseudonymKey(data: Data(repeating: 7, count: 32))))),
+      sink: sink, ledger: ledger, neverWatch: NeverWatchStore(), protected: []))
+    #expect(await ok.run(folder: root) { _ in }?.filesRead == 1)
+    #expect(ledger.entries.count == 1)
+  }
 }

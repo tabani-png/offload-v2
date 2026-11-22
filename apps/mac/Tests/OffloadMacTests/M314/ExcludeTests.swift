@@ -49,6 +49,15 @@ extension M314 {
     #expect(try ExclusionsFile.read(file).contains(ExclusionRule(kind: .bundleID, value: "net.whatsapp.WhatsApp")))
     // The observer's reloader reads the same file (built-ins first, then these).
     let reloader = ExclusionReloader(file: file, time: ManualTime(M314Fixture.t0))
+    // Every file the sync creates is owner-only from its first byte (never 0644 for a moment, review 4).
+    let created = M314Created()
+    sync.createFile = { path, data, attributes in
+      created.modes.append(attributes[.posixPermissions] as? Int)
+      return FileManager.default.createFile(atPath: path, contents: data, attributes: attributes)
+    }
+    store.add([Exclusion(kind: .host, value: "news.example")])
+    #expect(try sync.sync())
+    #expect(created.modes == [0o600])
     #expect(reloader.policy(now: M314Fixture.t0).rules.contains(ExclusionRule(kind: .bundleID, value: "net.whatsapp.WhatsApp")))
 
     store.remove(Exclusion(kind: .bundleID, value: "net.whatsapp.WhatsApp"))
@@ -76,4 +85,9 @@ extension M314 {
     let importRules = NeverWatchImportExclusions(source: try #require(wiring.neverWatch)).currentRules()
     #expect(importRules.contains { $0.kind == .host && $0.value == "bank.example" })
   }
+}
+
+/// The modes a file-creation seam was asked for.
+@MainActor final class M314Created {
+  var modes: [Int?] = []
 }

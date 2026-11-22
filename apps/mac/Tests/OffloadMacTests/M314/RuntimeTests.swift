@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import OffloadMac
 import OffloadContracts
+import OffloadImport
 import OffloadObserver
 import OffloadStore
 import OffloadUploader
@@ -56,7 +57,7 @@ extension M314 {
     #expect(c.capture.isRunning)
     #expect(c.app.isCapturing)
     #expect(c.app.launchPlan.startCapture)
-    #expect(c.backend == .local)
+    #expect(c.uploadBackend == .local)
   }
 
   // MARK: UPLOAD
@@ -227,13 +228,25 @@ extension M314 {
     #expect(StoreContext(home: home, secrets: FailingSecrets()).bufferReadable())
   }
 
-  @Test("CAPTURE: Start fresh also forgets which recordings were read, so they can be imported again")
+  @Test("CAPTURE: Start fresh also forgets which recordings were read, in the file and in the ledger the importer holds")
   @MainActor func startFreshForgetsTheImportLedger() throws {
     let context = StoreContext(home: M314Fixture.tempHome(), secrets: MemorySecretStore())
     try context.layout.ensureDirectories()
-    try Data("{}".utf8).write(to: context.importLedgerFile)
+    let ledger = context.importLedger
+    let old = RecordingLedgerEntry(fingerprint: "fp-old", importID: M314Fixture.importID, ingestedAt: M314Fixture.t0,
+                                   recordedAt: M314Fixture.t0, moments: 3)
+    try ledger.record(old)
+    #expect(ledger.contains("fp-old"))
     try context.discard()
     #expect(!FileManager.default.fileExists(atPath: context.importLedgerFile.path))
+    // The same instance the importer holds forgets too, and a later record does not write the old entry back.
+    #expect(!ledger.contains("fp-old"))
+    try ledger.record(RecordingLedgerEntry(fingerprint: "fp-new", importID: M314Fixture.importID,
+                                           ingestedAt: M314Fixture.t0, recordedAt: M314Fixture.t0, moments: 1))
+    #expect(ledger.entries.map(\.fingerprint) == ["fp-new"])
+    #expect(FileRecordingLedger(file: context.importLedgerFile).entries.map(\.fingerprint) == ["fp-new"])
+    // The composition gives the importer this ledger.
+    #expect(context.importLedger === ledger)
   }
 
   @Test("CAPTURE: one tick writes the Never watch list before the observer runs")
@@ -255,11 +268,27 @@ extension M314 {
     #expect(await idle.tickOnce() == false)
     #expect(!FileManager.default.fileExists(atPath: idle.exclusionsFile.path))
   }
+
+  @Test("CAPTURE: a stopped capture does not tick")
+  @MainActor func stoppedCaptureDoesNotTick() async throws {
+    let capture = CaptureRuntime(home: M314Fixture.tempHome(), neverWatch: NeverWatchStore(), secrets: MemorySecretStore(),
+                                 ticks: false)
+    let seen = M314Seen()
+    capture.observerTick = { _ in seen.ticks += 1 }
+    capture.start()
+    #expect(await capture.tickOnce())
+    capture.stop()
+    #expect(await capture.tickOnce() == false)
+    capture.prepareForUpdate()
+    #expect(await capture.tickOnce() == false)
+    #expect(seen.ticks == 1)
+  }
 }
 
 /// What a stand-in observer tick saw.
 @MainActor final class M314Seen {
   var rules: [ExclusionRule] = []
+  var ticks = 0
 }
 
 /// A Keychain that throws on every call (locked, or access denied).

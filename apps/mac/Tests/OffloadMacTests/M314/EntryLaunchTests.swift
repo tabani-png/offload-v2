@@ -3,7 +3,7 @@ import Testing
 @testable import OffloadMac
 import OffloadStore
 
-// One entry point and the launch decisions (SPEC: Contract, "One entry point", "BackendMode", "LaunchPlan").
+// One entry point and the launch decisions (SPEC: Contract, "One entry point", "UploadBackend", "LaunchPlan").
 
 extension M314 {
   // MARK: ENTRY
@@ -113,23 +113,24 @@ extension M314 {
     #expect(plan == LaunchPlan(startUpdater: true, startCapture: false, startUploader: false, importSink: .onDevice))
   }
 
-  @Test("LAUNCH: the backend is cloud only with an https API base, a device id and a stored device key")
-  func backendMode() {
+  @Test("LAUNCH: uploads exist only for an https API base (the screens' setting), a device id and a stored device key")
+  func uploadBackend() {
     let api = "https://api.offload.test"
-    #expect(BackendMode.decide(apiBase: api, deviceID: "dev_1", deviceKeyStored: true)
+    // The same setting m3-10's screens read for BackendMode, so one place says where the API is.
+    #expect(UploadBackend.baseURLDefaultsKey == "ai.offload.api.baseURL")
+    #expect(UploadBackend.decide(apiBase: api, deviceID: "dev_1", deviceKeyStored: true)
             == .cloud(apiBase: URL(string: api)!, deviceID: "dev_1"))
-    #expect(BackendMode.decide(apiBase: "http://127.0.0.1:8787", deviceID: "dev_1", deviceKeyStored: true)
-            == .cloud(apiBase: URL(string: "http://127.0.0.1:8787")!, deviceID: "dev_1"))
-    #expect(BackendMode.decide(apiBase: "http://localhost:8787", deviceID: "dev_1", deviceKeyStored: true).allowsUploads)
-    #expect(BackendMode.decide(apiBase: nil, deviceID: "dev_1", deviceKeyStored: true) == .local)
-    #expect(BackendMode.decide(apiBase: "", deviceID: "dev_1", deviceKeyStored: true) == .local)
-    #expect(BackendMode.decide(apiBase: "http://api.offload.test", deviceID: "dev_1", deviceKeyStored: true) == .local)
-    #expect(BackendMode.decide(apiBase: "ftp://api.offload.test", deviceID: "dev_1", deviceKeyStored: true) == .local)
-    #expect(BackendMode.decide(apiBase: "https://", deviceID: "dev_1", deviceKeyStored: true) == .local)
-    #expect(BackendMode.decide(apiBase: api, deviceID: nil, deviceKeyStored: true) == .local)
-    #expect(BackendMode.decide(apiBase: api, deviceID: "  ", deviceKeyStored: true) == .local)
-    #expect(BackendMode.decide(apiBase: api, deviceID: "dev_1", deviceKeyStored: false) == .local)
-    #expect(!BackendMode.local.allowsUploads)
+    #expect(UploadBackend.decide(apiBase: " \(api) ", deviceID: "dev_1", deviceKeyStored: true).allowsUploads)
+    // https only, like the screens' flag: no loopback http, no user, query or fragment.
+    for bad in [nil, "", "http://127.0.0.1:8787", "http://localhost:8787", "http://api.offload.test",
+                "ftp://api.offload.test", "https://", "https://user:pw@api.offload.test", "https://api.offload.test?x=1",
+                "https://api.offload.test#f"] as [String?] {
+      #expect(UploadBackend.decide(apiBase: bad, deviceID: "dev_1", deviceKeyStored: true) == .local)
+    }
+    #expect(UploadBackend.decide(apiBase: api, deviceID: nil, deviceKeyStored: true) == .local)
+    #expect(UploadBackend.decide(apiBase: api, deviceID: "  ", deviceKeyStored: true) == .local)
+    #expect(UploadBackend.decide(apiBase: api, deviceID: "dev_1", deviceKeyStored: false) == .local)
+    #expect(!UploadBackend.local.allowsUploads)
   }
 
   @Test("LAUNCH: the app model starts the uploader only when uploads are available")
@@ -152,25 +153,24 @@ extension M314 {
     #expect(cloud.launchPlan == LaunchPlan(startUpdater: true, startCapture: true, startUploader: true, importSink: .uploader))
   }
 
-  @Test("LAUNCH: the live backend reads the Keychain only when an API base and a device id are both set")
+  @Test("LAUNCH: the live upload backend reads the Keychain only when an API base and a device id are both set")
   func liveBackend() throws {
     let suite = "m314-\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
     let secrets = CountingSecrets()
-    let info: [String: Any] = [BackendMode.apiBaseInfoKey: "https://api.offload.test"]
-    // The test build: no API base in Info.plist.
-    #expect(BackendMode.live(info: [:], defaults: defaults, secrets: secrets) == .local)
-    #expect(BackendMode.live(info: nil, defaults: defaults, secrets: secrets) == .local)
+    // The test build: no API base set.
+    #expect(UploadBackend.live(defaults: defaults, secrets: secrets) == .local)
     // An API base without enrollment.
-    #expect(BackendMode.live(info: info, defaults: defaults, secrets: secrets) == .local)
+    defaults.set("https://api.offload.test", forKey: UploadBackend.baseURLDefaultsKey)
+    #expect(UploadBackend.live(defaults: defaults, secrets: secrets) == .local)
     #expect(secrets.reads == 0)
     // Enrolled id but no device key: still local, after one look at the Keychain.
-    defaults.set("dev_1", forKey: BackendMode.deviceIDDefaultsKey)
-    #expect(BackendMode.live(info: info, defaults: defaults, secrets: secrets) == .local)
+    defaults.set("dev_1", forKey: UploadBackend.deviceIDDefaultsKey)
+    #expect(UploadBackend.live(defaults: defaults, secrets: secrets) == .local)
     #expect(secrets.reads > 0)
     try secrets.write(Data(repeating: 1, count: 32), account: "device-key")
-    #expect(BackendMode.live(info: info, defaults: defaults, secrets: secrets)
+    #expect(UploadBackend.live(defaults: defaults, secrets: secrets)
             == .cloud(apiBase: URL(string: "https://api.offload.test")!, deviceID: "dev_1"))
     // Nothing was created by asking.
     #expect(secrets.writes == 1)

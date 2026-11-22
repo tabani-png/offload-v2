@@ -21,7 +21,7 @@ enum M314Fixture {
   }
 
   static let apiBase = URL(string: "https://api.offload.test")!
-  static let cloud = BackendMode.cloud(apiBase: apiBase, deviceID: "dev_m314")
+  static let cloud = UploadBackend.cloud(apiBase: apiBase, deviceID: "dev_m314")
 
   /// Fri 13 Nov 2026 15:00 UTC.
   static let t0 = Date(timeIntervalSince1970: 1_794_582_000)
@@ -134,14 +134,14 @@ final class M314LocalSink: ImportSink, @unchecked Sendable {
 @MainActor enum M314App {
   /// The composition root over fakes: no NSApp, TCC, Keychain, Sparkle or window, and capture never ticks.
   static func composition(
-    backend: BackendMode = .local, state: OnboardingState? = nil, currentNoticeVersion: String? = nil,
+    backend: UploadBackend = .local, state: OnboardingState? = nil, currentNoticeVersion: String? = nil,
     bufferReadable: Bool = true, probe: FakePermissionProbe = FakePermissionProbe(),
     seams: CompositionSeams = CompositionSeams(), home: URL = M314Fixture.tempHome(),
     secrets: MemorySecretStore = MemorySecretStore(), wiring: M314Wiring = M314Wiring(),
     realRecordings: Bool = false
   ) -> AppComposition {
     let env = CompositionEnvironment(
-      backend: backend, store: StoreContext(home: home, secrets: secrets), onboardingStore: InMemoryOnboardingStore(state: state),
+      uploadBackend: backend, store: StoreContext(home: home, secrets: secrets), onboardingStore: InMemoryOnboardingStore(state: state),
       probe: probe, options: LaunchOptions(), bundlePath: "/Applications/Offload.app", bufferReadable: bufferReadable,
       currentNoticeVersion: currentNoticeVersion, loginItem: FakeLoginItem(), relauncher: FakeRelauncher(),
       account: FakeAccount(), consent: FakeConsent(), timers: false
