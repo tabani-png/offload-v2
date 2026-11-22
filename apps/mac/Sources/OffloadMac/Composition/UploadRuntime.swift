@@ -23,6 +23,27 @@ final class UploadGate: @unchecked Sendable {
   /// The app offers the uploader a turn this often; it sends every 300 s itself (UploaderConfig.flushSeconds).
   public static let turnInterval: TimeInterval = 30
 
+  /// The way out: the one transport and how a token session is made for an audience. `.live` is URLSession and PR #13's
+  /// DeviceSession; tests pass a scripted transport and fixed tokens.
+  public struct Network: Sendable {
+    public var transport: any HTTPTransport
+    public var session: @Sendable (_ apiBase: URL, _ deviceID: String, _ signer: any DeviceSigner,
+                                   _ transport: any HTTPTransport, _ audience: TokenAudience) -> any TokenProvider
+
+    public init(transport: any HTTPTransport,
+                session: @escaping @Sendable (URL, String, any DeviceSigner, any HTTPTransport, TokenAudience) -> any TokenProvider) {
+      self.transport = transport
+      self.session = session
+    }
+
+    public static var live: Network {
+      Network(transport: URLSessionTransport(), session: { apiBase, deviceID, signer, transport, audience in
+        DeviceSession(apiBase: apiBase, deviceID: deviceID, signer: signer, transport: transport, time: SystemTime(),
+                      audience: audience)
+      })
+    }
+  }
+
   public let apiBase: URL
   public let deviceID: String
   public let context: StoreContext
@@ -34,11 +55,13 @@ final class UploadGate: @unchecked Sendable {
   private nonisolated let egress: EgressGuard
   private nonisolated let gate = UploadGate()
   private let turns: Bool
+  private let network: Network
   private var built: OffloadUploader.Uploader?
   private var timer: Timer?
 
   /// `turns: false` never schedules a turn (tests: nothing is built, nothing is sent).
-  public init(apiBase: URL, deviceID: String, context: StoreContext, turns: Bool = true) {
+  public init(apiBase: URL, deviceID: String, context: StoreContext, turns: Bool = true, network: Network = .live) {
+    self.network = network
     self.apiBase = apiBase
     self.deviceID = deviceID
     self.context = context
@@ -61,20 +84,20 @@ final class UploadGate: @unchecked Sendable {
     gate.open = false
   }
 
-  /// PR #13's uploader over the shared store: the device key, the device session, the one API host.
+  /// PR #13's uploader over the shared store and the shared import outbox: the device key, one token session per
+  /// audience (`device` for ingest, `member` for the import space routes), the one API host.
   public func uploader() throws -> OffloadUploader.Uploader {
     if let built { return built }
     try context.layout.ensureDirectories()
-    let time = SystemTime()
     let signer = try DeviceKey.loadOrCreate(secrets: context.secrets).signer
-    let transport = URLSessionTransport()
+    let transport = network.transport
     let guarded = GuardedTransport(inner: transport, guard: egress)
-    let session = DeviceSession(apiBase: apiBase, deviceID: deviceID, signer: signer, transport: guarded, time: time)
     let made = OffloadUploader.Uploader(
       config: UploaderConfig(apiBase: apiBase, deviceID: deviceID), transport: transport, signer: signer,
-      tokens: session, store: context.dayStore, state: UploadStateStore(layout: context.layout, keys: context.keys),
-      ledger: EgressLedger(layout: context.layout, keys: context.keys, days: context.days), time: time,
-      importOutbox: outbox)
+      tokens: network.session(apiBase, deviceID, signer, guarded, .device), store: context.dayStore,
+      state: UploadStateStore(layout: context.layout, keys: context.keys),
+      ledger: EgressLedger(layout: context.layout, keys: context.keys, days: context.days), time: SystemTime(),
+      importOutbox: outbox, memberTokens: network.session(apiBase, deviceID, signer, guarded, .member))
     built = made
     return made
   }
