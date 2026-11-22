@@ -106,6 +106,10 @@ public final class TodayLiveModel: ObservableObject {
   private var importRecount = false
   /// The menu line's own read of today (`.cloud`) or recount of today (`.local` while capturing), once a minute.
   private var lastMenuRefresh: Date?
+  /// `.cloud`: the person stepped to a day that is not today; else Today follows the calendar past midnight.
+  private var dayPinned = false
+  /// The day `menuTick` last saw, so a day change is published once (review 2, finding 1).
+  private var lastTodaySeen = ""
   private var cancellables: Set<AnyCancellable> = []
 
   /// The cloud reads of one day are not repeated within this many seconds unless asked (Try again, a new day).
@@ -130,6 +134,7 @@ public final class TodayLiveModel: ObservableObject {
       day = todayLabel
       isLoading = true
     }
+    lastTodaySeen = todayLabel
     // @Published sinks run before the property changes: the values they get are used, not the properties.
     insights.$snapshot.dropFirst()
       .sink { [weak self] s in MainActor.assumeIsolated { self?.snapshotChanged(s) } }
@@ -151,8 +156,7 @@ public final class TodayLiveModel: ObservableObject {
     if let m = models[id] { return m }
     let m = TodayLiveModel(app: app)
     models[id] = m
-    // The menu bar builds its content at launch: its line is read then, not only once Today was opened.
-    Task { await m.refreshMenuLine() }
+    m.startMenuClock()
     return m
   }
 
@@ -250,8 +254,15 @@ public final class TodayLiveModel: ObservableObject {
   public func tryAgain() async { await refresh(force: true) }
 
   private func readCloud(force: Bool) async {
-    guard let brain = app.backends.brain else { return }
-    let shown = day ?? todayLabel
+    guard let brain = app.backends.brain else {
+      // `.cloud` with no client (only a hand-built Backends): say so rather than read forever (review 2, finding 3).
+      setContent(nil)
+      isLoading = false
+      state = .failed(.signIn)
+      return
+    }
+    // Left on today, Today follows the calendar past midnight; a day the person picked stays (review 2, finding 1).
+    let shown = dayPinned ? (day ?? todayLabel) : todayLabel
     day = shown
     let t = now()
     if !force, let last = lastCloudRead, last.day == shown, t.timeIntervalSince(last.at) < Self.cloudReadInterval { return }
@@ -345,6 +356,7 @@ public final class TodayLiveModel: ObservableObject {
           let next = LocalDays.calendar(timeZone).date(byAdding: .day, value: by, to: start) else { return }
     let label = LocalDays.label(next, timeZone: timeZone)
     guard label <= todayLabel, label != d else { return }
+    dayPinned = label != todayLabel
     day = label
     await readCloud(force: true)
   }
@@ -475,9 +487,9 @@ public final class TodayLiveModel: ObservableObject {
   /// The menu's own refresh, at most once a minute, so its line is there without Today open: `.cloud` reads today's
   /// record (a failure or 404 clears the line); `.local` recounts today while live capture runs, and otherwise the
   /// line is the snapshot's and nothing is read.
-  public func refreshMenuLine() async {
+  public func refreshMenuLine(force: Bool = false) async {
     let t = now()
-    if let last = lastMenuRefresh, t.timeIntervalSince(last) < Self.cloudReadInterval { return }
+    if !force, let last = lastMenuRefresh, t.timeIntervalSince(last) < Self.cloudReadInterval { return }
     if isLocal {
       guard app.isCapturing else { return }
       lastMenuRefresh = t
@@ -495,9 +507,39 @@ public final class TodayLiveModel: ObservableObject {
     }
   }
 
-  /// "today · 3 h 10 m · mostly Xcode"; nil when nothing was counted today.
+  /// The model's own clock for the menu bar line, every minute for the app's life (the menu bar's `.menu` style does
+  /// not re-run a view's `.task` when it opens) and at the calendar's day change. A new day is published at once, so a
+  /// line for yesterday goes away; in `.cloud` the new day is read without waiting a minute (review 2, finding 1).
+  public func menuTick() async {
+    let today = todayLabel
+    let rolled = today != lastTodaySeen
+    lastTodaySeen = today
+    if rolled {
+      objectWillChange.send()
+      if isLocal { rebuildLocal() }
+    }
+    await refreshMenuLine(force: rolled)
+  }
+
+  /// Starts `menuTick` now, every minute, and on `NSCalendarDayChanged`. The shared model lives as long as the app.
+  func startMenuClock() {
+    let model = self
+    Task { @MainActor in
+      while !Task.isCancelled {
+        await model.menuTick()
+        try? await Task.sleep(nanoseconds: UInt64(Self.refreshInterval * 1_000_000_000))
+      }
+    }
+    _ = NotificationCenter.default.addObserver(forName: .NSCalendarDayChanged, object: nil, queue: .main) { _ in
+      Task { @MainActor in await model.menuTick() }
+    }
+  }
+
+  /// "today · 3 h 10 m · mostly Xcode"; nil when nothing was counted today. A cloud record of another day is never
+  /// shown as today's.
   public var menuLine: String? {
     if isLocal { return TodayMenuSummary.line(snapshot: snapshot, day: todayLabel) }
-    return cloudToday.flatMap { TodayMenuSummary.line(record: $0) }
+    let today = todayLabel
+    return cloudToday.flatMap { $0.day == today ? TodayMenuSummary.line(record: $0) : nil }
   }
 }
