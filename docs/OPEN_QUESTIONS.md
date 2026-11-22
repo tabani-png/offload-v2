@@ -38,12 +38,14 @@ OQ-11. OQ-11 was then answered the same day: MIT core, Offload Enterprise Licens
 | [OQ-03](#oq-03-keep-the-derived-user-model-long-term) | Keep the derived user model long term | open | yes, with controls | M5 |
 | [OQ-04](#oq-04-keyframes-to-the-cloud) | Masked keyframes to the cloud | open | opt-in, off by default | M5 |
 | [OQ-20](#oq-20-brand-logos-in-the-app) | Third-party brand logos in the app | open | monograms until reviewed | M5 (onboarding connect step) |
+| [OQ-31](#oq-31-masked-text-fields-in-build-sandboxes) | Masked text fields (mail bodies, notes) in build sandboxes | open | yes, only fields the brief marks `parse_text`, masked like screen text | M5 (m5-11 span tokenisation); until then text-parsing fixes rely on checks |
 | [OQ-23](#oq-23-may-the-mac-client-run-deployed-fixes-locally) | Mac client runs device steps of deployed fixes | open | typed commands only, attended, per-step approval, from M6 | M6 |
 | [OQ-09](#oq-09-graduation-threshold) | Graduation threshold | open | 5 clean runs + your OK | M6 |
 | [OQ-14](#oq-14-optional-graphiti-adapter-and-graph-backend-licenses) | graphiti adapter in distribution | open | not shipped by default | M7 |
 | [OQ-13](#oq-13-plan-contents-and-prices) | Plan contents and prices | partly decided: split | single-player core free, multiplayer paid via Pro (decided); prices open | M8 (prices, billing) |
 | [OQ-15](#oq-15-monitoring-law-features-for-teams) | Per-person team features | open | Enterprise only, off by default | M8/M9 |
 | [OQ-18](#oq-18-which-cortexa) | Which Cortexa did you mean | open | cortexa.network | none |
+| [OQ-30](#oq-30-n8n-in-offload) | n8n in Offload | open | never hosted or shipped; your own n8n workflows only as MCP tools; no export | none (an n8n export would wait on it) |
 | [OQ-27](#oq-27-publish-the-repository-publicly) | Publish the repository publicly | Decided 2026-11-14 (owner) | public, as `tabani-png/offload-v2`; the operator pushes | none (operator pushes after the checklist) |
 | [OQ-28](#oq-28-masked-screen-text-to-the-cloud) | Masked screen text to the cloud | Decided 2026-11-14 (owner) | yes; pixels stay on the Mac by default | none |
 | [OQ-29](#oq-29-hosting-offload-cloud-and-self-host) | Hosting: Offload Cloud and self-host | Decided 2026-11-14 (owner) | both, at feature parity ([ADR 0037](adr/0037-hosting-cloud-and-self-host-parity.md)) | none |
@@ -293,6 +295,27 @@ Status: open.
 - **Recommended default**: monograms until each brand's guidelines are checked.
 - **Affects**: the connect step in Mac onboarding (screen 10, M5) and the Connections screens (M5 Mac, M8 web).
 
+## OQ-31: Masked text fields in build sandboxes
+
+Status: open. Raised 2026-11-22 by [ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md).
+- **Question**: Fixtures enter a build sandbox with every connector string replaced by one opaque token
+  ([ADR 0027](adr/0027-fixture-capture-and-connector-content.md)). A fix that must read a mail body or a notes
+  document (an invoice total, the action items of a meeting) cannot be built or replayed against that. May the build
+  sandbox provider (E2B on Offload Cloud, Docker on self-host) see such text fields masked span by span instead:
+  people, emails, phones, URL paths and ids replaced by fixture tokens, structured secrets destroyed, and the other
+  words, numbers and dates kept?
+- **Options**: (a) no: text-parsing fixes rely on checks and the held-out check only, never on replay of real text;
+  (b) yes, only for fields the brief marks `parse_text`, masked with the same rules as screen text, shown in the brief
+  ("your last 6 invoice emails, masked, are used to test this fix"); (c) yes for every text field.
+- **Recommended default**: (b). It follows the reasoning of [OQ-28](#oq-28-masked-screen-text-to-the-cloud) (masked
+  text may go to the cloud) and keeps it to the fields a fix must parse. E2B is already a sub-processor
+  ([SECURITY_PRIVACY.md section 10](SECURITY_PRIVACY.md#10-sub-processors)).
+- **Blocks**: M5 (ROADMAP task m5-11, span tokenisation of the `parse_text` fields that slice
+  `m5-10-workflow-backend` adds to the brief). Until answered, the
+  fixture code keeps whole-value tokens and a text-parsing build says it could not replay real text.
+- **Affects**: [ADR 0011](adr/0011-sandboxed-build-workers.md), [ADR 0027](adr/0027-fixture-capture-and-connector-content.md),
+  [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md#2-data-classes) (C6 in sandboxes).
+
 ## OQ-23: May the Mac client run deployed fixes locally?
 
 Status: open.
@@ -380,6 +403,29 @@ Status: open.
   governed flows ([ADR 0017](adr/0017-policy-engine-cedar.md)). No code. "A rule id on every decision" comes from the
   research Page, not from either Cortexa.
 - **Affects**: nothing blocking.
+
+## OQ-30: n8n in Offload
+
+Status: open. Raised 2026-11-22 by your ask ("maybe even through like n8n"); research in
+[workflow engines 2026-11](research/workflow-engines-2026-11.md), decision in
+[ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md).
+- **Question**: How far should Offload go with n8n? n8n's Sustainable Use License FAQ does not allow letting users
+  have workflows built for them on n8n "via a custom UI, our API, MCP, or an AI agent acting on the user's behalf"
+  without an Enterprise or OEM agreement, and n8n holds credentials itself, which bypasses Offload's gate and broker.
+- **Options**:
+  (a) n8n is never hosted, shipped or written to by Offload. A user may connect workflows they built in their own n8n
+  as MCP tools (n8n's MCP Server Trigger); their commits always ask.
+  (b) (a), plus "Export to your n8n": Offload turns a verified fix into n8n workflow JSON that the user imports into
+  their own n8n, labelled plainly as running outside Offload's gate, approvals and hours-saved measurement. Only
+  after n8n confirms in writing (license@n8n.io) that a third-party product may do this. You also decide whether the
+  export is core or `ee/`.
+  (c) Negotiate an n8n OEM or Enterprise agreement and run n8n for users. Not recommended: it still fails the
+  backend conformance suite (credentials and commits outside the broker and gate) and adds n8n and Redis to every
+  deploy.
+- **Recommended default**: (a). Nothing is built for (b) until you ask for it and n8n has answered.
+- **Blocks**: nothing now; an n8n export task would wait on it.
+- **Affects**: [ADR 0010](adr/0010-mcp-first-connectors.md), [ADR 0033](adr/0033-pinned-connector-resolution-and-launch-catalog.md),
+  [ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md), [OPEN_CORE.md](OPEN_CORE.md).
 
 ## OQ-27: Publish the repository publicly
 
