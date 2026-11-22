@@ -31,6 +31,8 @@ public struct FlushReport: Equatable, Sendable {
     public var droppedOld = 0
     public var blocked = 0
     public var failed = false
+    /// Another flush was running (waiting on the network): this one did nothing (m3-14, review 4).
+    public var skipped = false
 
     public init() {}
 }
@@ -50,6 +52,9 @@ public actor Uploader {
     private let importOutbox: ImportOutbox?
     /// Audience `member`: the import space routes (`/v1/imports`, `/v1/me/forget`). Nil: import calls are refused.
     private let memberTokens: (any TokenProvider)?
+    /// One flush at a time: a flush saves its own copy of the queue after each send, so a second one running while
+    /// the first waits on the network would be overwritten (and staged imports it took would be lost).
+    private var flushing = false
 
     public init(config: UploaderConfig, transport: any HTTPTransport, signer: any DeviceSigner, tokens: any TokenProvider, store: DayStore,
                 state: UploadStateStore, ledger: EgressLedger, time: any TimeSource, importOutbox: ImportOutbox? = nil,
@@ -75,6 +80,7 @@ public actor Uploader {
 
     /// The scheduled call: flushes when 300 s have passed and the back-off allows it; nil when it did nothing.
     public func tick() async -> FlushReport? {
+        if flushing { return nil }
         let now = time.now
         if let last = lastFlush, now.timeIntervalSince(last) < config.flushSeconds { return nil }
         if let state = try? stateStore.load(), let retry = state.retryAfter, now.timeIntervalSince1970 < retry { return nil }
@@ -84,6 +90,12 @@ public actor Uploader {
     /// Batches what is new, then sends every pending batch in seq order. Also what quitting the app calls.
     public func flush() async -> FlushReport {
         var report = FlushReport()
+        if flushing {
+            report.skipped = true
+            return report
+        }
+        flushing = true
+        defer { flushing = false }
         let now = time.now
         lastFlush = now
         var state: UploadState
