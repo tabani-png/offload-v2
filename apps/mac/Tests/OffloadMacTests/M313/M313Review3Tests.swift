@@ -79,27 +79,27 @@ extension M313 {
     }
   }
 
-  @Test("PLAN: Not now is offered while the plan waits or is ready, Close once it stopped, neither while OK, build is on its way")
+  @Test("PLAN: Close is offered in every phase but starting, and does nothing while OK, build is on its way")
   @MainActor func notNowEveryPhase() async {
     // Designing.
     let designing = M313Client()
     designing.script("answer", .value(M313F.opportunity("designing")))
     let m1 = M313M.cloud(designing)
     await m1.startPlan(opportunityID: "opp_1", optionID: "fix_1")
-    #expect(m1.canSetAside && !m1.canClosePlan)
+    #expect(m1.canClosePlan)
     // Needs a connection.
     let connect = M313Client()
     connect.script("answer", .value(M313F.opportunity("needs_connection", missing: ["github"])))
     let m2 = M313M.cloud(connect)
     await m2.startPlan(opportunityID: "opp_1", optionID: "fix_1")
-    #expect(m2.canSetAside && !m2.canClosePlan)
+    #expect(m2.canClosePlan)
     // Stopped.
     let failed = M313Client()
     failed.script("answer", .error(M313F.server(500, "server_error")))
     let m3 = M313M.cloud(failed)
     await m3.startPlan(opportunityID: "opp_1", optionID: "fix_1")
     #expect(m3.plan?.phase == .stopped)
-    #expect(!m3.canSetAside && m3.canClosePlan)
+    #expect(m3.canClosePlan)
     m3.closePlan()
     #expect(m3.plan == nil)
     // Starting: OK, build is on its way and cannot be dropped.
@@ -111,12 +111,11 @@ extension M313 {
     starting.script("build", .value(M313F.fanningOut))
     let m4 = M313M.cloud(starting)
     await m4.startPlan(opportunityID: "opp_1", optionID: "fix_1")
-    #expect(m4.canSetAside)
+    #expect(m4.canClosePlan)
     let press = Task { await m4.okBuild() }
     await gate.arrival()
     #expect(m4.plan?.phase == .starting)
-    #expect(!m4.canSetAside && !m4.canClosePlan)
-    await m4.setAside()
+    #expect(!m4.canClosePlan)
     m4.closePlan()
     #expect(starting.count("answer") == 1)
     #expect(m4.plan?.phase == .starting)

@@ -104,12 +104,12 @@ extension M313 {
 
     // Not now.
     let notNow = M313Client()
-    notNow.script("answer", .value(M313F.opportunity("designing")), .value(M313F.opportunity("not_now")))
+    notNow.script("answer", .value(M313F.opportunity("designing")))
     let plans2 = MemoryPlanRecordStore()
     let m2 = M313M.cloud(notNow, plans: plans2)
     await m2.startPlan(opportunityID: "opp_1", optionID: "fix_1")
     #expect(plans2.load() != nil)
-    await m2.setAside()
+    m2.closePlan()
     #expect(plans2.load() == nil)
 
     // Stopped.

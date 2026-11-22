@@ -53,21 +53,32 @@ extension M313 {
     #expect(client.count("fix") == 1)
   }
 
-  @Test("PLAN: a Not now that fails keeps the plan and the kept plan, and says why")
-  @MainActor func planNotNowFails() async {
-    let client = M313Client()
-    let plans = MemoryPlanRecordStore()
-    client.script("answer", .value(M313F.opportunity("designing")), .error(M313F.server(500, "server_error")))
-    let model = M313M.cloud(client, plans: plans)
-    await model.startPlan(opportunityID: "opp_1", optionID: "fix_1")
-    await model.setAside()
-    #expect(client.calls.last == "answer opp_1 not_now -")
-    #expect(model.plan?.phase == .designing)
-    #expect(model.plan?.message == "Offload had a problem. Try again later.")
-    #expect(plans.load() != nil)
-    #expect(model.notice == nil)
-    #expect(BuildCopy.notNow == "Not now")
+  @Test("PLAN: closing a plan posts nothing in any phase (not_now is allowed only from open); a stopped plan closes quietly")
+  @MainActor func planCloseNeverPosts() async {
+    for state in ["designing", "ready_for_approval", "chosen"] {
+      let client = M313Client()
+      let plans = MemoryPlanRecordStore()
+      client.script("answer", .value(M313F.opportunity(state)))
+      client.fallback("fix", .value(M313F.fix))
+      let model = M313M.cloud(client, plans: plans)
+      await model.startPlan(opportunityID: "opp_1", optionID: "fix_1")
+      let calls = client.calls.count
+      #expect(model.canClosePlan, "\(state)")
+      model.closePlan()
+      #expect(client.calls.count == calls, "\(state)")
+      #expect(model.plan == nil)
+      #expect(plans.load() == nil)
+      #expect(model.notice == "Closed on this Mac. Offload may still finish designing it.")
+    }
+    let failed = M313Client()
+    failed.script("answer", .error(M313F.server(500, "server_error")))
+    let stopped = M313M.cloud(failed)
+    await stopped.startPlan(opportunityID: "opp_1", optionID: "fix_1")
+    stopped.closePlan()
+    #expect(stopped.plan == nil)
+    #expect(stopped.notice == nil)
     #expect(BuildCopy.close == "Close")
+    #expect(!BuildCopy.all.contains("Not now"))
   }
 
   @Test("HEADLINE: the capped headline names the build's own cap, as the meter does")
