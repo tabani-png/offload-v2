@@ -249,7 +249,7 @@ struct DayGridView: View {
         .accessibilityLabel(Self.label(row))
       }
       HStack(spacing: Tokens.Space.s8) {
-        Text(TodayCopy.switchBursts).font(.system(size: 11)).foregroundStyle(Color(hex: Tokens.Palette.chromeFaint))
+        Text(TodayCopy.switchBursts).font(.system(size: 11)).foregroundStyle(Theme.chromeMute)
           .lineLimit(1).frame(width: Self.labelWidth, alignment: .trailing)
         HStack(spacing: 2) {
           ForEach(0..<grid.bursts.count, id: \.self) { i in
@@ -264,7 +264,7 @@ struct DayGridView: View {
         Color.clear.frame(width: Self.labelWidth, height: 1)
         HStack(spacing: 0) {
           ForEach(grid.hourLabels, id: \.self) { h in
-            Text(h).font(.system(size: 10, design: .monospaced)).foregroundStyle(Color(hex: Tokens.Palette.chromeFaint))
+            Text(h).font(.system(size: 10, design: .monospaced)).foregroundStyle(Theme.chromeMute)
               .frame(maxWidth: .infinity, alignment: .leading)
           }
         }
@@ -332,7 +332,7 @@ struct DidView: View {
           HowToggle(key: "did-\(r.id)", model: model, reduceMotion: reduceMotion, help: r.figure.arithmetic) {
             HStack(alignment: .firstTextBaseline, spacing: Tokens.Space.s12) {
               if let start = r.start {
-                Text(start).font(.system(size: 12, design: .monospaced)).foregroundStyle(Color(hex: Tokens.Palette.chromeFaint))
+                Text(start).font(.system(size: 12, design: .monospaced)).foregroundStyle(Theme.chromeMute)
                   .frame(width: 52, alignment: .leading)
               }
               Text(r.name).font(.system(size: 14)).foregroundStyle(Theme.chromeInk).frame(maxWidth: .infinity, alignment: .leading)
@@ -395,6 +395,7 @@ struct FixCardView: View {
   let card: FixCard
   @ObservedObject var model: TodayLiveModel
   @FocusState private var focused: Bool
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -402,9 +403,14 @@ struct FixCardView: View {
         Circle().fill(Theme.needsYou).frame(width: 8, height: 8).accessibilityHidden(true)
         CaptionLine(card.status, onChrome: true)
       }
-      Text(card.title).textStyle(Tokens.TypeScale.display).foregroundStyle(Theme.chromeInk)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.top, Tokens.Space.s8)
+      HowToggle(key: "fix", model: model, reduceMotion: reduceMotion, help: card.figure?.arithmetic ?? "") {
+        Text(card.title).textStyle(Tokens.TypeScale.display).foregroundStyle(Theme.chromeInk)
+          .fixedSize(horizontal: false, vertical: true)
+          .multilineTextAlignment(.leading)
+      }
+      .disabled(card.how == nil)
+      .padding(.top, Tokens.Space.s8)
+      if model.isHowShown("fix"), let how = card.how { HowLine(text: how).padding(.top, 4) }
       if !card.options.isEmpty {
         VStack(spacing: 6) {
           ForEach(Array(card.options.enumerated()), id: \.offset) { pair in
@@ -426,7 +432,7 @@ struct FixCardView: View {
         }
         Spacer()
         Text(TodayCopy.keysHint(count: card.options.count)).font(.system(size: 11, design: .monospaced))
-          .foregroundStyle(Color(hex: Tokens.Palette.chromeFaint))
+          .foregroundStyle(Theme.chromeMute)
           .accessibilityHidden(true)
       }
       .padding(.top, Tokens.Space.s16)
@@ -438,9 +444,13 @@ struct FixCardView: View {
     .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.chrome2))
     .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
       .strokeBorder(focused ? Theme.working : Color.white.opacity(0.12), lineWidth: focused ? 2 : 1))
+    .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    // A click anywhere on the card gives it the keys (review 1, finding 2).
+    .onTapGesture { focused = true }
     .focusable()
     .focusEffectDisabled()
     .focused($focused)
+    .defaultFocus($focused, true)
     .onChange(of: focused) { _, isFocused in model.cardFocused = isFocused }
     .onKeyPress(.return) { handle(.return) }
     .onKeyPress(characters: .decimalDigits) { press in
@@ -452,6 +462,8 @@ struct FixCardView: View {
   }
 
   func handle(_ key: TodayKey) -> KeyPress.Result {
+    // A key reaches this handler only while focus is on the card or inside it (an option button, by keyboard).
+    model.cardFocused = true
     guard model.accepts(key) else { return .ignored }
     Task { await model.handleKey(key) }
     return .handled
@@ -460,7 +472,10 @@ struct FixCardView: View {
   @ViewBuilder
   func optionRow(_ o: FixOptionRow, index: Int) -> some View {
     let selected = model.selectedOption == index
-    Button { model.selectOption(index) } label: {
+    Button {
+      focused = true
+      model.selectOption(index)
+    } label: {
       HStack(alignment: .center, spacing: Tokens.Space.s12) {
         Text(verbatim: String(o.number)).font(.system(size: 11, design: .monospaced)).foregroundStyle(Theme.chromeMute)
           .frame(width: 20, height: 20)
@@ -473,6 +488,8 @@ struct FixCardView: View {
             }
           }
           if let detail = o.detail { CaptionLine(detail, onChrome: true) }
+          // The picked option's saving, with how it was counted: one click away and read by VoiceOver.
+          if selected, let how = o.how { HowLine(text: how) }
         }
         Spacer(minLength: Tokens.Space.s8)
         if let saves = o.saves {
