@@ -304,15 +304,33 @@ flowchart LR
 pseudonymised; equal pseudonyms mean the same person, email or document, so tasks and entities can be joined across
 days without the real values ([ADR 0028](adr/0028-stable-keyed-pseudonyms.md)).
 
-**Understanding** (harvested from the old `sessionize.ts`, `understanding/*`; lands in M5):
+**Understanding** (slice [m5-01](../slices/m5-01-understanding/SPEC.md), `services/brain/src/understanding/`; ideas
+from the old `sessionize.ts`, `understanding/*`, written fresh):
+- Trigger: the consumer `workflow:understanding` takes each `observations.ingested` event once (`outbox_deliveries`
+  marks it delivered; a delivered event is never processed again). It reads the event's member's `observations` and
+  `observation_texts` **by `ts`** inside `withTenant` (member wall on): the `ts` range of the rows just ingested
+  (partition `day` = the event's UTC day or the day before; imported rows carry the ingest date), widened to whole
+  days in the profile's timezone, at most 31 days. So an import is analysed on its own days and its records are
+  anchored to its last day. Entry points for `offload serve`: `drainUnderstanding(deps, { tenantId })` and the durable
+  workflow body `understandingWorkflow(deps)` (input `{ tenant_id, event_id }`).
 - Spans: continuous focus on one app + title + host; minimum span 10 s; idle merges up to 15 min; idle start backdated
-  120 s.
-- Span descriptions: rules first (surface, verb, object); the Haiku `label` route only within fixed vocabularies.
-- Embeddings: local embedder, 1024 dims, stored in pgvector.
-- Task induction: steps joined by exact surface + verb + object key, else best embedding match (assign threshold 0.7);
-  tasks are connected components of steps linked by shared pseudonyms (same `<doc:h_…>`, same `<person:h_…>`) or
-  reliable transitions; instances split on a new day, a gap over 10 min, a conflicting pseudonym, or the start surface
-  recurring.
+  120 s. Text snapshots attach to the span open at their time.
+- Stand-in apps: a recording without a macOS menu bar arrives as `recording.unknown` / "Screen". Its masked text gives
+  app cues (known app names in window chrome) and host cues (the URL bar's host); the segment splits where they change.
+  A stand-in segment without a cue never merges across idle, and one without text joins no task, so unrelated
+  recordings stay apart.
+- Span descriptions: rules first (verb and object from fixed vocabularies counted in the masked title and text, else a
+  default verb by kind of work); the Haiku `label` route, injected and optional, fills only a missing verb or object,
+  only from the same vocabularies.
+- Embeddings: local feature-hashing embedder, 1024 dims, deterministic. Task centroids reach `task_ledger.centroid`;
+  span vectors are not stored (M7 entity resolution may add them in pgvector).
+- Task induction: steps joined by exact surface + verb + object key, else best embedding match on the same surface
+  (assign threshold 0.7); tasks are connected components of steps linked by shared item pseudonyms (same `<doc:h_…>` at
+  any distance, same `<person:h_…>`, email or phone within 20 min; a pseudonym on more than 12 spans is a container) or
+  reliable transitions (within 2 min, at least twice and on half of the step's spans); instances split on a new day, a
+  gap over 10 min, a step coming back with a conflicting `doc`, or the instance's first step recurring.
+- Output: an `UnderstandingWindow` (spans, tasks with instances; masked, no text snapshot content) handed to
+  `runMemberUpdate` in the brain store. Ids are derived from observation ids, so a re-run writes the same rows.
 
 **User model** ([ADR 0019](adr/0019-user-model-storage.md); constants match PR #43):
 - **Task ledger**: maps each induced task to a stable `task_key` (`k_` + 12 hex). Match order: same signature; else same

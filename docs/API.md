@@ -514,7 +514,7 @@ Written to `events_outbox` in the same transaction as the change; delivered to d
 
 | Type | Emitted by | Data |
 |---|---|---|
-| `observations.ingested` | api (ingest) | `{ device_id, member_id, count, first_ts, last_ts }` |
+| `observations.ingested` | api (ingest) | `{ device_id, member_id, seq, accepted }` (as m3-01 writes it; optional `first_ts`, `last_ts` narrow the range understanding reads). Consumer `workflow:understanding` (m5-01) |
 | `day.closed` | brain | `{ member_id, day }` |
 | `records.updated` | brain | `{ member_id, kind: "day" \| "week" \| "month" \| "quarter", key }` |
 | `opportunity.ranked` | brain | `{ member_id, iso_week, opportunity_ids[] }` |

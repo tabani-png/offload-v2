@@ -75,7 +75,7 @@ Pipeline, all in `services/brain/src/understanding/`:
 2. **Sessionize** (`sessionize.ts`, written fresh after old `sessionize.ts`): segments end at the next focus,
    `idle_start` (backdated 120 s), `pause` or the last event; blips under 10 s join a contiguous neighbour; segments of
    the same app + title + host merge across idle up to 15 min. Text snapshots attach to the segment open at their `ts`.
-3. **Cues** (`cues.ts`): a segment on a **stand-in app** (`recording.*`, `screenwatch.screen`, app name `Screen`: what
+3. **Cues** (`cues.ts`): a segment on a **stand-in app** (`recording.unknown`, `screenwatch.screen`, app name `Screen`: what
    the recordings import emits without a macOS menu bar) takes its host from host tokens in its masked text (URL bar)
    and its app from known app names in window chrome text, before merging. A stand-in segment with no cue never merges
    across idle, so unrelated recordings stay apart.
@@ -167,10 +167,10 @@ fix rules and `FixEstimate` (m5-04: `estimateFor` is passed through), `offload s
   grouping and the name masker; v2 gets masked text only, so the rules are smaller. Same constants.
 
 ## Progress
-- [x] SPEC, verify.sh, ROADMAP link
-- [ ] red tests
-- [ ] sessionize, cues, describe, embed
-- [ ] induce, window
-- [ ] job, capture adapter, labeler
-- [ ] docs (API.md, ARCHITECTURE.md, DATA_MODEL.md, GLOSSARY.md)
-- [ ] self-review, verify.sh, verify-all
+- [x] SPEC, verify.sh, ROADMAP link (bd4954c)
+- [x] red tests (70d8597), all 25 seen failing with "not implemented"
+- [x] sessionize, cues (d815eae); describe, label route port, embed (f658012)
+- [x] induce, window (cce5c3e)
+- [x] job, capture adapter, durable workflow body (7af1236)
+- [x] docs: API.md section 7, ARCHITECTURE.md section 5, DATA_MODEL.md section 8, GLOSSARY.md
+- [ ] self-review, verify.sh, verify-all (next)
