@@ -17,3 +17,5 @@ export { applyProfilePatch, defaultProfile, userContextOf, type Goal, type Profi
 export { parseReviewAnswer, type ReviewAnswer } from "./review/answers.ts";
 export { buildWeekReview, type WeekReview } from "./review/week-review.ts";
 export { userContextBlock, type UserContext } from "./understanding/context.ts";
+// Understanding (m5-01): the producer of UnderstandingWindow. m5-04 and m1-06 use these.
+export * from "./understanding/index.ts";

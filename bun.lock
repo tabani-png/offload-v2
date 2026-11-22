@@ -120,6 +120,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@offload/contracts": "workspace:*",
+        "@offload/db": "workspace:*",
         "@offload/masking": "workspace:*",
         "zod": "4.6.7",
       },

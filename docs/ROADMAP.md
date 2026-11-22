@@ -541,7 +541,7 @@ Tasks after the two slices:
 
 | Id | Task | Depends on | Tier | Size | Parallel group | Paths |
 |---|---|---|---|---|---|---|
-| m5-01 | Sessionize, describe, embed, induce, task ledger | M3 | Opus plan, Sonnet build | L | M5-A | `services/brain/**` |
+| [m5-01](../slices/m5-01-understanding/SPEC.md) | Sessionize, describe, embed, induce, task ledger | M3 | Opus plan, Sonnet build | L | M5-A | `services/brain/**` |
 | m5-02 | Episodes, day and week records, narrative check | m5-01 | Sonnet | M | M5-A | `services/brain/**` |
 | [m5-03](../slices/m5-03-model-router/SPEC.md) | Model router (masking, budgets, escalation, labels) | M1, m3-01 (leak scan) | Sonnet | M | M5-A | `services/brain/src/models/**`, `packages/masking/src/names/**` |
 | m5-04 | Opportunity finder, instant read, options | m5-02, m2-01 | Sonnet | M | M5-B | `services/brain/**` |

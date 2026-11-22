@@ -1,0 +1,169 @@
+import { expect, test } from "bun:test";
+import { buildUnderstandingWindow } from "../../src/understanding/window.ts";
+import type { UnderstandingWindow } from "../../src/user-model/ports.ts";
+import { invoiceImport, merge, recordingObservations, rng, utc, type Built, type Segment } from "./fixtures.ts";
+
+
+const DAYS = ["2026-11-09", "2026-11-10", "2026-11-11"];
+const win = (b: Built, days: string[] = DAYS) => buildUnderstandingWindow({ timezone: "UTC", days, observations: b.observations, texts: b.texts });
+const spanApps = (w: UnderstandingWindow, ids: readonly string[]) => ids.map((id) => w.spans.find((s) => s.id === id)!.appBundleId);
+
+test("INDUCE: a 3-step workflow repeated N times gives one task with N instances", async () => {
+  for (const menuBar of [true, false]) {
+    const fx = invoiceImport(DAYS, { perDay: 2, noise: false, menuBar });
+    const w = await win(fx);
+    expect(w.tasks).toHaveLength(1);
+    const t = w.tasks[0]!;
+    expect(t.instances).toHaveLength(fx.instances);
+    expect(fx.instances).toBe(6);
+    for (const i of t.instances) expect(spanApps(w, i.spanIds)).toEqual(["com.apple.mail", "com.google.Chrome", "com.microsoft.Excel"]);
+    expect(t.centroid).toHaveLength(1024);
+    expect(t.sameness).toBeGreaterThan(0.9);
+    expect(t.kind).toMatch(/^[a-z]+\.[a-z]+(-[a-z]+)?$/);
+    expect(t.name).toMatch(/invoice|bill/i);
+  }
+});
+
+test("INDUCE: unrelated recordings do not merge into one task", async () => {
+  const fx = invoiceImport(DAYS, { perDay: 2, noise: true, menuBar: false });
+  const w = await win(fx);
+  const invoice = w.tasks.filter((t) => t.instances.length > 1);
+  expect(invoice).toHaveLength(1);
+  expect(invoice[0]!.instances).toHaveLength(6);
+  const noise = w.tasks.filter((t) => t.instances.length === 1);
+  // Five noise clips: four with text (four tasks), one without text (no task).
+  expect(noise).toHaveLength(4);
+  for (const t of noise) expect(t.instances[0]!.spanIds).toHaveLength(1);
+  const used = w.tasks.flatMap((t) => t.instances.flatMap((i) => i.spanIds));
+  expect(new Set(used).size).toBe(used.length);
+  expect(w.spans.length).toBe(used.length + 1);
+});
+
+const DOC_X = "<doc:h_aaaaaaaaaaaaaaaa>";
+const DOC_Y = "<doc:h_bbbbbbbbbbbbbbbb>";
+const app = (bundle: string, name: string, title: string, d?: string) => ({ bundle, name, title, ...(d === undefined ? {} : { doc: d }) });
+
+test("INDUCE: steps sharing a doc pseudonym on different days join the same task", async () => {
+  const r = rng(11);
+  const b = merge([
+    recordingObservations({ start: utc("2026-11-09") + 10 * 3_600_000, source: "live", segments: [{ app: app("com.apple.Preview", "Preview", `Contract ${DOC_X}`, DOC_X), seconds: 120, frames: [`Contract ${DOC_X} terms signature page`] }] }, r),
+    recordingObservations({ start: utc("2026-11-10") + 10 * 3_600_000, source: "live", segments: [{ app: app("com.apple.mail", "Mail", `Re: contract ${DOC_X}`, DOC_X), seconds: 90, frames: [`Reply contract ${DOC_X} countersigned copy attached`] }] }, r),
+    recordingObservations({ start: utc("2026-11-10") + 15 * 3_600_000, source: "live", segments: [{ app: app("com.apple.iWork.Numbers", "Numbers", `Budget ${DOC_Y}`, DOC_Y), seconds: 90, frames: ["Budget forecast quarter marketing spend"] }] }, r),
+  ]);
+  const w = await win(b, ["2026-11-09", "2026-11-10"]);
+  const withDoc = w.tasks.filter((t) => t.instances.some((i) => spanApps(w, i.spanIds).includes("com.apple.Preview")));
+  expect(withDoc).toHaveLength(1);
+  const apps = withDoc[0]!.instances.flatMap((i) => spanApps(w, i.spanIds)).sort();
+  expect(apps).toEqual(["com.apple.Preview", "com.apple.mail"]);
+  expect(withDoc[0]!.instances).toHaveLength(2);
+  expect(w.tasks).toHaveLength(2);
+});
+
+test("INDUCE: instances split on a new day, a gap over 10 min and a conflicting doc pseudonym", async () => {
+  const r = rng(12);
+  const A = (d: string): Segment => ({ app: app("com.apple.mail", "Mail", `Order ${d}`, d), seconds: 60, frames: [`Order ${d} from customer`] });
+  const B = (d: string): Segment => ({ app: { bundle: "com.google.Chrome", name: "Google Chrome", title: `Order ${d}`, host: "shop.example", doc: d }, seconds: 60, frames: [`Create order ${d} shop`] });
+  const at = (day: string, min: number) => utc(day) + 9 * 3_600_000 + min * 60_000;
+  const d1 = "<doc:h_1111111111111111>", d2 = "<doc:h_2222222222222222>", d3 = "<doc:h_3333333333333333>", d4 = "<doc:h_4444444444444444>";
+  const d5 = "<doc:h_5555555555555555>", d6 = "<doc:h_6666666666666666>";
+  const b = merge([
+    recordingObservations({ start: at("2026-11-09", 0), source: "live", segments: [A(d1), B(d1), A(d2), B(d2)] }, r), // start step recurs: 2
+    recordingObservations({ start: at("2026-11-09", 30), source: "live", segments: [A(d3), B(d3)] }, r), // gap over 10 min: 1
+    recordingObservations({ start: at("2026-11-10", 0), source: "live", segments: [A(d4), B(d4)] }, r), // new day: 1
+    recordingObservations({ start: at("2026-11-10", 30), source: "live", segments: [A(d5), B(d5), B(d6)] }, r), // a step comes back with another doc: 2
+  ]);
+  const w = await win(b, ["2026-11-09", "2026-11-10"]);
+  expect(w.tasks).toHaveLength(1);
+  const sizes = w.tasks[0]!.instances.map((i) => spanApps(w, i.spanIds).map((a) => (a === "com.apple.mail" ? "A" : "B")).join(""));
+  expect(sizes).toEqual(["AB", "AB", "AB", "AB", "AB", "B"]);
+});
+
+const standIn = { bundle: "recording.unknown", name: "Screen" };
+const clips = (texts: readonly string[], seed: number): Built => {
+  const r = rng(seed);
+  return merge(texts.map((t, i) => recordingObservations({ start: utc(DAYS[i]!) + 14 * 3_600_000, segments: [{ app: standIn, seconds: 45, frames: [t, t] }] }, r)));
+};
+
+test("INDUCE: unrelated recordings sharing an object word or an app name do not merge", async () => {
+  const preview = await win(clips(["Preview pasta recipe tomato basil garlic", "Preview travel vlog beach sunset island", "Preview keyboard review switches tactile sound"], 31));
+  expect(preview.tasks.map((t) => t.instances.length)).toEqual([1, 1, 1]);
+  const order = await win(clips(["Pizza order tracking delivery driver map", "Order history sneakers running shoes size", "Order status laptop charger courier"], 32));
+  expect(order.tasks.map((t) => t.instances.length)).toEqual([1, 1, 1]);
+});
+
+const stripTokens = (b: Built): Built => ({
+  observations: b.observations.map((o) => ({ ...o, doc: null, title: o.title === null ? null : o.title.replace(/<[^<>]*>/g, " ") })),
+  texts: b.texts.map((t) => ({ ...t, text: t.text.replace(/<[^<>]*>/g, " ") })),
+});
+
+test("INDUCE: reliable transitions alone join a workflow whose steps share no pseudonym", async () => {
+  const fx = invoiceImport(DAYS, { perDay: 2, noise: false, menuBar: true });
+  const w = await win(stripTokens(fx));
+  expect(w.tasks).toHaveLength(1);
+  expect(w.tasks[0]!.instances).toHaveLength(6);
+});
+
+test("INDUCE: a doc pseudonym on more than 12 spans is a container and links nothing", async () => {
+  const r = rng(33);
+  const D = "<doc:h_cccccccccccccccc>";
+  const parts: Built[] = [];
+  for (let i = 0; i < 13; i++) {
+    const seg = i % 2 === 0
+      ? { app: app("com.apple.mail", "Mail", `Digest ${D}`, D), seconds: 60, frames: [`Inbox newsletter digest ${D}`] }
+      : { app: app("com.apple.iWork.Numbers", "Numbers", `Budget ${D}`, D), seconds: 60, frames: [`Budget forecast quarter ${D}`] };
+    parts.push(recordingObservations({ start: utc(DAYS[0]!) + 8 * 3_600_000 + i * 30 * 60_000, source: "live", segments: [seg] }, r));
+  }
+  const w = await win(merge(parts), [DAYS[0]!]);
+  expect(w.tasks).toHaveLength(2);
+});
+
+test("INDUCE: a shared person pseudonym links steps only within 20 min", async () => {
+  const P = "<person:h_dddddddddddddddd>";
+  const pair = async (gapMin: number) => {
+    const r = rng(34);
+    const start = utc(DAYS[0]!) + 9 * 3_600_000;
+    const b = merge([
+      recordingObservations({ start, source: "live", segments: [{ app: app("com.apple.mail", "Mail", `Quote for ${P}`), seconds: 60, frames: [`Reply quote ${P}`] }] }, r),
+      recordingObservations({ start: start + (1 + gapMin) * 60_000, source: "live", segments: [{ app: { bundle: "com.google.Chrome", name: "Google Chrome", title: "Deals", host: "crm.example" }, seconds: 60, frames: [`Update deal ${P}`] }] }, r),
+    ]);
+    return (await win(b, [DAYS[0]!])).tasks.length;
+  };
+  expect(await pair(5)).toBe(1);
+  expect(await pair(180)).toBe(2);
+});
+
+test("INDUCE: back-to-back repetitions without docs split where the first step comes round again", async () => {
+  const r = rng(35);
+  const A: Segment = { app: app("com.apple.mail", "Mail", "Orders inbox"), seconds: 60, frames: ["Order from customer"] };
+  const B: Segment = { app: { bundle: "com.google.Chrome", name: "Google Chrome", title: "Orders", host: "shop.example" }, seconds: 60, frames: ["Create order shop"] };
+  const b = recordingObservations({ start: utc(DAYS[0]!) + 9 * 3_600_000, source: "live", segments: [A, B, A, B] }, r);
+  const w = await win(b, [DAYS[0]!]);
+  expect(w.tasks).toHaveLength(1);
+  expect(w.tasks[0]!.instances.map((i) => spanApps(w, i.spanIds).map((a) => (a === "com.apple.mail" ? "A" : "B")).join(""))).toEqual(["AB", "AB"]);
+});
+
+test("INDUCE: a stand-in task cued by its host only is named on that host, not on the stand-in app", async () => {
+  const w = await win(clips(["video.example pasta recipe tomato basil garlic", "video.example pasta recipe tomato basil garlic"], 36), [DAYS[0]!, DAYS[1]!]);
+  expect(w.tasks).toHaveLength(1);
+  expect(w.tasks[0]!.name).toBe("View on video.example");
+  expect(w.tasks[0]!.name).not.toContain("Screen");
+});
+
+test("INDUCE: realistic chrome without app names or a URL bar on the first lines still gives one task and keeps noise apart", async () => {
+  const r = rng(37);
+  // A recording without a menu bar: the OCR starts with the tab strip and the toolbar; the host is on line 3.
+  const frame = (inv: string) => `Inbox (3) | Bills | Supplier invoices log\nBack Forward Reload\napp.ledgerly.example\nNew bill supplier reference ${inv} amount due save approve invoice`;
+  const parts: Built[] = [];
+  for (const [d, day] of DAYS.entries()) {
+    for (let i = 0; i < 2; i++) {
+      const inv = `<doc:h_${String(d * 2 + i).repeat(16).slice(0, 16)}>`;
+      parts.push(recordingObservations({ start: utc(day) + (9 + i) * 3_600_000, segments: [{ app: standIn, seconds: 150, frames: [frame(inv), frame(inv)] }] }, r));
+    }
+  }
+  parts.push(clips(["Pasta recipe tomato basil garlic simmer", "Travel vlog beach sunset drone island"], 38));
+  const w = await win(merge(parts));
+  expect(w.spans.every((s) => s.host === "")).toBe(true);
+  const repeated = w.tasks.filter((t) => t.instances.length > 1);
+  expect(repeated.map((t) => t.instances.length)).toEqual([6]);
+  expect(w.tasks.filter((t) => t.instances.length === 1)).toHaveLength(2);
+});
