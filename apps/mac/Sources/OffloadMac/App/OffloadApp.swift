@@ -14,7 +14,8 @@ struct OffloadApp: App {
 
   var body: some Scene {
     Window("Offload", id: "main") {
-      MainWindowView(app: app)
+      // m3-10: the sidebar shell once setup is done; onboarding, move and Start fresh are MainWindowView as before.
+      AppWindowView(app: app)
     }
     .windowResizability(.contentMinSize)
 
@@ -51,10 +52,15 @@ struct MenuBarOpener: View {
       updates: updates.menu,
       checkForUpdates: { updates.updater.checkForUpdates(nil) }
     )
-    // Hidden in Local mode and before "Start sending" (ONBOARDING section 8).
+    // Offered in Local mode (kept on this Mac) and in the cloud while sending (ONBOARDING section 8, m3-10).
     if app.recordings?.isOffered == true {
       Button(RecordingsCopy.menuItem) {
-        openWindow(id: "settings")
+        if app.route == .today {
+          app.navigation.selection = .recordings
+          openWindow(id: "main")
+        } else {
+          openWindow(id: "settings")
+        }
         NSApp.activate()
       }
     }

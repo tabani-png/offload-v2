@@ -18,6 +18,14 @@ public final class AppModel: ObservableObject {
   public let events: LocalEventSource
   public let sampleWeek: SampleWeekFlag
   public let neverWatch: NeverWatchStore
+  /// m3-10: the navigation shell (the sidebar's selection and the hand-off to Build progress).
+  public let navigation: NavigationModel
+  /// m3-10: backend mode and the brain and builds clients (none in `.local`).
+  public let backends: Backends
+  /// m3-10: local insights, counted on this Mac, for Today, Weekly review and Recordings.
+  public let insights: InsightsModel
+  /// m3-10: the on-device recordings import (the folders found, the local sink); nil when it could not be set up.
+  public let onDeviceRecordings: OnDeviceRecordings?
 
   private var frontmostObserver: NSObjectProtocol?
   private var backgroundChecks: Task<Void, Never>?
@@ -26,7 +34,8 @@ public final class AppModel: ObservableObject {
   /// exists, m1-04).
   public init(options: LaunchOptions, bundlePath: String, bufferReadable: Bool, store: OnboardingStore,
               services: OnboardingServices, probe: PermissionProbe, events: LocalEventSource, sampleWeek: SampleWeekFlag,
-              currentNoticeVersion: String? = nil) {
+              currentNoticeVersion: String? = nil, navigation: NavigationModel? = nil, backends: Backends = .local,
+              insights: InsightsModel? = nil, onDeviceRecordings: OnDeviceRecordings? = nil) {
     let onboarding = OnboardingModel(store: store, services: services)
     self.onboarding = onboarding
     self.permissions = PermissionsModel(probe: probe, screenRecordingConfirmed: onboarding.state.screenRecordingConfirmed,
@@ -34,6 +43,10 @@ public final class AppModel: ObservableObject {
     self.events = events
     self.sampleWeek = sampleWeek
     self.neverWatch = services.neverWatch
+    self.navigation = navigation ?? NavigationModel()
+    self.backends = backends
+    self.insights = insights ?? InsightsModel.empty()
+    self.onDeviceRecordings = onDeviceRecordings
     let route = LaunchRoute.decide(options: options, state: onboarding.state, bundlePath: bundlePath,
                                    bufferReadable: bufferReadable, currentNoticeVersion: currentNoticeVersion)
     self.route = route
@@ -83,22 +96,30 @@ public final class AppModel: ObservableObject {
   }
 
   /// The app as shipped in this build: real permission checks; sign-in, upload, profile and connections are local
-  /// stand-ins (their backends land in later slices); nothing is sent anywhere.
+  /// stand-ins (their backends land in later slices); nothing is sent anywhere. m3-10: recordings are read and
+  /// analysed on this Mac (OnDeviceRecordings, local insights); backend mode is `.local` until an API base URL and a
+  /// member token exist.
   public static func live(arguments: [String] = ProcessInfo.processInfo.arguments) -> AppModel {
     let sampleWeek = SampleWeekFlag()
     // One Never watch store for the observer, the onboarding screens and the recordings import.
     let neverWatch = NeverWatchStore()
+    let events: LocalEventSource = NoLocalEvents()
+    let backends = Backends.make(mode: BackendMode.resolve(
+      baseURL: UserDefaults.standard.string(forKey: BackendMode.baseURLDefaultsKey), tokens: NoMemberToken()))
+    let local = LocalAnalysis.live(neverWatch: neverWatch, events: events)
     let services = OnboardingServices(
       account: UnavailableAccountService(), consent: LocalConsentService(), uploader: NoUploader(), capture: NoCapture(),
       profile: LocalProfileService(), neverWatch: neverWatch, exclusions: LocalExclusionService(),
       connections: UnavailableConnectionService(), loginItem: LiveLoginItem(), relauncher: LiveRelauncher(),
-      sampleWeek: sampleWeek, recordings: RecordingsImportModel.live(neverWatch: neverWatch)
+      sampleWeek: sampleWeek,
+      recordings: local.onDevice?.model ?? RecordingsImportModel.live(neverWatch: neverWatch)
     )
     let app = AppModel(
       options: LaunchOptions.parse(arguments: arguments), bundlePath: Bundle.main.bundlePath, bufferReadable: true,
-      store: UserDefaultsOnboardingStore(), services: services, probe: LivePermissionProbe(), events: NoLocalEvents(),
-      sampleWeek: sampleWeek
+      store: UserDefaultsOnboardingStore(), services: services, probe: LivePermissionProbe(), events: events,
+      sampleWeek: sampleWeek, backends: backends, insights: local.insights, onDeviceRecordings: local.onDevice
     )
+    app.startLocalAnalysis(rules: local.rules)
     app.trackFrontmostApp()
     app.startBackgroundChecks()
     return app
