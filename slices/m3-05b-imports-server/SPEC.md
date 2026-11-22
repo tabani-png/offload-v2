@@ -131,10 +131,16 @@ state (none references an import yet); the analysis anchored to an import's last
   services/api and a migration only.
 - `Idempotency-Key` on `POST /v1/imports` is not built (no shared implementation exists yet); API.md notes it.
 - `imports.wiped_at` is not written by this slice (the row is deleted); DATA_MODEL says so.
+- The red test "an import forgotten while its batch is being checked" was made stricter after the red commit: its
+  fault hook counted the device's token transactions too, so it forgot before the check, not between check and insert,
+  and passed without the `FOR SHARE` recheck. It now mints the token first; it fails with the recheck removed
+  (spot-checked) and passes with it.
+- API.md's `observations.ingested` payload row said `{ device_id, member_id, count, first_ts, last_ts }`, which m3-01
+  never wrote; it now states the real payload plus `import_id`.
 
 ## Progress
-- [ ] SPEC, verify.sh, ROADMAP row
-- [ ] red tests committed
-- [ ] contracts, migration, routes, ingest changes, forget
-- [ ] docs (API.md, DATA_MODEL.md, ARCHITECTURE.md, SECURITY_PRIVACY.md)
-- [ ] self-review, verify.sh and verify-all green
+- [x] SPEC, verify.sh, ROADMAP row (`8cdf499`)
+- [x] red tests committed (`057ec31`), seen failing (16 of 16: routes 404, contracts missing)
+- [x] contracts (`82e3061`); migration 0007, routes, ingest changes, forget (`080ea1c`)
+- [x] docs (API.md, DATA_MODEL.md, ARCHITECTURE.md, SECURITY_PRIVACY.md)
+- [ ] independent review (AGENTS review gate) and the CI run; status stays `in_progress` until then
