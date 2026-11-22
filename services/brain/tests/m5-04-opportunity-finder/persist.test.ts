@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { fixRules, type FixRules } from "../../src/opportunities/rules.ts";
 import { runMemberUpdate } from "../../src/store/job.ts";
-import { getOpportunityView, listOpportunityViews, listWeekEpisodes } from "../../src/store/repository.ts";
+import { getOpportunityView, LeakError, listOpportunityViews, listWeekEpisodes } from "../../src/store/repository.ts";
 import { fixtureWeek, mondayNoonAfter, MONDAYS, SEED, WEEKS } from "../fixtures/window.ts";
 import { dump, HAS_DB, testDb, type TestDb } from "./db.ts";
 
@@ -183,4 +183,20 @@ t("PERSIST: an open opportunity with a picked option is kept when it leaves the 
   expect(kept!.rank).toBeNull();
   expect(kept!.options[0]!.chosen_at).not.toBeNull();
   expect(kept!.options.length).toBe(outreach.options.length);
+});
+
+t("PERSIST: an option holding an email address or a URL is refused and nothing is stored (review 2 finding 4)", async () => {
+  const rules = fixRules();
+  for (const leak of ["ask dana@fund.example", "see https://billing.example.com/inv/4411"]) {
+    const leaky: FixRules = { propose: (e) => { const p = rules.propose(e); return p === null ? null : { ...p, options: p.options.map((o) => ({ ...o, detail: `${o.detail} ${leak}` })) }; } };
+    let err: unknown = null;
+    try {
+      await update(leaky);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(LeakError);
+    const rows = await dump(db, db.A1.memberId, ["opportunities", "fixes", "day_records"]);
+    expect([rows["opportunities"]!.length, rows["fixes"]!.length, rows["day_records"]!.length]).toEqual([0, 0, 0]);
+  }
 });

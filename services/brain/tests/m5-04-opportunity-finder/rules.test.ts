@@ -161,6 +161,9 @@ test("ESTIMATE: a bare estimate keeps a storable kind, and gives no option for a
   expect([o.kind, o.rule, o.option_no, o.recommended]).toEqual(["remove_step", "estimate", 1, true]);
   expect(o.figures.payback_weeks.arithmetic).toBe("setup 0.5 h / 1.2 h saved per week = 0.42 weeks");
   expect(bareOption({ ...base, fixKind: "small_app" }, "2026-W45")!.kind).toBe("small_app");
+  // Under 0.5 h a week a bare estimate is not recommended either (review 2 finding 4).
+  expect(bareOption({ ...base, weeklyHoursSaved: 0.3 }, "2026-W45")!.recommended).toBe(false);
+  expect(bareOption({ ...base, weeklyHoursSaved: 0.5 }, "2026-W45")!.recommended).toBe(true);
   expect(bareOption({ ...base, fixKind: "leave_alone" }, "2026-W45")).toBeNull();
   expect(bareOption({ ...base, fixKind: "made_up" }, "2026-W45")).toBeNull();
   expect(bareOption({ ...base, weeklyHoursSaved: 0 }, "2026-W45")).toBeNull();
