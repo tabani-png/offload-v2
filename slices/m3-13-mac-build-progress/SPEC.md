@@ -212,7 +212,8 @@ sheet?" (m5-06); any change to m3-10's folders.
     drawn as waiting (it is being fixed), and failed only once the build has ended. `end` and `recovered` are unknown
     names here and are listed under row 3.
   - Dots: `cancelled` and an unknown state are amber (needs you), as nothing was installed; a gone build's row is amber.
-  - The plan panel has **Not now** (closes the plan, nothing posted). In `.cloud`, a `.localRepeat` hand-off says
+  - The plan panel has **Close** in every phase but `starting`: it hides the plan on this Mac, posts nothing, drops the
+    kept plan and says "Closed on this Mac. Offload may still finish designing it." (review5.md finding 1). In `.cloud`, a `.localRepeat` hand-off says
     "“<name>” was counted on this Mac. Build it from a suggestion in Today once Offload has seen it." and shows no
     sample (sample data exists only in `.local`).
   - The start time in the list ("started 22 Nov, 11:50") is a date in the person's time zone, not a caption: its
@@ -298,7 +299,7 @@ sheet?" (m5-06); any change to m3-10's folders.
      in_progress, BASE set" after the rebase; `verify.sh` passes its scope check again.
   2. The fix is read only in `ready_for_approval`. `needs_you` says "Designing this fix stopped and needs you. Nothing
      is built until then." and drops the kept plan; an unknown state keeps waiting (tested).
-  3. **Not now** is the glossary's answer: it posts `answer: not_now` (asked again in 4 weeks), says "Set aside.
+  3. *(Superseded by review 5 item 1: no answer is posted.)* **Not now** is the glossary's answer: it posts `answer: not_now` (asked again in 4 weeks), says "Set aside.
      Offload asks about it again in 4 weeks." and drops the plan; a failure keeps the plan and says why. A stopped
      plan has **Close** instead, which only hides it (nothing posted; its kept plan is already dropped). The review-2
      and review-3 tests that pinned the local-only Not now changed with this.
@@ -318,5 +319,18 @@ sheet?" (m5-06); any change to m3-10's folders.
   Notes kept for the owner: the build-loop port has no `GET /v1/builds/{id}/definition`, so Install cannot be enabled
   against it (API.md wins; see API gaps); test plan step 2 needs m3-11 or m3-12; the measured hours stay computed on
   the Mac (review1.md item 6).
+- **Review 5** (`logs/m3-13-mac-build-progress.review5.md`, verdict CHANGES; every finding taken; commits say
+  "review5.md"):
+  1. **Not now is removed; Close is local.** ARCHITECTURE section 7's state diagram allows `not_now` only from
+     `open`, and every plan on this screen is past `open` (it was answered `build`); the brain ports'
+     `applyAnswerToOpportunity` likewise updates only rows in `open`, `not_now`, `never` or `left_alone`. So a posted
+     `not_now` would be refused or silently ignored, and the Mac would have claimed "Set aside" falsely. The plan
+     panel now has **Close** in every phase but `starting`: it hides the plan on this Mac, posts nothing, drops the
+     kept plan and says "Closed on this Mac. Offload may still finish designing it." (a stopped plan closes quietly).
+     **API gap** for the API and brain owners, next to the others: there is no documented way to withdraw a `build`
+     answer or stop designing an opportunity, so design spend continues after Close.
+  2. Close is synchronous and off while OK, build is busy or starting, so it cannot be double-pressed or race the
+     build approval (the async Not now that could is gone).
+  3. The implementation notes now say Close, and review 4 item 3 is marked superseded.
 - `BASE` is set after m3-10 is `done`, so m3-10's placeholder commit in `BuildProgress/` is not counted against this
   slice's `owns`.
