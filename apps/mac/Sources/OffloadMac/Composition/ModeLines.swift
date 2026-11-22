@@ -9,6 +9,9 @@ public enum ModeLines {
   public static let importAfterSending = "Recordings import starts after Start sending"
   /// An on-device import held back until setup is past screen 2 (ImportOffer): sending has nothing to do with it.
   public static let importAfterSetup = "Recordings import opens once the first setup steps are done"
+  /// Capture was asked to start and could not (for example macOS refused the saved key Offload keeps in the
+  /// Keychain). Generic on purpose: the error itself is never shown or logged (review 6, finding 4).
+  public static let captureOff = "Not watching: Offload could not open its storage on this Mac. Quit and open it again"
 
   /// Local mode first; then why the recordings import is not offered, if it is not: no importer yet, or (by where the
   /// import goes) not sending yet for the uploader, setup not far enough for the on-device import.

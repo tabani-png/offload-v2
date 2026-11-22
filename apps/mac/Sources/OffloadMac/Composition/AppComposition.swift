@@ -229,8 +229,10 @@ public struct CompositionSeams {
   public var modeLines: [String] {
     let s = app.onboarding.state
     let sendingNow = uploadBackend.allowsUploads && s.sending && !s.reconsentPending
-    return ModeLines.lines(local: !sendingNow, importerReady: importerReady,
-                           importOffered: app.recordings?.isOffered ?? false, choice: importChoice)
+    let lines = ModeLines.lines(local: !sendingNow, importerReady: importerReady,
+                                importOffered: app.recordings?.isOffered ?? false, choice: importChoice)
+    // A start that failed (a Keychain that refused) is said first; nothing else would tell the person.
+    return capture.lastError != nil && !capture.isRunning ? [ModeLines.captureOff] + lines : lines
   }
 
   /// The app as shipped: real permission checks, the Keychain, the store under Application Support/Offload, Sparkle.
