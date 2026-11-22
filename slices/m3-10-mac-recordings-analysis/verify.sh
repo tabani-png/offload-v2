@@ -9,7 +9,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m3-10-mac-recordings-analysis"
-BASE="3c26858a2a11775177091ed551093b877c1fb81d"   # set to the commit this slice starts from when status becomes in_progress
+BASE="2430b39795eea9779597016acb3cc6da3f920f08"   # set to the commit this slice starts from when status becomes in_progress
 PKG="apps/mac"
 TEST_DIR="apps/mac/Tests/OffloadMacTests/M310"
 SUITE="OffloadMacTests.M310"

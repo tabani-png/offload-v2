@@ -25,10 +25,12 @@ as a decision rather than leaving it as a slice divergence.
 - **No upload.** Local insights, the imports they read and the weekly review answers stay on this Mac
   (`Application Support/Offload/OnDevice/`, folders 0700, files 0600, excluded from backups). In `.local` no API client
   exists, so no request can be built ([ADR 0035](0035-mac-egress-guard-and-ledger.md)'s egress guard is unchanged).
-- **Masked data only.** Recordings are read with on-device OCR and masked before anything is stored, by the same rules
-  that apply to anything that leaves the Mac ([ADR 0005](0005-masked-text-only-reaches-models.md),
-  [ADR 0028](0028-stable-keyed-pseudonyms.md)): secrets, cards, account numbers and codes become placeholders; URLs keep
-  their host; emails, phones and person names become pseudonyms. The masked text itself is not kept, only its hash;
+- **Masked data only.** Recordings are read with on-device OCR and masked before anything is stored, with the same
+  categories, labels and pseudonym shape as the masking of anything that leaves the Mac
+  ([ADR 0005](0005-masked-text-only-reaches-models.md), [ADR 0028](0028-stable-keyed-pseudonyms.md)), plus a name
+  tagger pass: secrets, cards, account numbers and codes become placeholders; URLs keep their host; emails, phones and
+  person names become pseudonyms. Its pseudonyms use a local key, not yet the tenant key, and its phone and doc
+  normalisation are simpler than m3-02's. The masked text itself is not kept, only its hash;
   pixels, file names and paths are never stored. Never watch applies when insights are read. Until m3-02's
   `OffloadMasker.TextMasker` is merged, an interim masker with the same labels and pseudonym shape does this; the m3-14
   integration swaps it in.

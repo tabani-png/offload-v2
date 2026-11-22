@@ -56,8 +56,9 @@ on a Mac with the m3-09 test build.
     are returned top to bottom, then left to right. Nothing is kept.
   - `InterimTextMasker: ImportTextMasker`, **interim**, clearly named, to be replaced by m3-02's
     `OffloadMasker.TextMasker` when PR #13 lands (see Scope changes). Order, each case test-driven:
-    1. URLs `scheme://host/path?query#fragment` keep the host, the path becomes `<doc:h_…>`, query and fragment are
-       dropped (`https://host/<doc:h_…>`, or `https://host` with no path); bare `host.tld/path` the same.
+    1. URLs `scheme://host/path?query#fragment` keep the host, the path becomes `<doc:h_…>`, query, fragment and user
+       info (`user:password@`) are dropped (`https://host/<doc:h_…>`, or `https://host` with no path); bare
+       `host.tld/path` the same.
     2. Tokens become `[SECRET]`: `sk-`/`sk-ant-` keys, `ghp_`/`gho_`/`github_pat_`, `xox[abpr]-`, `AKIA` + 16,
        JWTs (three base64url parts joined by dots, starting `eyJ`), `-----BEGIN … PRIVATE KEY-----` blocks, and any run of 32 or more characters of
        `[A-Za-z0-9_+/=-]` that mixes letters and digits.
@@ -66,8 +67,14 @@ on a Mac with the m3-09 test build.
        digit run becomes `[OTP]`. Times, dates and amounts with separators (`4:00`, `2026-11-22`, `1,284`) stay.
     5. Emails become `<email:h_…>`; phone numbers (E.164 `+` and 8 to 15 digits, or national forms with 10 digits
        and separators) become `<phone:h_…>`.
+    6. Person names become `<person:h_…>` (follow-up 2026-11-22, run before the email and digit rules in the code):
+       m3-02's "Name <email>" and signature-block patterns with its name check, then names NaturalLanguage's tagger
+       finds (`.nameType`, `.personalName`). App names (MenuBarApp's table and the installed apps' names,
+       `InstalledAppNames`), months, weekdays and common title words are never names, so a menu bar app keeps its
+       name. Results for inputs up to 512 characters are memoised (`MaskCache`, 4,096 entries), so a repeated title
+       or app name runs the tagger once.
     Pseudonyms use the glossary format: first 16 hex of HMAC-SHA256 over the normalised value (email and doc
-    lowercased, phone digits only) under a **local pseudonym key** (`LocalPseudonymKey`: 32 random bytes in
+    lowercased, phone digits only, person NFKC, lowercased with single spaces as m3-02) under a **local pseudonym key** (`LocalPseudonymKey`: 32 random bytes in
     `Application Support/Offload/OnDevice/pseudonym.key`, file 0600, folder 0700, created once; tests inject a fixed
     key). Output is truncated to 8000 characters after masking. The labels match `OffloadMasker.MaskCategory` so the
     swap changes no stored shape.
@@ -288,7 +295,7 @@ Folder `apps/mac/Tests/OffloadMacTests/M310/`, Swift Testing, every test `@Test(
 | Tag | Tests (short) |
 |---|---|
 | OCR | Vision box to top-left pixel box (corners, full frame, a centred box); a CoreText-rendered "INVOICE 2041 READY" image is read by `VisionTextRecognizer` with the words in order and boxes inside the frame; a frame without an image gives no lines; lines come top to bottom then left to right; the request is accurate with the four languages |
-| MASK | one test per rule: URL keeps host, path to `<doc:h_…>`, query and fragment dropped; bare host/path; each token family to `[SECRET]`; Luhn card with spaces and dashes to `[CARD NO.]`, a non-Luhn 16-digit run to `[ACCT NO.]`; 6-digit code to `[OTP]`; times, dates and `1,284` unchanged; email and phone to stable pseudonyms (same value same pseudonym, different key different pseudonym, case-insensitive email); 8000-character cap after masking; a menu bar app name ("Xcode", "Google Chrome") is unchanged so m3-05 keeps it; the pseudonym key file is 0600 in a 0700 folder and reused |
+| MASK | one test per rule: URL keeps host, path to `<doc:h_…>`, query and fragment dropped; bare host/path; each token family to `[SECRET]`; Luhn card with spaces and dashes to `[CARD NO.]`, a non-Luhn 16-digit run to `[ACCT NO.]`; 6-digit code to `[OTP]`; times, dates and `1,284` unchanged; email and phone to stable pseudonyms (same value same pseudonym, different key different pseudonym, case-insensitive email); 8000-character cap after masking; a menu bar app name ("Xcode", "Google Chrome") is unchanged so m3-05 keeps it; the pseudonym key file is 0600 in a 0700 folder and reused; URL user info dropped; person names from "Name <email>", signature blocks and the name finder (OCR lines, window titles) to `<person:h_…>` in m3-02's shape; app names (known, installed), months, weekdays and common words kept even when the finder reports them; the real NaturalLanguage tagger; one finder run per distinct short input |
 | SINK | observations round-trip through the file as `StoredObservation` with snake case keys; the masked text is not written (only `text_hash`); no key holds a path or file name; files 0600 and folder 0700; write to an unopened space throws; forget deletes only that import; two imports stay in two files; a corrupt line is skipped on read |
 | WIRING | `OnDeviceRecordings.make` gives a model with `canImport == true`, the local sink and a file ledger under the injected folder; an import of a fixture folder (scripted frame readers, fake recognizer returning lines with an email) writes masked observations that the store reads back; offered in `.local` mode without sign-in, not offered in `.cloud` mode before sending, offered in `.cloud` while sending; Import in `.local` does not touch `ConsentService` or `Uploader` |
 | FOLDERS | candidates in order (`~/screenwatch` first and kind screenwatch when it has `days/`, then the screencapture location with `~/` expanded, Desktop, Movies); missing folders left out; Offload's own data folder never a candidate; the preferred folder is used only when no folder was chosen; nothing is listed when candidates are computed |
@@ -455,6 +462,20 @@ m3-12 (Weekly review) land. In Local mode onboarding skips screens 5 to 12, so t
   two use the real tagger. **The m3-14 integration (branch `w1/mac-integration`) replaces this interim masker with
   `OffloadMasker.TextMasker` once both land**; m3-02's masker has no tagger pass today, so m3-14 decides whether the
   tagger pass moves into it.
+- **Review 6** (2026-11-22, `logs/m3-10-mac-recordings-analysis.review6.md`), changes made:
+  - *App names taken for people* (finding 1): the name pass keeps any name that is an installed app's
+    (`InstalledAppNames`: the `.app` bundles of the Applications folders, file name and `CFBundleName`, listed once
+    when the on-device import is built; those folders are not guarded by macOS) or in MenuBarApp's table, both for a
+    bare menu bar name and for a name inside text. A person whose name is exactly an installed app's name alone is
+    not masked; recorded as a known limit. WIRING test: a recording showing "Alfred" keeps "Alfred".
+  - *Cost* (finding 2): `MaskCache` memoises results for inputs up to 512 characters (4,096 entries, cleared when
+    full), shared by the import's masker.
+  - *SPEC and ADR wording* (findings 3, 4): the Contract's masker list and the MASK row name the person rule; ADR
+    0039 says "same categories, labels and pseudonym shape, plus a name tagger pass" instead of "same rules".
+  - *Review 4's open items* (finding 5): `verify.sh` `BASE` is `2430b39` (this history's m3-13 SPEC commit); an
+    import run with no focus of its own is no longer charged to the previous file's app (`lastFocus` cleared at an
+    import's `idle_start`); URL user info is dropped. Review 4's day-building cost item (its finding 4, "later is
+    fine") stays open.
 - **Security review needed** before `done` (SECURITY_PRIVACY section 13): the interim masker, the local sink and the
   local pseudonym key.
 - **Rebase onto the rewritten `w1/h-shell-onboarding`** (2026-11-22, after its rebase onto main): m3-03 made
