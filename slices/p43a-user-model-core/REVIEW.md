@@ -488,3 +488,51 @@ files that use their ideas.
 Finding 1 is MAJOR and blocks PASS. Fix it red test first, and fix findings 2 to 4 in the same round.
 
 VERDICT: CHANGES
+
+### Author response (round 3)
+
+Author: Claude Code (Opus 5.5), the author of both slices. Every behaviour change had its test committed and seen
+failing before the fix; each pin test was checked against the mutation you used. Red commits `cb5d715` (p43a) and
+`6b0547f` (p43b); fixes `6986b8d` (p43a) and `7508c33` (p43b); docs `5d8064f`. After the round:
+`p43a-user-model-core: PASS` (65 tests, was 63), `p43b-user-model-store-api: PASS` (35 tests, was 31), full suite
+150 pass, `verify-all: green` (copy lint ok), 0 leftover test schemas or roles. Scope is unchanged; no assertion was
+weakened (test files only gained tests and list entries).
+
+1. **Fixed (MAJOR).** `checkNarrative` now reads cardinal number words as numbers: `zero` … `nineteen`, the tens, and
+   `forty-two` / `forty two` compounds, each checked against the record's known values like a digit (case-insensitive).
+   Multipliers, fractions and scales (`half`, `twice`, `thrice`, `double(d)`, `triple(d)`, `quadruple(d)`, `dozen`,
+   `quarter`, `third`, `hundred`, `thousand`, `million`, `billion`, plural forms) are always refused. The prompt now
+   says "Write every number in digits, never as a word, and do not compare with other weeks". New test `NARRATIVE:
+   numbers written as words are checked like digits; multipliers and fractions are refused`: `three` and `Twelve`
+   pass against a 3-block, 12 h record; a sentence with no number passes; `forty hours … twice the usual` is refused
+   with `forty` and `twice` in `unknown`; `four`, `twenty-one`, `twenty one`, `Half`, `doubled`, `dozen`, `hundred`,
+   `third` are refused; `writeWeekSentence` falls back to the code sentence for your probe. Red at `cb5d715`. Ordinals
+   other than `third` (`first`, `second`) are not read; DESIGN section 7 says so.
+2. **Fixed (test).** New test `API: a stored week after the member's current week is 404 on both routes`: `2026-W45`
+   is stored and answers 200 at the seeded `now`, and 404 `not_found` on both `GET /v1/records/weeks/2026-W45` and
+   `GET /v1/review/week?w=2026-W45` at Tuesday of `2026-W43`. It passes against the code; with both guards removed
+   (your S9 and S10) it fails (checked, then restored).
+3. **Fixed (test).** New test `STORE: setWeekNarrative refuses any link, including host names on code-like suffixes;
+   the stored sentence is unchanged` (`evil.example`, `evil.sh`, an IP address; each throws `LeakError`, and the
+   stored narrative is unchanged). Red at `6b0547f` for `evil.sh` and the IP address (finding 4). The recheck in
+   `writeWeekNarrative` is still not reachable through the public path, because `writeWeekSentence` refuses first; it
+   uses the same strict check and stays as a second line.
+4. **Fixed.** Two checks now: `hasAnyLink` (no exception) guards everything a model writes (`writeWeekSentence`, the
+   job recheck and `setWeekNarrative`); `hasLink` keeps the code-file exception for text a person types. Your model
+   probe `try evil.sh for tips` and `read docs.rs today` fall back to the code sentence (NARRATIVE link test, red at
+   `cb5d715`). For profile text I kept the exception and named it in API.md (a host on `md`, `js`, `py`, `sh`, `rs`
+   and the like, for example `bun.sh`, is accepted), because dropping `md`/`sh`/`rs`/`py` would refuse
+   `README.md`-style goals; the text is the member's own and reaches a model only inside `<user_context>`.
+5. **Partly done (NIT).** Pinned the two you called worth it: `STORE: a review answer never moves an opportunity that
+   has left the review states` (a `chosen` opportunity stays `chosen` after `never`; fails without the state filter)
+   and `SUPERSEDE: a rate change of exactly 50% revises; just over 50% starts a new version` (fails with `>=`). Not
+   pinned: the uuid check in `bunRunInTenant` (ids come only from verified tokens, and without it Postgres refuses the
+   cast with no data shown) and the profile advisory lock (a reliable test needs two interleaved transactions and
+   timing; left as reviewed code).
+6. **Fixed (NIT).** Both link checks read full-width and ideographic dots (`．`, `。`, `｡`) as dots and refuse IPv4
+   addresses. PROFILE validation gained `203.0.113.9`, `evil．com` and `evil。com` (red at `cb5d715`).
+7. **Fixed (NIT).** `runMemberUpdate` returns `paused: true` and writes nothing while `profiles.learning_paused` is
+   true (checked before the timezone rule). New test `STORE: the job changes nothing while learning is paused` (no
+   rows in any of six tables). Red at `6b0547f`. DESIGN section 4 says so.
+8. **Still deferred (scope).** `docs/GLOSSARY.md` is outside both slices' `paths_in_scope`; the proposed wording in the
+   round 1 response stands for a docs slice that owns it.
