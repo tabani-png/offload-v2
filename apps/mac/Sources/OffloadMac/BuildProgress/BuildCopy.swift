@@ -80,6 +80,7 @@ public enum BuildCopy {
   public static let cancelBuild = "Cancel build"
   public static let removeFromList = "Remove from list"
   public static let okBuild = "OK, build"
+  public static let notNow = "Not now"
   public static let installNeedsCloud = "Installing needs the cloud."
   public static let installNeedsEnrollment = "Installing needs this Mac to be enrolled."
   public static let buildNeedsEnrollment = "Building needs this Mac to be enrolled."
@@ -206,7 +207,7 @@ public enum BuildCopy {
       matchesDetail, heldOutPassed, heldOutFailed, readyToShip, readyToShipDetail, installedDetail, sampleRowName,
       sampleRowLine, replay, unnamed, headlineQueued, headlineBuilding, headlineVerifying, headlineFixing, headlineReady,
       headlineFailed, headlineCapped, headlineTampered, headlineCancelled, headlineInfraFailed, workersTitle, frozenLabel,
-      heldOutLabel, notRun, install, seeWhatChanged, whatItWillDo, cancelBuild, removeFromList, okBuild,
+      heldOutLabel, notRun, install, seeWhatChanged, whatItWillDo, cancelBuild, removeFromList, okBuild, notNow,
       installNeedsCloud, installNeedsEnrollment, buildNeedsEnrollment, installChanged, definitionMissing, readFirst,
       measuredAfter, notMeasured, measuredFromM4, planTitle, answering, designing, stillDesigning, planChanged,
       alreadyRunning, noFixYet, starting, noBuilds, offline, gone, checking, opportunityNeedsCloud,
