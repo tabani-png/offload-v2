@@ -11,9 +11,9 @@ size: M
 parallel_group: M3-D
 owns: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Tests/OffloadMacTests/M314/**]
 verify: bash slices/m3-14-mac-app-integration/verify.sh
-min_tests: 24
-paths_in_scope: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Sources/OffloadMac/CaptureRuntime.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/Onboarding/Services.swift, apps/mac/Sources/OffloadMac/Updates/CaptureLifecycle.swift, apps/mac/Sources/OffloadUploader/Uploader.swift, apps/mac/Sources/OffloadUploader/DeviceKey.swift, apps/mac/Tests/OffloadMacTests/M314/**, apps/mac/README.md, docs/ARCHITECTURE.md, slices/m3-14-mac-app-integration/**]
-paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadContracts/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Tests/OffloadMacTests/M302/**, apps/mac/Tests/OffloadMacTests/M303/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**]
+min_tests: 38
+paths_in_scope: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Sources/OffloadMac/CaptureRuntime.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/Onboarding/Services.swift, apps/mac/Sources/OffloadMac/Updates/CaptureLifecycle.swift, apps/mac/Sources/OffloadUploader/Uploader.swift, apps/mac/Sources/OffloadUploader/DeviceKey.swift, apps/mac/Sources/OffloadUploader/ImportOutbox.swift, apps/mac/Package.swift, apps/mac/Tests/OffloadMacTests/M314/**, apps/mac/README.md, docs/ARCHITECTURE.md, slices/m3-14-mac-app-integration/**]
+paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadContracts/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Tests/OffloadMacTests/M302/**, apps/mac/Tests/OffloadMacTests/M303/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**]
 red_tests: [ENTRY, LAUNCH, CAPTURE, UPLOAD, EXCLUDE, NOW, IMPORT]
 ---
 
@@ -174,3 +174,36 @@ passing and every tag present, then the full `swift test`. On Linux it prints SK
   instead of changing `RecordingsImportModel.live`.
 - **Audit items left open** (W1-D audit, `logs/w1d-audit.md`): the import is still not offered in Local mode and has
   no OCR (m3-10); NOTICE's clicky entry is still "Planned" (m3-04/m3-05 before `done`); `PERF:` is manual.
+
+### Review 1 (2026-11-22)
+- **Finding 1 (blocker, tests for the import egress code):** new UPLOAD tests on PR #13's real `Uploader` over a scripted
+  transport and an encrypted temp store: open and forget are signed POSTs to the one host with the exact bodies and
+  ledger lines; a 401 refreshes once; refusals throw and write no ledger line; the import outbox refuses live objects,
+  missing `import_id`s and detector hits; staged objects survive a restart and go out with the next flush under the
+  next seqs; staging while a flush waits on the network is not overwritten; `DeviceKey.isStored` never creates a key;
+  `BackendMode.live` reads the Keychain only with an API base and a device id; a paused `UploadRuntime` refuses to
+  open or stage.
+- **Finding 2 (major, failed hand-offs lost):** the hand-off is now synchronous and durable. `ImportUploadQueue.
+  stageImport` checks the objects and seals them in `ImportOutbox` (`import-outbox.enc`, new file in
+  `OffloadUploader`, added to `paths_in_scope`) before `UploaderImportSink.write` returns; when it throws, `write`
+  throws and m3-05's importer does not record the file. The uploader drains the outbox inside `flush()` in the same
+  synchronous step that saves the queue, which also removes the in-memory outbox of 86d31c9: staging never touches
+  the upload state, so no flush can overwrite it. Forgetting an import stays allowed while paused (a delete request,
+  no observation).
+- **Finding 3 (major, the test build cannot import and does not say why):** not built here: on-device OCR and the local
+  store are m3-10's (orchestrator brief for this slice: "do not build those; expose clean seams"). Resolved by saying
+  it: the menu bar item shows "Local mode: nothing leaves this Mac" and "Recordings import needs on-device text
+  reading, not in this build yet" (`ModeLines`, `AppComposition.modeLines`) until m3-10 plugs a recognizer in. Today's
+  existing Local-mode banner (m3-04) stays.
+- **Finding 4 (row 11.6):** `StoreContext.bufferReadable()` (newest day key opens, or no day files) feeds the launch;
+  "Start fresh" now deletes the unreadable buffer (`StoreContext.discard()`, through `AppModel.onStartFresh`). A
+  capture whose appends fail still reads as running; the observer has no failure signal to read yet (m3-02 follow-up).
+- **Finding 5:** one `StoreContext` (one `KeyRing`, one `DayStore`, one `ImportOutbox`) is shared by capture, the
+  uploader and the sink.
+- **Finding 6:** the updater drives `UpdatePreparation`: capture stops and the uploader pauses before an install.
+- **Finding 7:** both runtime timers run in the common run-loop modes (not unit-tested: run-loop modes need a running
+  app).
+- **Finding 8:** `Package.swift` header corrected (now in `paths_in_scope`, comment only); the duplicate doc comment
+  went with the rewrite. The merge's `packages/contracts/package.json` script line and
+  `packages/contracts/scripts/gen-swift.ts` are PR #13's own m3-02 work (common.md forbids this slice editing
+  `packages/**`); the owner needs to accept them as part of merging #13's history.

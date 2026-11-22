@@ -3,7 +3,7 @@
 // Capture half (slice m3-02): contracts + JCS, store, masker, observer, uploader (egress guard).
 // OffloadImport holds the recordings import (m3-05); OffloadActuator is still a marker. See docs/ARCHITECTURE.md#1-mac-client.
 // The app target OffloadMac is an executable: product "Offload", which bundle.sh copies to
-// Offload.app/Contents/MacOS/Offload (docs/DEPLOYMENT.md section 3.1). Its one composition root is App/Composition
+// Offload.app/Contents/MacOS/Offload (docs/DEPLOYMENT.md section 3.1). Its one composition root is Composition/
 // (slice m3-14-mac-app-integration).
 // Sparkle 2 is the one third-party dependency, linked only into the app target (ADR 0024, DEPLOYMENT section 4).
 // Builds only on macOS 14+ with Swift 6 (CI job "mac"). Not buildable on Linux.
