@@ -11,10 +11,10 @@ size: M
 parallel_group: M3-E
 owns: [apps/mac/Sources/OffloadMac/TodayLive/**, apps/mac/Tests/OffloadMacTests/M311/**]
 verify: bash slices/m3-11-mac-today-live/verify.sh
-min_tests: 55
+min_tests: 100
 paths_in_scope: [apps/mac/Sources/OffloadMac/TodayLive/**, apps/mac/Sources/OffloadMac/App/OffloadApp.swift, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M311/**, apps/mac/README.md, docs/GLOSSARY.md, slices/m3-11-mac-today-live/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Sources/OffloadMac/WeeklyReview/**, apps/mac/Sources/OffloadMac/BuildProgress/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**, apps/mac/Tests/OffloadMacTests/M310/**, apps/mac/Tests/OffloadMacTests/M312/**, apps/mac/Tests/OffloadMacTests/M313/**]
-red_tests: [HEADER, DAY, GRID, DID, REPEATS, HOW, FIX, ANSWER, HANDOFF, CLOUD, STATES, BANNERS, MENU, KEYS, FIGURES, COPY]
+red_tests: [HEADER, DAY, GRID, DID, REPEATS, HOW, FIX, ANSWER, HANDOFF, CLOUD, STATES, BANNERS, MENU, KEYS, FIGURES, COPY, TODAYAPI]
 ---
 
 # m3-11-mac-today-live
@@ -44,8 +44,13 @@ Scope changes). `human_gated: true`: the owner checks it against his own importe
   - `TodayContent` (pure, Equatable): `title` ("Today · Thu, Nov 12", or "Thu, Nov 5" for an earlier day),
     `headline`, `subtitleItems`, `grid: DayGrid?`, `kinds: [KindRow]` (cloud), `did: [DidRow]`, `repeats:
     [RepeatRow]`, `fix: FixCard?`, `provenance` (m3-10's `DataProvenance`).
-  - `TodayContent.local(snapshot:day:rhythm:timeZone:answers:)` and `TodayContent.cloud(day:week:opportunities:)`:
-    pure builders, every number from a `Figure` (m3-10).
+  - `TodayContent.local(snapshot:day:rhythm:timeZone:answers:)` and `TodayContent.cloud(day:payload:rhythm:today:timeZone:)`
+    (the day record and the planned `GET /v1/today` payload): pure builders, every number from a `Figure` (m3-10).
+  - `TodayAPI.swift`: the flag `TodayAPI.available` (false until the server's `GET /v1/today` lands), the Codable
+    payload (`TodayPayload`, `TodayDayGridPayload`, `TodayGridCategory`, `TodayGridCell`, `TodaySwitchBurst`,
+    `TodayDidItem`, `TodayRepeatItem`) and `TodayClient` / `HTTPTodayClient` (`GET /v1/today?date=` over m3-10's
+    `APIClientCore`, made from the brain client's connection in `.cloud`). The opportunity routes stay m3-10's
+    `BuildsClient`.
   - `DayGrid`: 15-minute cells from the person's rhythm start to end (m3-04 `Rhythm`, default 9:00 to 18:00 = 36
     cells), widened to whole hours to cover any activity outside; rows are the day's top 5 apps (local; a sixth row
     "Other"); a cell belongs to the row with the most active seconds in it, when that is at least 60 s; the "Switch
@@ -71,19 +76,29 @@ Scope changes). `human_gated: true`: the owner checks it against his own importe
     designer, so there are no options: buttons **OK, build** (hands `.localRepeat` to Build progress), **Not now** and
     **Leave it alone** (answers `not_now` and `leave_alone` through `LocalAnswerStore`, keyed by the repeat's
     `k_` key and ISO week; the card moves to the next repeat).
-- **Data, `.cloud`** (m3-10 `BrainClient`, `BuildsClient`):
+- **Data, `.cloud`** (m3-10 `BrainClient`, `BuildsClient`; this slice's `TodayClient`), only while
+  `TodayAPI.available` is on:
   - `GET /v1/records/days/{date}` → header "7 h 40 m of work." from `totals.active_minutes`, subtitle from
-    `totals.focus_blocks` and `totals.switches_per_active_hour`; "What you did" from `by_task` (name and minutes);
-    "Time by kind" rows from `by_kind` instead of the grid (the cell grid comes from `GET /v1/today`, not built yet).
-  - `GET /v1/records/weeks/{iso_week}` → "Keeps coming back this week" from `tasks` with `instances` of 2 or more,
-    by minutes: "6× · 3.1 h" from `instances` and `minutes`; how lines from their Figures' `arithmetic`.
-  - `GET /v1/opportunities?state=open` → the first by rank is the card: status line "Suggested fix · ranked first for
-    <goal>" when it names a goal, title from the opportunity, up to 3 numbered `options` (title, detail, "saves 1.4
-    h/wk" from the option's saving Figure, "recommended" on the recommended one). **OK, build** hands
-    `.opportunity(id:optionID:)` to Build progress; **Not now** and **Leave it alone** post
-    `POST /v1/opportunities/{id}/answer` with `not_now` or `leave_alone`; picking "Leave it alone" as an option turns
-    the primary button into "Leave it alone", as the mockup.
-  - A 404 for the day is `.notRecorded` ("Nothing recorded for this day yet."), not an error.
+    `totals.focus_blocks` and `totals.switches_per_active_hour`, and the menu bar line.
+  - `GET /v1/today?date=` → the day grid from `day_grid` (rows are kinds of work by minutes, the top 5 in their
+    kind's colour, then Other; cells from `cells[]`; the Switch bursts row from `switch_bursts[]`; "Time by kind"
+    from the day record's `by_kind` only when no cell came); "What you did" from `what_you_did[]` (name, start time
+    "9:00a", minutes); "Keeps coming back this week" from `repeats[]` with `instances` of 2 or more, by minutes:
+    "6× · 3.1 h" from `instances` and `minutes`, how lines from their Figures' `arithmetic`.
+  - `suggested_fix` (when `open`) is the card: status line "Suggested fix · ranked first for <goal>" when it names a
+    goal, title from the opportunity, up to 3 numbered `options` (title, detail, "saves 1.4 h/wk" from the option's
+    saving Figure, "recommended" on the recommended one). Sent without options, it is read whole from
+    `GET /v1/opportunities/{id}`. **OK, build** hands `.opportunity(id:optionID:)` to Build progress; **Not now** and
+    **Leave it alone** post `POST /v1/opportunities/{id}/answer` with `not_now` or `leave_alone`, then the next open
+    opportunity by rank from `GET /v1/opportunities?state=open` takes the card (none when that read fails); an
+    answered opportunity is not drawn again. Picking "Leave it alone" as an option turns the primary button into
+    "Leave it alone", as the mockup.
+  - A 404 for the day (either read) is `.notRecorded` ("Nothing recorded for this day yet."), not an error.
+- **`.cloud` with `TodayAPI.available` off** (the default until the server lands): the screen shows a sample built by
+  the same `.cloud` builder from `TodaySample`, under the amber label **"Sample data: Today API not live yet"**. Every
+  sample Figure's arithmetic starts with "sample: " and its evidence is of kind `sample`; the card's status is "sample
+  fix · not your data" and its buttons and keys do nothing (no answer is posted, nothing goes to Build progress); the
+  days do not step; the menu bar shows no line; no request of any kind is sent. `.local` ignores the flag.
 
 ## Design note
 - **Layout** follows the mockup and its rules: one fix at a time, every number opens to how it was counted (quiet by
@@ -197,9 +212,10 @@ brain-port JSON.
 | KEYS | 1, 2, 3 pick options and Return presses the primary button |
 | FIGURES | every number in `TodayContent` traces to a Figure with arithmetic and evidence (walks the content) |
 | COPY | strings have no em dash, banned word or ADR 0016 term; captions lowercase with `·` items as separate items |
+| TODAYAPI | the planned `GET /v1/today` payload decodes from real-shaped JSON (lossy lists, null grid and fix); `GET /v1/today?date=` request with the member token, a malformed date refused before sending; the opportunity routes' requests and answer body; the client exists only over the HTTP brain in `.cloud`; the flag is off by default |
 
 ## Out of scope
-The day grid in `.cloud` mode (needs `GET /v1/today`, m5-05's API half); "how it was counted" evidence rows
+The server's `GET /v1/today` (m5-05's API half, another builder's); "how it was counted" evidence rows
 (`GET /v1/figures/{id}/evidence`); the fix designer and options on the Mac in `.local` mode; the Build progress screen
 (m3-13); any change to m3-04's `Today/` or m3-10's folders.
 
@@ -234,10 +250,10 @@ The day grid in `.cloud` mode (needs `GET /v1/today`, m5-05's API half); "how it
 - Reference repos: no code was ported. The layout, timings (cells pop in at 14 ms a cell and 40 ms a row, 150 ms
   after the screen appears) and copy follow the owner-approved mockup's `Daily` component (`source.canvas.tsx` lines
   479 to 626); the data path is m3-10's. Nothing needs a NOTICE line.
-- `BASE` is m3-10's last commit on this stack (`e80962a`; it was `d3d6651` until m3-10 was rebased onto the
-  rewritten `w1/h-shell-onboarding`, which left `d3d6651` outside this branch's history), taken while m3-10 is still
-  `in_progress` (its review 3 is done); this slice's commits are the only ones counted by the scope check (subject
-  prefix), so m3-10's placeholder commit in `TodayLive/` is not counted against this slice's `owns`.
+- `BASE` is m3-10's last commit on this stack (`da18c84`, as rebased onto `main` once PR #7 merged; it was `e80962a`
+  and before that `d3d6651`, each left outside this branch's history by a rebase), taken while m3-10 is still
+  `in_progress`; this slice's commits are the only ones counted by the scope check (subject prefix), so m3-10's
+  placeholder commit in `TodayLive/` is not counted against this slice's `owns`.
 - ROADMAP puts Today's Mac screen in m5-05 (M5) with its API; the owner asked for it in the test build now. This
   slice is the Mac screen only, `milestone: M3` with the wave; m5-05 keeps `GET /v1/today` and the evidence route.
 - Divergences from the mockup, honest by design: in `.local` the grid rows are apps, not kinds of work, and session
@@ -246,3 +262,21 @@ The day grid in `.cloud` mode (needs `GET /v1/today`, m5-05's API half); "how it
   `GET /v1/today` exists.
 - `apps/mac/Sources/OffloadMac/App/OffloadApp.swift` is shared (m3-04, m3-05, m3-09, m3-10 edit it); this slice adds
   one view line.
+- **Planned Today API (follow-up, 2026-11-22).** The owner asked for `.cloud` to read the PLANNED `GET /v1/today`
+  shape now, behind one flag, while another builder writes the server (m1-06/m5-05). Changes from the build above:
+  `.cloud` no longer reads `GET /v1/records/weeks/{iso_week}` or the open opportunities list for the first card (the
+  repeats and the card come from `GET /v1/today`); the day record still gives the header and the menu line (the
+  planned payload carries no totals); the cloud grid is built (it was out of scope); after an answer the next card
+  comes from `GET /v1/opportunities?state=open`. With the flag off, `.cloud` shows a labelled sample instead of the
+  records: the shell's "Sample data: cloud not connected" label was for `.local` only, so Today uses its own words.
+  API.md gives only `{ day_grid: { categories[], cells[], switch_bursts[] }, what_you_did[], repeats[] (Figure each),
+  suggested_fix: Opportunity | null }`; the item shapes are this slice's reading, in the brain records' style, for
+  the server slice to confirm or change (then `TodayAPI.swift` follows): `categories[]` `{ key, name?, minutes:
+  Figure }` (key a work kind), `cells[]` `{ start: "HH:MM" (the member's local time, 15-minute cells), category: key
+  | null }`, `switch_bursts[]` `{ start: "HH:MM", switches: Figure }`, `what_you_did[]` `{ task_key?, name, start?:
+  "HH:MM", minutes: Figure }`, `repeats[]` the week record's task shape `{ task_key, name, instances: Figure,
+  minutes: Figure, median_minutes?: Figure }`, `date?` echoed; unknown fields are ignored and an item missing its
+  Figure is left out. Existing cloud tests keep their record fixtures through `M311Cloud.content` (the payload the
+  server would send for them); test `CLOUD: the day record and GET /v1/today fill the screen` replaces the records
+  one. No path outside `paths_in_scope` changed (`Backend/` is read, not edited: `HTTPTodayClient` reuses the HTTP
+  brain client's `APIClientCore`).

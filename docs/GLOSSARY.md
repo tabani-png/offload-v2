@@ -234,7 +234,7 @@ Conventions:
 | Term | Meaning |
 |---|---|
 | **Today** | The Mac/web home screen: the day grid, repeats, one suggested fix. |
-| **Day grid** | Today's 15-minute cells from the person's rhythm start to end (widened to whole hours for activity outside), one row per top app on the Mac (kinds of work in the cloud, from m5-05), plus a **Switch bursts** row marking cells with 4 or more app switches. |
+| **Day grid** | Today's 15-minute cells from the person's rhythm start to end (widened to whole hours for activity outside), one row per top app on the Mac (kinds of work in the cloud, from m5-05's `GET /v1/today`), plus a **Switch bursts** row marking cells with 4 or more app switches. |
 | **Menu bar line** | The menu bar item's one line about today, "today · 3 h 10 m · mostly Xcode", shown only when something was counted today. |
 | **Weekly review** | One sentence, a few tiles, goals, quick questions. Charts one tap deeper. |
 | **Build progress** | The screen that shows checks running, failures being fixed, spend against the cap, and the install step. |
