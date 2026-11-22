@@ -50,7 +50,11 @@ public struct ShellView: View {
     .preferredColorScheme(.light)
     .sheet(isPresented: $app.showingNeverWatch) {
       NeverWatchSheet(model: app.onboarding, resolveApp: { InstalledApps.bundleID(forName: $0) },
-                      done: { app.showingNeverWatch = false })
+                      done: {
+                        app.showingNeverWatch = false
+                        // An entry added here applies to the counted days at once, without a new import.
+                        app.insights.exclusionsChanged()
+                      })
         .preferredColorScheme(.light)
     }
   }
@@ -119,11 +123,15 @@ public struct RecordingsScreen: View {
   public var body: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: Tokens.Space.s16) {
+        if app.backends.mode.isLocal, app.recordings?.canImport != true {
+          Text(NavigationCopy.localImportUnavailable).textStyle(Tokens.TypeScale.callout).foregroundStyle(Theme.ink2)
+            .padding(.horizontal, Tokens.Space.s24)
+        }
         if let recordings = app.recordings {
           RecordingsAnalysisLine(model: recordings, insights: insights)
           RecordingsSettingsView(model: recordings)
-          if let onDevice = app.onDeviceRecordings, !onDevice.candidates.isEmpty {
-            FolderCandidatesView(onDevice: onDevice, model: recordings)
+          if let onDevice = app.onDeviceRecordings {
+            FolderCandidatesView(onDevice: onDevice, model: recordings, folders: onDevice.folderCandidates)
           }
         } else {
           Text(RecordingsCopy.noImports).padding(Tokens.Space.s24)
@@ -151,15 +159,20 @@ struct RecordingsAnalysisLine: View {
 }
 
 /// "Folders found on this Mac", each with "Use this folder".
+///
+/// The folders are checked (existence only) when this view appears, never at launch (review 1, finding 5).
 struct FolderCandidatesView: View {
   let onDevice: OnDeviceRecordings
   @ObservedObject var model: RecordingsImportModel
+  @ObservedObject var folders: RecordingFolderCandidates
 
   var body: some View {
     VStack(alignment: .leading, spacing: Tokens.Space.s8) {
-      Text(NavigationCopy.foldersTitle).textStyle(Tokens.TypeScale.title).foregroundStyle(Theme.ink)
-        .accessibilityAddTraits(.isHeader)
-      ForEach(onDevice.candidates, id: \.url) { c in
+      if !folders.candidates.isEmpty {
+        Text(NavigationCopy.foldersTitle).textStyle(Tokens.TypeScale.title).foregroundStyle(Theme.ink)
+          .accessibilityAddTraits(.isHeader)
+      }
+      ForEach(folders.candidates, id: \.url) { c in
         HStack(spacing: Tokens.Space.s12) {
           Label(c.url.lastPathComponent, systemImage: "folder").textStyle(Tokens.TypeScale.label).foregroundStyle(Theme.ink)
           CaptionLine(NavigationCopy.folderKind(c.kind))
@@ -174,6 +187,7 @@ struct FolderCandidatesView: View {
       }
     }
     .padding(.horizontal, Tokens.Space.s24)
+    .onAppear { folders.refresh() }
   }
 }
 

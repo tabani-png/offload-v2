@@ -143,6 +143,8 @@ public final class AppModel: ObservableObject {
   public func dontWatch(_ exclusion: Exclusion) async {
     await onboarding.perform(.neverWatch(add: [exclusion]))
     objectWillChange.send()
+    // m3-10: the counted days drop the app at once, without a new import.
+    insights.exclusionsChanged()
   }
 
   /// The app in front other than Offload.

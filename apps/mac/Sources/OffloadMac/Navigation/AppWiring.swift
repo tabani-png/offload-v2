@@ -40,18 +40,23 @@ extension AppModel {
   public func wireRecordingsOffer() {
     recordings?.offerCheck = { [weak self] in
       guard let self else { return false }
-      return RecordingsOffer.isOffered(mode: self.backends.mode, sending: self.onboarding.state.sending)
+      return RecordingsOffer.isOffered(mode: self.backends.mode, sending: self.onboarding.state.sending,
+                                       canImportLocally: self.recordings?.canImport ?? false)
     }
     recordings?.objectWillChange.send()
   }
 
   /// At launch: the offer rule, the insights coordinator (a finished or removed import recomputes its days), a
   /// recount when the Never watch list changes, and one full refresh off the main actor.
-  public func startLocalAnalysis(rules box: ExclusionRulesBox) {
+  ///
+  /// `ruleProvider` turns the Never watch list into rules on the main actor; nil looks up installed apps' names
+  /// (`exclusionRules(_:)`). Tests pass one that looks nothing up.
+  public func startLocalAnalysis(rules box: ExclusionRulesBox,
+                                 ruleProvider: (@MainActor @Sendable () -> [ImportExclusionRule])? = nil) {
     wireRecordingsOffer()
     let neverWatch = self.neverWatch
-    insights.follow(exclusions: neverWatch, changes: onboarding.objectWillChange,
-                    rules: { AppModel.exclusionRules(neverWatch) }, box: box)
+    let provider: @MainActor @Sendable () -> [ImportExclusionRule] = ruleProvider ?? { AppModel.exclusionRules(neverWatch) }
+    insights.follow(exclusions: neverWatch, changes: onboarding.objectWillChange, rules: provider, box: box)
     if let recordings {
       insights.observe(recordings).start()
     } else {

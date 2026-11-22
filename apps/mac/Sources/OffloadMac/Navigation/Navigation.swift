@@ -103,9 +103,12 @@ public enum DataProvenance: Equatable, Sendable {
 
 /// The recordings import is offered in `.local` backend mode (the import stays on this Mac, so the consent it
 /// waited for does not apply), and in `.cloud` only while the person is signed in and sending (ONBOARDING section 8).
+///
+/// In `.local` it also needs the on-device import itself: when its folder could not be set up there is no importer,
+/// so Import is not offered and the Recordings screen says why (review 1, finding 10).
 public enum RecordingsOffer {
-  public static func isOffered(mode: BackendMode, sending: Bool) -> Bool {
-    mode.isLocal || sending
+  public static func isOffered(mode: BackendMode, sending: Bool, canImportLocally: Bool = true) -> Bool {
+    mode.isLocal ? (canImportLocally || sending) : sending
   }
 }
 
@@ -125,6 +128,7 @@ public enum NavigationCopy {
   public static let weeklyReviewPlaceholder = "Your weekly review shows here."
   public static let buildsPlaceholder = "Builds you start show here."
   public static let reviewSettingsTitle = "Weekly review"
+  public static let localImportUnavailable = "Offload couldn't set up its folder on this Mac, so recordings can't be read here yet. Quit and open Offload again to retry."
 
   /// "connected to api.example.com".
   public static func backendCloud(host: String) -> String { "connected to \(host)" }
@@ -152,7 +156,8 @@ public enum NavigationCopy {
   public static var all: [String] {
     Screen.allCases.map(\.title) + [
       sampleData, countedOnThisMac, backendTitle, backendLocal, backendLocalHelp, foldersTitle, useFolder,
-      weeklyReviewPlaceholder, buildsPlaceholder, reviewSettingsTitle, backendCloud(host: "api.example.com"),
+      weeklyReviewPlaceholder, buildsPlaceholder, reviewSettingsTitle, localImportUnavailable,
+      backendCloud(host: "api.example.com"),
     ] + [RecordingFolderCandidate.Kind.screenwatch, .folder, .screenRecordings, .desktop, .movies].map(folderKind)
   }
 
