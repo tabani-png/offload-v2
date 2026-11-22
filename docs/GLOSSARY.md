@@ -101,6 +101,8 @@ Conventions:
 | **Things you repeat** | Local insights' repeats: the same 2 to 4 steps (app, title shape, host) inside one session, on 2 or more days and 3 or more times, with minutes per week, a confidence label and evidence, ranked locally. Their key is the brain's task key shape (`k_` + 12 hex). |
 | **Backend mode** | Where the Mac's screens get their data: `.local` (local insights, the default; no API client exists) or `.cloud` (the brain and builds APIs, only with an https API base URL and a member token). |
 | **Sample data** | A fixed, labelled example shown only in `.local` backend mode where no real data can exist yet (a build). Always carries the label "Sample data: cloud not connected" and is never mixed with counted numbers. |
+| **Sample build** | Build progress's sample data in `.local` backend mode: the mockup's build (8 named workers, one failed check fixed, $0.84 of the $4.00 cap) played once over 92 ticks of 100 ms. Install stays disabled ("Installing needs the cloud."); it is never stored in the builds started on this Mac (slice m3-13). |
+| **Builds started on this Mac** | The build ids the Mac keeps (`BuildRecordStore`) because the API has no list route for builds: id, the suggestion's name as shown (a title the brain derived from masked activity), fix id, start time and, after install, the routine id and install time, in this Mac's `UserDefaults`. No hashes, definitions or screen text (slice m3-13). |
 | **Interim masker** | `InterimTextMasker`, the recordings import's on-device masker until m3-02's `OffloadMasker.TextMasker` lands: URLs to host plus `<doc:h_…>`, tokens to `[SECRET]`, cards, account numbers and codes to placeholders, emails, phones and person names to pseudonyms under a local pseudonym key. |
 | **Import space** | One recordings import: its observations carry `source = "import"` and its `import_id`, never mix with live data, and are wiped together ("Remove imported data", forget scope `import`). |
 | **Source purged** | A figure whose raw evidence passed its TTL. It keeps its value and arithmetic and shows the purge date. |
@@ -235,6 +237,6 @@ Conventions:
 |---|---|
 | **Today** | The Mac/web home screen: the day grid, repeats, one suggested fix. |
 | **Weekly review** | One sentence, a few tiles, goals, quick questions. Charts one tap deeper. |
-| **Build progress** | The screen that shows checks running, failures being fixed, spend against the cap, and the install step. |
+| **Build progress** | The screen that shows checks running, failures being fixed, spend against the cap, and the install step. On the Mac (slice m3-13): five step rows (Plan locked, Checks frozen first, Workers testing, Matches what you asked for, Ready to ship), one row per worker attempt with its frozen and held-out marks, the OK, build plan step and the deploy approval. |
 | **"How it was counted"** | The drill-down behind every number: arithmetic and evidence. |
 | **"What was sent"** | The screen that shows the local egress ledger. |

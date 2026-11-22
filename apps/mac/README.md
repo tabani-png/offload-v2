@@ -40,3 +40,13 @@ holds backend mode and the brain and builds clients (`.local` by default: no cli
 holds the sidebar shell (Today, Weekly review, Builds, Recordings, Settings), the Sample data label and the launch
 wiring. `TodayLive/`, `WeeklyReview/` and `BuildProgress/` start as placeholders owned by m3-11, m3-12 and m3-13.
 Tests: `Tests/OffloadMacTests/M310/`.
+
+Build progress (slice m3-13): `Sources/OffloadMac/BuildProgress/` is the Builds screen. `BuildDetail.swift` decides what
+one build shows in pure code (`StepMapping` from the build loop's stages onto five rows, `HeadlineMap`, `AttemptRow`,
+`HeldOutResult`, `BudgetMeter` and `Money` with half-up cents, `SavingLine`); `SampleBuild.swift` is the labelled
+sample (`SampleTimeline.state(at:)`, the mockup's 92 ticks); `BuildRecordStore.swift` keeps the builds started on this
+Mac (the API has no list route); `BuildProgressModel.swift` reads the builds API through m3-10's `BuildsClient` in
+`.cloud` (poll every 2 s while live, backoff to 60 s, the OK, build plan step with the opportunity polled every 5 s for
+at most 10 minutes, the two exact-hash approvals posted only from their buttons, the outcome after install) and plays
+the sample in `.local`; `BuildCopy.swift` holds every string. The hand-off from Today and Weekly review
+(`navigation.pendingBuild`) is read once when Builds appears. Tests: `Tests/OffloadMacTests/M313/`.
