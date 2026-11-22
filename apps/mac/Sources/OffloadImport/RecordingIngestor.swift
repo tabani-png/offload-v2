@@ -75,7 +75,8 @@ public struct RecordingIngestor: Sendable {
     /// Replaced before each screenshot of a streamed run, so Never watch changes apply from the next file.
     var exclusions: [ImportExclusionRule]
     var result = IngestResult()
-    var lastApp: String?
+    /// The app name and host of the last focus written (m3-05c: a host change is a new focus too).
+    var lastFocus: String?
     var lastText: String?
     var throttle = KeyframeThrottle()
 
@@ -104,17 +105,28 @@ public struct RecordingIngestor: Sendable {
       // change is a person, a number or a document, not an app).
       let seen = MenuBarApp.name(from: lines, frameHeight: frame.height)
       let named = seen.flatMap { ingestor.masker.mask($0) == $0 ? $0 : nil }
-      let appName = named ?? config.unknownAppName
-      let app = MenuBarApp.bundleID(for: named)
-      if appName != lastApp {
+      var appName = named ?? config.unknownAppName
+      var app = MenuBarApp.bundleID(for: named)
+      var host: String?
+      // No menu bar app: the window chrome may still name it (m3-05c app cues). A cue's name and bundle id are table
+      // constants; its host is one the masker left unchanged.
+      if named == nil, let cue = AppCues.classify(lines, frameHeight: frame.height, masker: ingestor.masker) {
+        appName = cue.appName
+        app = cue.appBundleID
+        host = cue.host
+      }
+      // An excluded app keeps its time and nothing else: no host, no text, no keyframe.
+      // Hosts, title rules and private-window markers are read off the frame's own text (review 1).
+      let excluded = ImportExclusions.isExcluded(bundleID: app, appName: appName, lines: lines.map(\.text), rules: exclusions)
+      if excluded { host = nil }
+      let focusKey = host.map { appName + "\u{0}" + $0 } ?? appName
+      if focusKey != lastFocus {
         result.observations.append(.focus(id: ingestor.ids.next(at: date), ts: date, importID: importID,
-                                          appBundleID: app, appName: appName))
-        lastApp = appName
+                                          appBundleID: app, appName: appName, host: host))
+        lastFocus = focusKey
         lastText = nil
       }
-      // An excluded app keeps its time and nothing else: no text, no keyframe.
-      // Hosts, title rules and private-window markers are read off the frame's own text (review 1).
-      if ImportExclusions.isExcluded(bundleID: app, appName: appName, lines: lines.map(\.text), rules: exclusions) { return }
+      if excluded { return }
 
       let body = lines.filter { !MenuBarApp.isInBand($0, frameHeight: frame.height) }.map(\.text).joined(separator: "\n")
       if !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
