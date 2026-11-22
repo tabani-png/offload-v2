@@ -84,6 +84,22 @@ public enum TodayCopy {
     return "\(h12):" + String(format: "%02ld", c.minute ?? 0) + (h < 12 ? "a" : "p")
   }
 
+  /// "09:00" (the server's local time) as "9:00a"; nil when it is not a time.
+  public static func clock(hhmm: String) -> String? {
+    guard let m = DayGrid.minutes(hhmm), m < 24 * 60 else { return nil }
+    let h = m / 60
+    let h12 = h % 12 == 0 ? 12 : h % 12
+    return "\(h12):" + String(format: "%02ld", m % 60) + (h < 12 ? "a" : "p")
+  }
+
+  /// Whole minutes of a Figure in seconds, minutes or hours (local figures count seconds, the brain's minutes).
+  public static func minutes(of figure: Figure) -> Int {
+    let unit = figure.unit
+    if unit == "seconds" { return minutes(seconds: figure.value) }
+    if unit.hasPrefix("hour") { return minutes(seconds: figure.value * 3600) }
+    return minutes(seconds: figure.value * 60)
+  }
+
   /// "Xcode and github.com", or the app alone. Built from app and host names only, never from text.
   public static func sessionName(app: String, host: String?) -> String {
     guard let host, !host.isEmpty else { return app }
@@ -140,6 +156,13 @@ public enum TodayCopy {
   public static let leaveAloneDetail = "it's the job · stop suggesting this"
   public static let answerNotSaved = "Your answer could not be saved on this Mac."
 
+  // MARK: The sample (TodayAPI.available off, `.cloud`)
+
+  /// The amber label above the sample: always visible, read first by VoiceOver.
+  public static let sampleTodayAPI = "Sample data: Today API not live yet"
+  /// The sample card's status line.
+  public static let sampleFixStatus = "sample fix · not your data"
+
   /// "1 / 2 / 3 to pick · ↵ to build"; with no options, "↵ to build".
   public static func keysHint(count: Int) -> String {
     guard count > 0 else { return "↵ to build" }
@@ -191,7 +214,7 @@ public enum TodayCopy {
       notNow, leaveAlone, leaveAloneDetail, answerNotSaved, keysHint(count: 3), keysHint(count: 0), emptyTitle, emptyBody,
       chooseRecordings, importing(file: 3, of: 12), importing(file: 0, of: 12), counting, notRecorded, signInAgain,
       offline, couldNotLoad("server_error"), tryAgain, loading, previousDay, nextDay,
-      menuLine(minutes: 190, app: "Xcode"), menuLine(minutes: 190, app: nil),
+      menuLine(minutes: 190, app: "Xcode"), menuLine(minutes: 190, app: nil), sampleTodayAPI, sampleFixStatus,
     ]
   }
 
@@ -202,7 +225,7 @@ public enum TodayCopy {
       longestFocus(minutes: 90), switchesAnHour(38), focusBlocks(2), repeatCount(times: 6, minutes: 186),
       how("6 times · 31 min median · 186 min = 3.1 h", weekdays: nil), saves(hoursPerWeek: 1.4), recommended,
       leaveAloneDetail, keysHint(count: 3), importing(file: 3, of: 12), importing(file: 0, of: 12), counting, loading,
-      menuLine(minutes: 190, app: nil),
+      menuLine(minutes: 190, app: nil), sampleFixStatus,
     ]
   }
 }

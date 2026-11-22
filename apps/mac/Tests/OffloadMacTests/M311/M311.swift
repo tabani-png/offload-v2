@@ -247,7 +247,8 @@ enum M311Cloud {
 extension M311Cloud {
   /// The planned `GET /v1/today` payload the server would send for these records: What you did from the day's tasks,
   /// the repeats from the week's tasks, the suggested fix the open opportunity ranked first, no grid cells.
-  static func payload(day: DayRecord = day(), week: WeekRecord? = week(), opportunities: [Opportunity] = []) -> TodayPayload {
+  static func payload(day: DayRecord = M311Cloud.day(), week: WeekRecord? = M311Cloud.week(),
+                      opportunities: [Opportunity] = []) -> TodayPayload {
     TodayPayload(
       date: day.day, dayGrid: TodayDayGridPayload(categories: [], cells: [], switchBursts: []),
       whatYouDid: day.byTask.map { TodayDidItem(taskKey: $0.taskKey, name: $0.name, start: nil, minutes: $0.minutes) },

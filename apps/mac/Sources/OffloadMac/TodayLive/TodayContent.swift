@@ -1,7 +1,7 @@
 import Foundation
 
-// What the live Today screen shows, built in code from local insights (`.local`) or the brain's records and the open
-// opportunities (`.cloud`). Every number on the screen is one of these Figures (ADR 0003); the builders are pure and
+// What the live Today screen shows, built in code from local insights (`.local`) or the brain's day record and the
+// planned `GET /v1/today` payload (`.cloud`). Every number on the screen is one of these Figures (ADR 0003); the builders are pure and
 // never read the clock.
 
 /// A caption item with the Figure it says ("longest focus 1 h 30 m").
@@ -76,6 +76,8 @@ public struct FixCard: Equatable, Sendable {
     case localRepeat(key: String, name: String, minutesPerWeek: Int, isoWeek: String)
     /// A cloud opportunity.
     case opportunity(id: String)
+    /// The labelled sample shown while the Today API is not live: no answer is sent and nothing is built from it.
+    case sample
   }
 
   public var source: Source
@@ -95,6 +97,12 @@ public struct FixCard: Equatable, Sendable {
     leavesAlone(selected: selected) ? TodayCopy.leaveAlone : TodayCopy.okBuild
   }
 
+  /// The sample's card: its buttons and keys do nothing.
+  public var isSample: Bool {
+    if case .sample = source { return true }
+    return false
+  }
+
   public func leavesAlone(selected: Int?) -> Bool {
     guard let s = selected, options.indices.contains(s) else { return false }
     return options[s].leavesAlone
@@ -105,6 +113,7 @@ public struct FixCard: Equatable, Sendable {
     switch source {
     case .localRepeat(let key, _, _, let week): return "local:\(key):\(week)"
     case .opportunity(let id): return "cloud:\(id)"
+    case .sample: return "sample"
     }
   }
 }
@@ -118,9 +127,9 @@ public struct TodayContent: Equatable, Sendable {
   public var headlineMost: String?
   public var headlineFigure: Figure
   public var subtitleItems: [TodayItem]
-  /// `.local` only (the cloud grid needs `GET /v1/today`, m5-05).
+  /// `.local` from the day's apps; `.cloud` from `GET /v1/today`'s `day_grid`.
   public var grid: DayGrid?
-  /// `.cloud` only.
+  /// `.cloud` only, when `day_grid` has no cells: Time by kind from the day record.
   public var kinds: [KindRow]
   public var did: [DidRow]
   public var repeats: [RepeatRow]
@@ -211,8 +220,9 @@ public struct TodayContent: Equatable, Sendable {
 
   // MARK: Cloud
 
-  /// Today from the brain's day and week records and the open opportunities. Nil when the day counted nothing.
-  public static func cloud(day record: DayRecord, week: WeekRecord?, opportunities: [Opportunity], today: String,
+  /// Today from the brain's day record (the header) and the planned `GET /v1/today` payload (the grid, What you did,
+  /// the repeats and the suggested fix). Nil when the day counted nothing.
+  public static func cloud(day record: DayRecord, payload: TodayPayload, rhythm: Rhythm?, today: String,
                            timeZone: TimeZone) -> TodayContent? {
     let t = record.totals
     guard t.activeMinutes.value > 0 else { return nil }
@@ -222,25 +232,38 @@ public struct TodayContent: Equatable, Sendable {
       TodayItem(text: TodayCopy.focusBlocks(Int(t.focusBlocks.value.rounded())), figure: t.focusBlocks),
       TodayItem(text: TodayCopy.switchesAnHour(t.switchesPerActiveHour.value), figure: t.switchesPerActiveHour),
     ]
-    let kindList = descending(record.byKind.filter { $0.minutes.value > 0 }) { $0.minutes.value }
+    let grid = DayGrid.cloud(payload.dayGrid, rhythm: rhythm)
     var kinds: [KindRow] = []
-    for k in kindList {
-      kinds.append(KindRow(kind: TodayCopy.kindName(k.kind), colorHex: kindColor(k.kind),
-                           figure: k.minutes, duration: TodayCopy.duration(minutes: Int(k.minutes.value.rounded()))))
+    if grid == nil {
+      // No cells from the server: Time by kind from the day record instead of an empty grid.
+      for k in descending(record.byKind.filter { $0.minutes.value > 0 }, by: { $0.minutes.value }) {
+        kinds.append(KindRow(kind: TodayCopy.kindName(k.kind), colorHex: kindColor(k.kind),
+                             figure: k.minutes, duration: TodayCopy.duration(minutes: Int(k.minutes.value.rounded()))))
+      }
     }
-    let did: [DidRow] = record.byTask.filter { $0.minutes.value > 0 }.map { task in
-      DidRow(id: task.taskKey, start: nil, name: task.name,
-             duration: TodayCopy.paddedDuration(minutes: Int(task.minutes.value.rounded())), figure: task.minutes)
+    let did: [DidRow] = payload.whatYouDid.enumerated().filter { $0.element.minutes.value > 0 }.map { i, item in
+      DidRow(id: "\(i)-\(item.taskKey ?? item.name)", start: item.start.flatMap { TodayCopy.clock(hhmm: $0) }, name: item.name,
+             duration: TodayCopy.paddedDuration(minutes: Int(item.minutes.value.rounded())), figure: item.minutes)
     }
-    let taskList = descending((week?.tasks ?? []).filter { $0.instances.value >= 2 }) { $0.minutes.value }.prefix(repeatCount)
-    let repeats: [RepeatRow] = taskList.map { task in
+    let repeatList = descending(payload.repeats.filter { $0.instances.value >= 2 }, by: { $0.minutes.value }).prefix(repeatCount)
+    let repeats: [RepeatRow] = repeatList.map { task in
       RepeatRow(key: task.taskKey, name: task.name, strip: nil, times: task.instances, minutes: task.minutes,
                 count: TodayCopy.repeatCount(times: Int(task.instances.value.rounded()), minutes: task.minutes.value),
                 how: TodayCopy.how(task.instances.arithmetic + " · " + task.minutes.arithmetic, weekdays: nil))
     }
-    let open = opportunities.filter { $0.state == .open }
+    let fix = payload.suggestedFix.flatMap { $0.state == .open ? cloudCard($0, repeats: payload.repeats) : nil }
+
+    return TodayContent(title: TodayCopy.title(day: record.day, today: today, timeZone: timeZone),
+                        headline: TodayCopy.headline(minutes: activeMinutes), headlineMost: nil, headlineFigure: t.activeMinutes,
+                        subtitleItems: subtitle, grid: grid, kinds: kinds, did: did, repeats: repeats, fix: fix,
+                        provenance: .cloud)
+  }
+
+  /// The open opportunity ranked first (no rank last, then by id), leaving out `excluding`: the card after an answer,
+  /// from `GET /v1/opportunities?state=open`.
+  public static func nextOpportunity(_ opportunities: [Opportunity], excluding: Set<String>) -> Opportunity? {
     var first: Opportunity?
-    for o in open {
+    for o in opportunities where o.state == .open && !excluding.contains(o.id) {
       guard let cur = first else {
         first = o
         continue
@@ -249,17 +272,27 @@ public struct TodayContent: Equatable, Sendable {
       let rc = cur.rank ?? Int.max
       if ro < rc || (ro == rc && o.id < cur.id) { first = o }
     }
+    return first
+  }
 
-    return TodayContent(title: TodayCopy.title(day: record.day, today: today, timeZone: timeZone),
-                        headline: TodayCopy.headline(minutes: activeMinutes), headlineMost: nil, headlineFigure: t.activeMinutes,
-                        subtitleItems: subtitle, grid: nil, kinds: kinds, did: did, repeats: repeats,
-                        fix: first.map { cloudCard($0, week: week) }, provenance: .cloud)
+  /// The labelled sample `.cloud` shows while `TodayAPI.available` is off: the same builder over `TodaySample`, every
+  /// Figure marked sample, provenance `.sample`, and a card whose buttons do nothing.
+  public static func sample(today: String, timeZone: TimeZone) -> TodayContent? {
+    guard var c = cloud(day: TodaySample.day(today), payload: TodaySample.payload, rhythm: nil, today: today,
+                        timeZone: timeZone) else { return nil }
+    c.provenance = .sample
+    if var card = c.fix {
+      card.source = .sample
+      card.status = TodayCopy.sampleFixStatus
+      c.fix = card
+    }
+    return c
   }
 
   /// The card of an opportunity: up to 3 options by number, then Leave it alone.
-  /// The title's count opens to the week task's `instances` when the opportunity names a task of that week (review 2,
+  /// The title's count opens to the repeat's `instances` when the opportunity names a task repeated this week (review 2,
   /// finding 2); otherwise the title has no how line and is drawn as plain text.
-  static func cloudCard(_ o: Opportunity, week: WeekRecord?) -> FixCard {
+  static func cloudCard(_ o: Opportunity, repeats: [TodayRepeatItem]) -> FixCard {
     let candidates = o.options.filter { $0.kind != "leave_alone" }
     var order = Array(candidates.indices)
     order.sort { a, b in
@@ -280,7 +313,7 @@ public struct TodayContent: Equatable, Sendable {
                              detail: leave?.detail ?? TodayCopy.leaveAloneDetail, saves: nil, saving: nil, recommended: false,
                              leavesAlone: true, how: nil))
     let status = o.goal.map { TodayCopy.rankedFirst(goal: $0.text) } ?? TodayCopy.suggestedFix
-    let count = o.taskKey.flatMap { key in week?.tasks.first { $0.taskKey == key }?.instances }
+    let count = o.taskKey.flatMap { key in repeats.first { $0.taskKey == key }?.instances }
     return FixCard(source: .opportunity(id: o.id), status: status, title: o.title, figure: count,
                    how: count.map { TodayCopy.how($0.arithmetic, weekdays: nil) }, options: rows,
                    defaultSelection: rows.firstIndex { $0.recommended } ?? 0)

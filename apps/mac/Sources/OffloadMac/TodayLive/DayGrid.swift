@@ -162,3 +162,68 @@ public struct DayGrid: Equatable, Sendable {
                    hourLabels: stride(from: start / 60, to: end / 60, by: 1).map(hourLabel))
   }
 }
+
+extension DayGrid {
+  /// The grid of `GET /v1/today`'s `day_grid`: the same 15-minute cells from the rhythm (9:00 to 18:00 by default),
+  /// widened to whole hours around every cell the server sent. Rows are the kinds of work by minutes, the top 5 in
+  /// their kind's colour (a kind keeps its colour from day to day), then Other for the rest and for a cell of a kind
+  /// the categories do not name. Nil when no cell is held by a kind.
+  public static func cloud(_ payload: TodayDayGridPayload, rhythm: Rhythm?) -> DayGrid? {
+    var held: [(minute: Int, kind: String)] = []
+    for cell in payload.cells {
+      guard let kind = cell.category, !kind.isEmpty, let m = minutes(cell.start), m < 24 * 60 else { continue }
+      held.append((m, kind))
+    }
+    guard !held.isEmpty else { return nil }
+    var start = rhythm.flatMap { minutes($0.start) } ?? defaultStart
+    var end = rhythm.flatMap { minutes($0.end) } ?? defaultEnd
+    if end <= start {
+      start = defaultStart
+      end = defaultEnd
+    }
+    start = start / 60 * 60
+    end = (end + 59) / 60 * 60
+    for h in held {
+      start = min(start, h.minute / 60 * 60)
+      end = max(end, (h.minute + cellMinutes + 59) / 60 * 60)
+    }
+    start = max(0, start)
+    end = min(24 * 60, max(end, start + 60))
+    let count = (end - start) / cellMinutes
+
+    // Rows: kinds by minutes (the server's order between equals), the top 5 named.
+    var order = Array(payload.categories.indices)
+    order.sort { a, b in
+      let ma = payload.categories[a].minutes?.value ?? 0
+      let mb = payload.categories[b].minutes?.value ?? 0
+      return ma != mb ? ma > mb : a < b
+    }
+    let named = order.prefix(rowCount).map { payload.categories[$0] }
+    var rowOf: [String: Int] = [:]
+    for (i, k) in named.enumerated() where rowOf[k.key] == nil { rowOf[k.key] = i }
+    let needsOther = order.count > rowCount || held.contains { rowOf[$0.kind] == nil }
+    let otherRow = needsOther ? named.count : nil
+    let rowTotal = named.count + (needsOther ? 1 : 0)
+    var cells = Array(repeating: Array(repeating: false, count: count), count: rowTotal)
+    for h in held {
+      guard let r = rowOf[h.kind] ?? otherRow else { continue }
+      let i = (h.minute - start) / cellMinutes
+      if i >= 0 && i < count { cells[r][i] = true }
+    }
+    var bursts = Array(repeating: false, count: count)
+    for b in payload.switchBursts {
+      guard let m = minutes(b.start) else { continue }
+      let i = (m - start) / cellMinutes
+      if m >= start && i < count { bursts[i] = true }
+    }
+    var rows: [DayGridRow] = named.enumerated().map { i, k in
+      DayGridRow(name: k.name ?? TodayCopy.kindName(k.key), colorHex: TodayContent.kindColor(k.key), cells: cells[i],
+                 figure: k.minutes)
+    }
+    if let o = otherRow {
+      rows.append(DayGridRow(name: TodayCopy.other, colorHex: otherColor, cells: cells[o], figure: nil))
+    }
+    return DayGrid(startMinute: start, endMinute: end, rows: rows, bursts: bursts,
+                   hourLabels: stride(from: start / 60, to: end / 60, by: 1).map(hourLabel))
+  }
+}

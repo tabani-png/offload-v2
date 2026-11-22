@@ -3,7 +3,9 @@ import Foundation
 
 // The live Today screen's model (m3-11): which day is shown, what state the screen is in, the answers on the
 // suggested fix, the hand-off to Build progress and the keys. It only decides and publishes; the numbers come from
-// TodayContent's builders, the data from m3-10's insights (`.local`) or the brain and builds clients (`.cloud`).
+// TodayContent's builders, the data from m3-10's insights (`.local`), or in `.cloud` the brain's day record, the
+// planned `GET /v1/today` and the opportunity routes, read only while `TodayAPI.available` is on; off, `.cloud` shows
+// the labelled sample and reads nothing.
 
 /// A key the fix card handles: 1, 2, 3 pick an option, Return presses the primary button.
 public enum TodayKey: Equatable, Sendable {
@@ -96,8 +98,13 @@ public final class TodayLiveModel: ObservableObject {
   /// `.cloud`: the last read, for the once-a-minute rule.
   private var lastCloudRead: (day: String, at: Date)?
   private var cloudRecord: DayRecord?
-  private var cloudWeek: WeekRecord?
-  private var cloudOpportunities: [Opportunity] = []
+  /// `.cloud`: the shown day's `GET /v1/today`; its suggested fix is replaced by the next open one after an answer.
+  private var cloudPayload: TodayPayload?
+  /// `.cloud`: opportunities answered here, never drawn again even if a later read still suggests one.
+  private var answeredIDs: Set<String> = []
+  /// `TodayAPI.available` (injected by tests): off, `.cloud` shows the labelled sample and reads nothing.
+  public let todayAPI: Bool
+  private let todayClient: (any TodayClient)?
   /// `.cloud`: today's record, for the menu bar line.
   @Published private var cloudToday: DayRecord?
   private var cardIdentity: String?
@@ -117,11 +124,15 @@ public final class TodayLiveModel: ObservableObject {
   /// The screen refreshes this often while visible.
   public static let refreshInterval: TimeInterval = 60
 
-  /// `reloadRanking` re-ranks the local repeats after an answer (default: `insights.reload()`).
+  /// `reloadRanking` re-ranks the local repeats after an answer (default: `insights.reload()`). `todayAPI` is the
+  /// `TodayAPI.available` flag; `todayClient` reads `GET /v1/today` (default: over the brain's connection in `.cloud`).
   public init(app: AppModel, now: @escaping @Sendable () -> Date = { Date() },
-              reloadRanking: (@MainActor () async -> Void)? = nil) {
+              reloadRanking: (@MainActor () async -> Void)? = nil, todayAPI: Bool = TodayAPI.available,
+              todayClient: (any TodayClient)? = nil) {
     self.app = app
     self.now = now
+    self.todayAPI = todayAPI
+    self.todayClient = todayClient ?? HTTPTodayClient.from(app.backends)
     let insights = app.insights
     self.timeZone = insights.timeZone
     self.reloadRanking = reloadRanking ?? { await insights.reload() }
@@ -130,6 +141,8 @@ public final class TodayLiveModel: ObservableObject {
     self.phase = app.recordings?.phase ?? .idle
     if isLocal {
       rebuildLocal()
+    } else if !todayAPI {
+      showSample()
     } else {
       day = todayLabel
       isLoading = true
@@ -161,6 +174,9 @@ public final class TodayLiveModel: ObservableObject {
   }
 
   public var isLocal: Bool { app.backends.mode.isLocal }
+
+  /// `.cloud` while the Today API is not live: the labelled sample, no request.
+  public var isSample: Bool { !isLocal && !todayAPI }
 
   private var todayLabel: String { LocalDays.label(now(), timeZone: timeZone) }
 
@@ -231,9 +247,21 @@ public final class TodayLiveModel: ObservableObject {
   public func refresh(force: Bool = false) async {
     if isLocal {
       rebuildLocal()
+    } else if isSample {
+      showSample()
     } else {
       await readCloud(force: force)
     }
+  }
+
+  /// The labelled sample for today (`TodayAPI.available` off): nothing is read and nothing counted is shown.
+  private func showSample() {
+    let today = todayLabel
+    day = today
+    let built = TodayContent.sample(today: today, timeZone: timeZone)
+    setContent(built)
+    isLoading = false
+    state = built.map { .ready($0) } ?? .empty
   }
 
   /// Every 60 s while the screen is visible: `.local` recounts today while live capture runs; `.cloud` reads again
@@ -246,6 +274,8 @@ public final class TodayLiveModel: ObservableObject {
         await app.insights.recompute(days: [todayLabel])
       }
       rebuildLocal()
+    } else if isSample {
+      showSample()
     } else {
       await readCloud(force: false)
     }
@@ -254,7 +284,7 @@ public final class TodayLiveModel: ObservableObject {
   public func tryAgain() async { await refresh(force: true) }
 
   private func readCloud(force: Bool) async {
-    guard let brain = app.backends.brain else {
+    guard let brain = app.backends.brain, let todayClient else {
       // `.cloud` with no client (only a hand-built Backends): say so rather than read forever (review 2, finding 3).
       setContent(nil)
       isLoading = false
@@ -267,29 +297,16 @@ public final class TodayLiveModel: ObservableObject {
     let t = now()
     if !force, let last = lastCloudRead, last.day == shown, t.timeIntervalSince(last.at) < Self.cloudReadInterval { return }
     lastCloudRead = (shown, t)
-    let isoWeek = LocalDays.start(of: shown, timeZone: timeZone).map { LocalDays.isoWeek($0, timeZone: timeZone) }
     do {
-      let record: DayRecord
-      do {
-        record = try await brain.dayRecord(day: shown)
-      } catch APIError.notFound {
-        guard day == shown else { return }
-        if shown == todayLabel { cloudToday = nil }
-        cloudRecord = nil
-        setContent(nil)
-        isLoading = false
-        state = .notRecorded(shown)
-        return
+      // The header from the day record, the rest from `GET /v1/today`; a 404 from either is "not recorded".
+      let record = try await brain.dayRecord(day: shown)
+      var payload = try await todayClient.today(date: shown)
+      if let fix = payload.suggestedFix, answeredIDs.contains(fix.id) { payload.suggestedFix = nil }
+      if let fix = payload.suggestedFix, fix.options.isEmpty, let builds = app.backends.builds,
+         let whole = try? await builds.opportunity(id: fix.id), whole.id == fix.id {
+        // Sent without its options: `GET /v1/opportunities/{id}` has them.
+        payload.suggestedFix = whole
       }
-      var week: WeekRecord?
-      if let isoWeek {
-        do {
-          week = try await brain.weekRecord(isoWeek: isoWeek)
-        } catch APIError.notFound {
-          week = nil
-        }
-      }
-      let opportunities = try await app.backends.builds?.openOpportunities() ?? []
       // The person may have stepped to another day meanwhile.
       guard day == shown else { return }
       if shown == todayLabel {
@@ -297,25 +314,34 @@ public final class TodayLiveModel: ObservableObject {
         lastMenuRefresh = t
       }
       cloudRecord = record
-      cloudWeek = week
-      cloudOpportunities = opportunities
+      cloudPayload = payload
       isLoading = false
       rebuildCloud()
+    } catch APIError.notFound {
+      guard day == shown else { return }
+      if shown == todayLabel { cloudToday = nil }
+      clearCloud()
+      state = .notRecorded(shown)
     } catch {
       guard day == shown else { return }
       // The menu line shows nothing rather than an old number either (review 1, finding 5).
       if shown == todayLabel { cloudToday = nil }
-      cloudRecord = nil
-      setContent(nil)
-      isLoading = false
+      clearCloud()
       state = .failed(TodayError(error))
     }
   }
 
+  private func clearCloud() {
+    cloudRecord = nil
+    cloudPayload = nil
+    setContent(nil)
+    isLoading = false
+  }
+
   private func rebuildCloud() {
-    guard let record = cloudRecord else { return }
-    let built = TodayContent.cloud(day: record, week: cloudWeek, opportunities: cloudOpportunities, today: todayLabel,
-                                   timeZone: timeZone)
+    guard let record = cloudRecord, let payload = cloudPayload else { return }
+    let built = TodayContent.cloud(day: record, payload: payload, rhythm: app.onboarding.state.profile.rhythm,
+                                   today: todayLabel, timeZone: timeZone)
     setContent(built)
     state = built.map { .ready($0) } ?? .notRecorded(record.day)
   }
@@ -323,6 +349,7 @@ public final class TodayLiveModel: ObservableObject {
   // MARK: Days
 
   public var canGoBack: Bool {
+    if isSample { return false }
     if isLocal {
       guard let d = day, let i = days.firstIndex(of: d) else { return false }
       return i > 0
@@ -331,6 +358,7 @@ public final class TodayLiveModel: ObservableObject {
   }
 
   public var canGoForward: Bool {
+    if isSample { return false }
     if isLocal {
       guard let d = day, let i = days.firstIndex(of: d) else { return false }
       return i < days.count - 1
@@ -346,6 +374,7 @@ public final class TodayLiveModel: ObservableObject {
   public func nextDay() async { await step(1) }
 
   private func step(_ by: Int) async {
+    if isSample { return }
     if isLocal {
       guard let d = day, let i = days.firstIndex(of: d), days.indices.contains(i + by) else { return }
       pinnedDay = days[i + by]
@@ -389,12 +418,15 @@ public final class TodayLiveModel: ObservableObject {
       guard !card.leavesAlone(selected: selectedOption) else { return }
       let option = selectedOption.flatMap { card.options.indices.contains($0) ? card.options[$0] : nil }
       app.navigation.startBuild(.opportunity(id: id, optionID: option?.id))
+    case .sample:
+      // Nothing is built from sample data.
+      return
     }
   }
 
   /// The primary button: Leave it alone when that option is picked, else OK, build.
   public func pressPrimary() async {
-    guard let card = content?.fix else { return }
+    guard let card = content?.fix, !card.isSample else { return }
     if card.leavesAlone(selected: selectedOption) {
       await leaveAlone()
     } else {
@@ -431,8 +463,20 @@ public final class TodayLiveModel: ObservableObject {
         answerError = TodayError(error).sentence
         return
       }
-      cloudOpportunities.removeAll { $0.id == id }
+      answeredIDs.insert(id)
+      // The card moves on to the next open opportunity by rank; when that list cannot be read, no card rather than
+      // the one just answered.
+      let next: Opportunity?
+      do {
+        next = TodayContent.nextOpportunity(try await builds.openOpportunities(), excluding: answeredIDs)
+      } catch {
+        next = nil
+      }
+      cloudPayload?.suggestedFix = next
       rebuildCloud()
+    case .sample:
+      // No answer is sent for sample data.
+      return
     }
   }
 
@@ -440,7 +484,7 @@ public final class TodayLiveModel: ObservableObject {
 
   /// Whether `key` does something now (the view handles it only then).
   public func accepts(_ key: TodayKey) -> Bool {
-    guard cardFocused, let card = content?.fix else { return false }
+    guard cardFocused, let card = content?.fix, !card.isSample else { return false }
     switch key {
     case .digit(let n): return n >= 1 && n <= card.options.count
     case .return: return true
@@ -496,7 +540,8 @@ public final class TodayLiveModel: ObservableObject {
       await app.insights.recompute(days: [todayLabel])
       return
     }
-    guard let brain = app.backends.brain else { return }
+    // The sample has no menu line and reads nothing.
+    guard !isSample, let brain = app.backends.brain else { return }
     lastMenuRefresh = t
     let today = todayLabel
     do {
@@ -516,7 +561,7 @@ public final class TodayLiveModel: ObservableObject {
     lastTodaySeen = today
     if rolled {
       objectWillChange.send()
-      if isLocal { rebuildLocal() }
+      if isLocal { rebuildLocal() } else if isSample { showSample() }
     }
     await refreshMenuLine(force: rolled)
   }
@@ -539,6 +584,7 @@ public final class TodayLiveModel: ObservableObject {
   /// shown as today's.
   public var menuLine: String? {
     if isLocal { return TodayMenuSummary.line(snapshot: snapshot, day: todayLabel) }
+    if isSample { return nil }
     let today = todayLabel
     return cloudToday.flatMap { $0.day == today ? TodayMenuSummary.line(record: $0) : nil }
   }

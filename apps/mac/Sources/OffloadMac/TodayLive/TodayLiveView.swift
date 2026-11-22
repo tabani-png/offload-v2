@@ -20,7 +20,12 @@ struct TodayLiveView: View {
           TodayBannerRow(banner: banner, onTap: { model.tapBanner(banner) }, onDismiss: { model.dismissBanner(banner) })
         }
         if let provenance = model.content?.provenance {
-          ProvenanceLabel(provenance)
+          if provenance == .sample {
+            // `.cloud` while the Today API is not live: always visible, read first by VoiceOver.
+            SampleDataLabel(text: TodayCopy.sampleTodayAPI)
+          } else {
+            ProvenanceLabel(provenance)
+          }
         }
         VStack(alignment: .leading, spacing: 0) {
           TodayStageBar(model: model)
@@ -285,11 +290,11 @@ struct DayGridView: View {
   /// "Xcode, 3 h 10 m" for VoiceOver.
   static func label(_ row: DayGridRow) -> String {
     guard let f = row.figure else { return row.name }
-    return "\(row.name), \(TodayCopy.duration(minutes: TodayCopy.minutes(seconds: f.value)))"
+    return "\(row.name), \(TodayCopy.duration(minutes: TodayCopy.minutes(of: f)))"
   }
 }
 
-/// Time by kind (`.cloud`, until the cell grid's API exists).
+/// Time by kind (`.cloud`, when `GET /v1/today` sent no grid cells).
 struct KindsView: View {
   let kinds: [KindRow]
   @ObservedObject var model: TodayLiveModel
@@ -425,12 +430,15 @@ struct FixCardView: View {
         Button(model.primaryLabel ?? TodayCopy.okBuild) { Task { await model.pressPrimary() } }
           .buttonStyle(ChromePrimaryButtonStyle())
           .accessibilityIdentifier("today.fix.primary")
+          .disabled(card.isSample).opacity(card.isSample ? 0.5 : 1)
         Button(TodayCopy.notNow) { Task { await model.notNow() } }
           .buttonStyle(ChromeSecondaryButtonStyle())
+          .disabled(card.isSample).opacity(card.isSample ? 0.5 : 1)
         if card.options.isEmpty {
           // On the Mac there are no options, so Leave it alone is a button of its own.
           Button(TodayCopy.leaveAlone) { Task { await model.leaveAlone() } }
             .buttonStyle(ChromeSecondaryButtonStyle())
+            .disabled(card.isSample).opacity(card.isSample ? 0.5 : 1)
         }
         Spacer()
         Text(TodayCopy.keysHint(count: card.options.count)).font(.system(size: 11, design: .monospaced))
