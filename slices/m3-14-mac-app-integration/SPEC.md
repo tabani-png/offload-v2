@@ -11,7 +11,7 @@ size: M
 parallel_group: M3-D
 owns: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Tests/OffloadMacTests/M314/**]
 verify: bash slices/m3-14-mac-app-integration/verify.sh
-min_tests: 54
+min_tests: 56
 paths_in_scope: [apps/mac/Sources/OffloadMac/Composition/**, apps/mac/Sources/OffloadMac/CaptureRuntime.swift, apps/mac/Sources/OffloadMac/App/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/Onboarding/Services.swift, apps/mac/Sources/OffloadMac/Updates/CaptureLifecycle.swift, apps/mac/Sources/OffloadUploader/Uploader.swift, apps/mac/Sources/OffloadUploader/DeviceKey.swift, apps/mac/Sources/OffloadUploader/ImportOutbox.swift, apps/mac/Sources/OffloadUploader/Tokens.swift, apps/mac/Sources/OffloadUploader/PseudonymKeyStore.swift, apps/mac/Package.swift, docs/ONBOARDING.md, apps/mac/Tests/OffloadMacTests/M314/**, apps/mac/README.md, docs/ARCHITECTURE.md, slices/m3-14-mac-app-integration/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadContracts/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Tests/OffloadMacTests/M302/**, apps/mac/Tests/OffloadMacTests/M303/**, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**]
 red_tests: [ENTRY, LAUNCH, CAPTURE, UPLOAD, EXCLUDE, NOW, IMPORT]
@@ -98,12 +98,14 @@ running observer, and imports go through the uploader when this Mac is signed in
   offered ("Recordings import is coming: it needs on-device text reading" without an importer; "Recordings import
   starts after Start sending" otherwise). Plain text items.
 - **Seams for m3-10 to m3-13** (`CompositionSeams`, passed to `AppComposition.live(seams:)`): `textRecognizer` and
-  `onDeviceImportSink` for the composition's own import, and `analysis`, called before AppModel is built with
-  `AnalysisInputs { neverWatch, events, uploadBackend }` (the one Never watch list and the capture runtime's
-  `StoreEventSource`), returning `AnalysisPlug { recordings, onDeviceImport, afterLaunch }`: a recordings model that
-  replaces the composition's, and a call made once AppModel exists. The composition applies the one offer rule
-  (`ImportOffer`) after `afterLaunch`. All nil in this slice: no importer, and Local mode offers no import. The merge
-  steps are under Scope changes, "Integration with m3-10 to m3-13".
+  `onDeviceImportSink` for the composition's own import, and `analysis`, called once before AppModel is built with
+  `AnalysisInputs { neverWatch, events, uploadBackend, importMasker, importLedger }` (the one Never watch list, the
+  capture runtime's `StoreEventSource`, the real import masker and the store's ledger). It returns
+  `AnalysisPlug { recordings, onDeviceImport, makeApp, afterLaunch }`: a recordings model that replaces the
+  composition's; `makeApp`, which builds AppModel from `AppModelParts` (every argument of this slice's call, with
+  `make()` as the default) plus the analysis's own parameters; and a call made once AppModel exists. The composition
+  applies the one offer rule (`ImportOffer`) after `afterLaunch`. All nil in this slice: no importer, and Local mode
+  offers no import. `MERGE.md` has the merge steps for m3-10 to m3-13, file by file.
 - No new dependency. `Package.swift` changes only in its header comment (merge commit and 7dfa249).
 
 ## Design note
@@ -295,24 +297,8 @@ passing and every tag present, then the full `swift test`. On Linux it prints SK
     `startLocalAnalysis(rules:)` need, with the capture runtime's events (a composition test asserts the inputs, that
     the plug's model is the app's, that `afterLaunch` runs once, and that the composition's offer rule wins).
 
-  **Integration with m3-10 to m3-13** (for the orchestrator; this branch cannot compile m3-10's types). Merge this
-  branch first, then m3-10, and resolve:
-  1. `Shell/AppModel.swift`: keep this branch's version (no `live()`), plus m3-10's additive stored properties and init
-     parameters (`backends`, `insights`, `onDeviceRecordings`, `startLocalAnalysis`). Drop m3-10's `AppModel.live()`.
-  2. `Composition/AppComposition.swift` `live()`: resolve `let backends = Backends.make(mode: BackendMode.resolve(
-     defaults: .standard, tokens: NoMemberToken()))`; pass `seams.analysis = { inputs in let local =
-     LocalAnalysis.live(neverWatch: inputs.neverWatch, events: inputs.events, mode: backends.mode); ... }`, returning
-     `AnalysisPlug(recordings: local.onDevice?.model, onDeviceImport: local.onDevice != nil, afterLaunch: { app in
-     app.startLocalAnalysis(rules: local.rules) })`, and pass `backends`, `local.insights`, `local.onDevice` to the
-     `AppModel(...)` call in `AppComposition.init` (the only place it is built).
-  3. One offer rule: m3-10's `wireRecordingsOffer()` / `RecordingsOffer.isOffered` is replaced by the composition's
-     `ImportOffer` (it adds the screen-2 gate and the pending-notice rule from reviews 2 and 3); `startLocalAnalysis`
-     keeps its other work.
-  4. m3-10's own files that also import OffloadContracts or OffloadUploader must name `JCS`, `JSONValue`, `Figure`,
-     `HTTPTransport` and `URLSessionTransport` with a module, or m3-10 renames its types (for example `BrainTransport`).
-  5. m3-10's `InterimTextMasker` should give way to this slice's `ImportMaskerAdapter` (the real masker, the same key as
-     live capture), passed through `AnalysisInputs` if m3-10 asks for it.
-  m3-11 to m3-13 carry m3-10's `Backend/` unchanged, so the same steps apply once.
+  **Integration with m3-10 to m3-13:** the steps first written here did not type-check and missed files (review 5,
+  finding 1); they are replaced by `MERGE.md` in this folder.
 - **Finding 2:** one flush at a time in the uploader actor: a flush that starts while another waits on the network
   returns `skipped` and `tick()` returns nil, so no flush overwrites another's queue or takes staged imports it then
   loses. Test with a held batch.
@@ -325,3 +311,28 @@ passing and every tag present, then the full `swift test`. On Linux it prints SK
   `tickOnce()` case pins the `running` guard.
 - **Finding 6 (no code):** nothing in this slice has been compiled; the mac job must run on this branch (and on the
   merged branch) before merge. Agents here do not push.
+
+### Review 5 (2026-11-22)
+- **Finding 1 (major, the merge recipe did not type-check and missed files):**
+  - The hook now carries what the merge needs. `AnalysisPlug.makeApp` builds AppModel from `AppModelParts`, so m3-10
+    passes `backends`, `insights` and `onDeviceRecordings` (m3-10's `AppModel.init` defaults all three, so a merge
+    that kept this slice's call compiled with empty Today and Weekly). `AnalysisInputs` carries `importMasker` and
+    `importLedger`. Tests cover both, and that the composition's own importer holds the store's ledger.
+  - `MERGE.md` replaces the old steps. It was written from `git merge-tree` for each of m3-10 to m3-13 and from a
+    rehearsal of the m3-10 merge in a throwaway worktree, on which these checks passed: structure, no duplicate type,
+    one `@main`, construction only in `Composition/`, no bare shadowed names. It names `AppWindowView`,
+    `SettingsWindowView`, `TodayMenuLine`, `WeeklyReviewWindowOpener`, `weeklyReview.start()`, and the m3-10 change
+    the real masker and ledger need on its import path.
+  - Not done here: the merge itself. m3-10 to m3-13 are other slices under review, and common.md leaves merges to the
+    orchestrator. An integration branch with its own SPEC (the reviewer's "better still") is the orchestrator's call.
+  - The rehearsal's rerere records were removed from the shared `rr-cache` (matched by content), so no later merge
+    reuses them.
+- **Finding 2 (no code):** nothing in this slice has been compiled. The mac job must run on this branch, and on the
+  merged branch, before merge.
+- **Finding 3:** the overlap test moves the clock past the 300 s gate before `tick()`, so only the running-flush guard
+  can make it return nil.
+- **Finding 4:** `M314Wiring` records the ledger the composition gives the recordings model; a test asserts it is
+  `StoreContext.importLedger`.
+- **Finding 5:** `ModeLines.lines(..., choice:)`: an on-device import held back by the screen-2 gate says "Recordings
+  import opens once the first setup steps are done", not "Start sending".
+- **Finding 6:** the `StoreContext` and `AppComposition` comments say what the code does.
