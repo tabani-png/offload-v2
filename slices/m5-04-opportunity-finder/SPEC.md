@@ -245,6 +245,8 @@ into `offload serve` (m1-06), `remove_step` and `small_app` rules, track record 
   untouched packages under load: contracts round-trip 11.5 s, durable cron 25 s; the rerun was green)
 - [x] review 2 (CHANGES): findings 1, 2, 3 fixed with red tests first (b137c7f, then 7f174e6); finding 4 tests
   (eef0db8; both reverted guards now fail a test); findings 5, 6, 7 recorded below and in API.md
+- [x] after review 2: `verify.sh` PASS (31 slice tests, 681 in the full suite); `verify-all` green with
+  `SLICE_UPSTREAM=$(git merge-base HEAD origin/chain/m5-01-understanding)`
 - [ ] review 3, then `status: done`
 
 Known limits (for the next slices):
