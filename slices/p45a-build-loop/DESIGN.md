@@ -69,6 +69,12 @@ Found in this review (not fixed by `473cafb`):
     on timeout and on `destroy`.
 20. **In-runner held-out mode** (no containers) ran the held-out check in the builder's own same-uid sandbox. Dropped:
     the verdict comes only from fresh verification sandboxes ([ADR 0029](../../docs/adr/0029-build-verdicts.md)).
+21. **Temps a sandbox user made were left behind** (review round 5). Files a worker or tool writes in `/work` belong to
+    that uid on the host bind mount, and the builder cannot unlink them. v2's `destroy()` first empties `/work` from a
+    cleanup container as each such owner (`find /work -mindepth 1 -delete`; no network, no capability, read-only root,
+    only `/work` mounted), then removes the folders. Each sandbox folder holds a `sandbox.json` record (id, tag, image);
+    when removal still fails, `destroy()` does not throw and the folder stays in `list(tag)` (read from disk, also
+    after a restart) for the next `destroy` or the reaper (m2-08).
 
 ## 3. Sandboxes: SandboxProvider port (ADR 0011)
 
@@ -79,7 +85,10 @@ Found in this review (not fixed by `473cafb`):
   --user 65534:65534 --tmpfs /tmp --mount …/work → /work --mount …/check → /check,readonly`; only the harness exec on a
   split provider gets `--user 0:0 --cap-add CHOWN --cap-add SETGID --cap-add SETUID` instead. The executor is injected,
   so tests pin the exact argv and the exec-error rule with a fake; a `LIVE:` test runs real Docker and skips without it.
-  A non-empty `network_allowlist` is refused until the egress proxy network lands (m2-08).
+  A non-empty `network_allowlist` is refused until the egress proxy network lands (m2-08). `harness: true` is refused
+  on any exec but `HARNESS_ARGV` (`bun /check/harness.ts`) in `/check`, so no other command gets root on a caller's
+  word (review round 5). `destroy()` empties `/work` as each owner of files there before removing the folders, and
+  keeps a `sandbox.json` record of any folder it could not remove (section 2, hole 21).
 - `e2b` (Offload Cloud): `src/sandbox/cloud.ts` stub; `create` throws an infra error (m2-08 builds it).
 - `apple-container` and `sandbox-exec`: dropped (MIGRATION 5.6).
 Shards: one fresh sandbox per check shard (visible, held-out), run in parallel, each with its own copy of the artifact;
@@ -139,7 +148,14 @@ deploy that can be retried, and p45b's unrounded threshold and stored raw minute
   starts, through a root-side spawn broker, as another user with the check's group and a clean environment. The tool
   can read neither the held-out check, nor the check's `/proc` entries, nor the harness's nonce; temp folders the check
   makes are shared through the group. Checks may start processes only with `Bun.spawn`/`Bun.spawnSync`, the two the
-  guard routes. A provider that isolates the tool refuses proofs without `split: true`, and the harness says `split:
+  guard routes: the linter refuses the others (also `getBuiltinModule`, `Bun[...]` and aliases of `Bun`), and under
+  the split the guard makes `Bun.$`, `child_process`, `process.dlopen`, `Worker` and `getBuiltinModule` of
+  `worker_threads`/`cluster` throw at run time (review round 5). The privileged tests run the harness under `setpriv`
+  with exactly the container's three capabilities and skip without `setpriv`, never falling back to full root (review
+  round 5: full root had hidden a `chmod` after `chown` that fails with three capabilities).
+  Belt-and-braces, not pinned by a test (review round 5, NIT 6): only the probe's `EACCES` exit (3) proves the split,
+  so a probe that cannot start never counts; and `--no-env-file` on the check's `bun test`, though cwd `/check`
+  already keeps `/work/.env` out. A provider that isolates the tool refuses proofs without `split: true`, and the harness says `split:
   true` only after probing it (a process of the tool's user must get `EACCES` opening the check). Root goes to the
   harness exec alone (`exec({ harness: true })`); every other exec, a worker's command above all, runs as `65534`
   with no added capability (review round 4). Tested for real with
