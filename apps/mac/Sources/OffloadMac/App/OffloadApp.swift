@@ -14,13 +14,15 @@ struct OffloadApp: App {
 
   var body: some Scene {
     Window("Offload", id: "main") {
-      MainWindowView(app: app)
+      // m3-10: the sidebar shell once setup is done; onboarding, move and Start fresh are MainWindowView as before.
+      AppWindowView(app: app)
     }
     .windowResizability(.contentMinSize)
 
     // Settings, Recordings (m3-05). A window, not a `Settings` scene, so the menu bar item can open it in front.
     Window(RecordingsCopy.settingsTitle, id: "settings") {
-      OffloadSettingsView(app: app)
+      // m3-10: a window macOS restores shows a button until the person asks, so no folder is read at launch.
+      SettingsWindowView(app: app)
     }
     .windowResizability(.contentMinSize)
     // Not listed in the Window menu: it opens only from the menu bar item, which shows it only while sending. A
@@ -51,10 +53,16 @@ struct MenuBarOpener: View {
       updates: updates.menu,
       checkForUpdates: { updates.updater.checkForUpdates(nil) }
     )
-    // Hidden in Local mode and before "Start sending" (ONBOARDING section 8).
+    // Offered in Local mode (kept on this Mac) and in the cloud while sending (ONBOARDING section 8, m3-10).
     if app.recordings?.isOffered == true {
       Button(RecordingsCopy.menuItem) {
-        openWindow(id: "settings")
+        if app.route == .today {
+          app.navigation.selection = .recordings
+          openWindow(id: "main")
+        } else {
+          app.navigation.requestSettings()
+          openWindow(id: "settings")
+        }
         NSApp.activate()
       }
     }

@@ -52,3 +52,4 @@ They are inputs, not part of this repo. [MIGRATION.md](../MIGRATION.md) maps eac
 | [0036](0036-opportunity-sources-and-instant-read.md) | Opportunity sources and the instant read | accepted |
 | [0037](0037-hosting-cloud-and-self-host-parity.md) | Hosting: Offload Cloud and self-host at parity | accepted (owner decision OQ-29) |
 | [0038](0038-license-mit-core-commercial-ee.md) | Licenses: MIT core, Offload Enterprise License for `ee/` | accepted (owner decision OQ-11); `ee/` text pending legal review |
+| [0039](0039-local-analysis-on-the-mac-in-local-mode.md) | Local analysis on the Mac in Local mode (amends 0007) | proposed, needs Muhammad's sign-off |

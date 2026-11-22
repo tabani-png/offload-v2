@@ -1,6 +1,7 @@
 # 0007. Cloud brain, thin Mac client
 
 Status: accepted, revised 2026-11-14 · Date: 2026-11-14 · Supersedes the old local-first brain (old `plan/plan.md` "Brain: Bun/TS on 127.0.0.1")
+Amended by [ADR 0039](0039-local-analysis-on-the-mac-in-local-mode.md) (proposed): local analysis on the Mac in `.local` backend mode.
 
 ## Context
 The old brain ran on the Mac. That limits the user model (7 days of raw data, then nothing), makes builds unsafe on the
