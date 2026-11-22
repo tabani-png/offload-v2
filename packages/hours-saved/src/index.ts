@@ -6,3 +6,7 @@
  * The first slice that touches this package replaces this marker.
  */
 export type TodoHoursSaved = "TODO: not implemented. See docs/adr/0003-numbers-come-from-code.md";
+
+/** Measured saving after a fix ships (slice p45b). Types only here; runtime from "./measured/index.ts". */
+export type { Evidence, Figure } from "./measured/figure.ts";
+export type { FixOutcome, OutcomeFlag, OutcomeWeek, ShipInput, WeekValue } from "./measured/outcome.ts";

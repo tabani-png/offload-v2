@@ -609,7 +609,9 @@ Two commits: `f075da0` (implementation) and `473cafb` (Claude Code Opus hardenin
   whose raw days were purged says so and is never guessed; after 4 weeks the median measured saving is compared with
   the estimate (`on_track` ≥ 80%, `partial` ≥ 50%, else `under`; `unmeasured`), with the arithmetic, shown in the
   month record. Into `packages/hours-saved` and the measured-saving milestone.
-- `models/local.ts` → the router's local tier: off unless `OFFLOAD_LOCAL_MODEL_URL` is set, loopback only.
+- `models/local.ts` → the router's local tier: off unless `OFFLOAD_LOCAL_MODEL_URL` is set, loopback only. Not
+  ported by the builder slices: it belongs to the model router and is handed to m5-03 with its `LOCAL:` red tests
+  ([p45a DESIGN.md section 5](../slices/p45a-build-loop/DESIGN.md#5-dropped-and-why)).
 
 **Carry as red tests**
 - `GATE: a wrong brief hash is refused as forbidden before any check is written or any worker runs`.
@@ -642,6 +644,12 @@ Two commits: `f075da0` (implementation) and `473cafb` (Claude Code Opus hardenin
 
 **Notice**: the root `NOTICE` on this branch (craft-anything, superpowers, apple/container, container-use, exo,
 CompanyOS) is merged into v2 [NOTICE](../NOTICE).
+
+**Ported** in slices [p45a-build-loop](../slices/p45a-build-loop/SPEC.md) (`services/builder`) and
+[p45b-measured-saving](../slices/p45b-measured-saving/SPEC.md) (`packages/hours-saved/src/measured/`). The review of the
+old code, every hole found and the stubs for other streams are in
+[p45a DESIGN.md](../slices/p45a-build-loop/DESIGN.md). The winner order above follows this plan; ADR 0029 and the M6
+`WINNER:` test say smallest diff, which the owner has to reconcile.
 
 ### 5.7 s34 import branches (`wip/s34-brain`, `wip/s34-mac`, `feat/recordings-import`)
 
