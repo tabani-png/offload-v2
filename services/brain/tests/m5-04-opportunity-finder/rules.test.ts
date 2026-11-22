@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { FIX_KIND_TABLE, FIX_RULES, fixRules, type FixProposal, type FixRules } from "../../src/opportunities/rules.ts";
 import { rankOpportunities } from "../../src/opportunities/score.ts";
+import { bareOption } from "../../src/opportunities/options.ts";
 import { figure, type EvidenceRef } from "../../src/records/figure.ts";
 import type { TaskEvidence } from "../../src/opportunities/types.ts";
 import { EXCEL, ev, evalArithmetic, GDOCS, GMAIL, LEDGERLY, QBO, SLACK, STRIPE, VSCODE, weekWith, ZOOM } from "./fixtures.ts";
@@ -48,7 +49,24 @@ test("RULE: mail turned into records in other apps gets an agent workflow, an in
   const agent = p.options.find((o) => o.kind === "agent_workflow")!;
   expect(agent.steps.map((s) => [s.system, s.adapter])).toEqual([["app.ledgerly.example", "browser"], ["docs.google.com", "composio"], ["mail.google.com", "composio"]]);
   // With no connector on any step, cloud kinds are not offered.
-  expect(kinds(rules.propose(ev({ systems: [{ id: "com.apple.mail", surface: "desktop", work_kind: "email" }, LEDGERLY, EXCEL] })))).toEqual(["script", "browser_automation"]);
+  expect(kinds(rules.propose(ev({ systems: [{ id: "com.apple.mail", surface: "desktop", work_kind: "email" }, LEDGERLY, EXCEL] })))).toEqual(["script"]);
+});
+
+test("RULE: browser automation is offered only when every step is a web app (review 1 finding 2)", () => {
+  // A browser cannot drive Mail or Excel: a mix of desktop and web apps gets a script, never browser automation.
+  const mixed = [
+    ev({ systems: [{ id: "com.apple.mail", surface: "desktop", work_kind: "email" }, LEDGERLY, EXCEL] }),
+    ev({ systems: [EXCEL, LEDGERLY], minutes: 90 }),
+    ev({ systems: [GMAIL, EXCEL], minutes: 120 }),
+  ];
+  for (const e of mixed) {
+    const p = rules.propose(e)!;
+    expect(kinds(p)).not.toContain("browser_automation");
+    for (const o of p.options) expect(/browser/i.test(o.title) && o.steps.some((s) => s.surface === "desktop")).toBe(false);
+  }
+  // All web: browser automation drives every step in the browser.
+  const web = rules.propose(records)!.options.find((o) => o.kind === "browser_automation")!;
+  expect(web.steps.map((s) => [s.adapter, s.runs_on])).toEqual([["browser", "device"], ["browser", "device"], ["browser", "device"]]);
 });
 
 test("RULE: fewer than 3 instances, or only code, meetings or chat, gets no fix", () => {
@@ -70,7 +88,7 @@ test("ESTIMATE: golden evidence gives the exact options with Figures", () => {
       {
         option_no: 1, kind: "api_integration", rule: "app_to_app_copy", recommended: true,
         title: "Connect Stripe and QuickBooks with an integration",
-        detail: "Seen 6 times this week (60 min). Steps: Stripe (direct API), QuickBooks (Composio).",
+        detail: "Seen 6 times this week (60 min). Steps: Stripe (through a connector), QuickBooks (through a connector).",
         steps: [
           { system: "dashboard.stripe.com", surface: "web", provider: "stripe", label: "Stripe", adapter: "openapi", runs_on: "cloud" },
           { system: "qbo.intuit.com", surface: "web", provider: "quickbooks", label: "QuickBooks", adapter: "composio", runs_on: "cloud" },
@@ -85,7 +103,7 @@ test("ESTIMATE: golden evidence gives the exact options with Figures", () => {
       {
         option_no: 2, kind: "browser_automation", rule: "app_to_app_copy", recommended: false,
         title: "Browser automation does the steps in Stripe and QuickBooks while you watch",
-        detail: "Seen 6 times this week (60 min). Steps: Stripe (browser, on your Mac), QuickBooks (browser, on your Mac).",
+        detail: "Seen 6 times this week (60 min). Steps: Stripe (in your browser, on your Mac), QuickBooks (in your browser, on your Mac).",
         steps: [
           { system: "dashboard.stripe.com", surface: "web", provider: "stripe", label: "Stripe", adapter: "browser", runs_on: "device" },
           { system: "qbo.intuit.com", surface: "web", provider: "quickbooks", label: "QuickBooks", adapter: "browser", runs_on: "device" },
@@ -119,6 +137,8 @@ test("ESTIMATE: every figure's arithmetic reproduces its value", () => {
     }
   }
   expect(n).toBeGreaterThan(40);
+  // Option text names no connector product (review 1 finding 6).
+  for (const e of ALL) for (const o of rules.propose(e)!.options) expect(/Composio|MCP|direct API|OpenAPI/.test(`${o.title} ${o.detail}`)).toBe(false);
   // A browser step in a cloud kind costs setup and confidence.
   const agent = rules.propose(records)!.options.find((o) => o.kind === "agent_workflow")!;
   expect(agent.figures.setup_hours.arithmetic).toBe("base 3 + 1 x 3 steps + 1 x 1 browser steps = 7 h");
@@ -131,7 +151,19 @@ test("ESTIMATE: an option that saves nothing is dropped and no option left gives
   expect(rules.propose({ ...copy, minutes: 3 })).toBeNull();
 });
 
+test("ESTIMATE: a bare estimate keeps a storable kind, and gives no option for another kind or for no saving (review 1 finding 4)", () => {
+  const base = { taskKey: "k_000000000009", fixKind: "remove_step", weeklyHoursSaved: 1.2, setupHours: 0.5, ruleConfidence: 0.6, workKind: "other" as const };
+  const o = bareOption(base, "2026-W45")!;
+  expect([o.kind, o.rule, o.option_no, o.recommended]).toEqual(["remove_step", "estimate", 1, true]);
+  expect(o.figures.payback_weeks.arithmetic).toBe("setup 0.5 h / 1.2 h saved per week = 0.42 weeks");
+  expect(bareOption({ ...base, fixKind: "small_app" }, "2026-W45")!.kind).toBe("small_app");
+  expect(bareOption({ ...base, fixKind: "leave_alone" }, "2026-W45")).toBeNull();
+  expect(bareOption({ ...base, fixKind: "made_up" }, "2026-W45")).toBeNull();
+  expect(bareOption({ ...base, weeklyHoursSaved: 0 }, "2026-W45")).toBeNull();
+});
+
 test("OPTIONS: one to three options numbered from 1, the best value first and recommended", () => {
+  // Options saving at least 0.5 h a week come first, then by value (review 1 finding 3).
   for (const e of ALL) {
     const p = rules.propose(e)!;
     expect(p.options.length).toBeGreaterThanOrEqual(1);
@@ -139,7 +171,10 @@ test("OPTIONS: one to three options numbered from 1, the best value first and re
     expect(p.options.map((o) => o.option_no)).toEqual(p.options.map((_, i) => i + 1));
     const value = (o: (typeof p.options)[number]) => (o.figures.weekly_hours_saved.value * o.figures.confidence.value) / Math.max(1, o.figures.payback_weeks.value);
     const values = p.options.map(value);
-    expect(values).toEqual([...values].sort((a, b) => b - a));
+    const clears = p.options.map((o) => o.figures.weekly_hours_saved.value >= 0.5);
+    const firstShort = clears.indexOf(false);
+    if (firstShort >= 0) expect(clears.slice(firstShort).every((c) => !c)).toBe(true);
+    for (const part of [values.slice(0, firstShort < 0 ? values.length : firstShort), firstShort < 0 ? [] : values.slice(firstShort)]) expect(part).toEqual([...part].sort((a, b) => b - a));
     expect(p.leave_alone_first).toBe(false);
     expect(p.options.map((o) => o.recommended)).toEqual(p.options.map((_, i) => i === 0));
     expect(p.estimate.option).toEqual(p.options[0]!);
@@ -147,6 +182,14 @@ test("OPTIONS: one to three options numbered from 1, the best value first and re
       p.options[0]!.kind, p.options[0]!.figures.weekly_hours_saved.value, p.options[0]!.figures.setup_hours.value, p.options[0]!.figures.confidence.value,
     ]);
   }
+});
+
+test("OPTIONS: the recommended option saves at least 0.5 h a week (review 1 finding 3)", () => {
+  // Mail rules save 0.45 h (best value), an agent saves 0.72 h: the agent is recommended, mail rules come second.
+  const p = rules.propose({ ...triage, minutes: 90 })!;
+  expect(p.options.map((o) => [o.kind, o.figures.weekly_hours_saved.value, o.recommended])).toEqual([["agent_workflow", 0.72, true], ["setup_change", 0.45, false]]);
+  expect(p.leave_alone_first).toBe(false);
+  expect(p.estimate.fixKind).toBe("agent_workflow");
 });
 
 test("OPTIONS: below 0.5 h a week leave alone comes first and no option is recommended", () => {

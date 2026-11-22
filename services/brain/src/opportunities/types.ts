@@ -6,6 +6,10 @@ import type { WorkKind } from "../records/kinds.ts";
 /** Fix kinds the rules propose (GLOSSARY "Fix kind"; `small_app`, `remove_step` and `leave_alone` are not proposed). */
 export type ProposedFixKind = "api_integration" | "agent_workflow" | "scheduled_routine" | "script" | "browser_automation" | "setup_change";
 
+/** Fix kinds a stored option may carry (the `fixes.kind` CHECK): the proposed ones plus `small_app` and `remove_step`
+ * from a bare estimate. `leave_alone` is an answer, never an option row. */
+export type StoredFixKind = ProposedFixKind | "small_app" | "remove_step";
+
 /** Rule kinds of the fix rules table, in match order. */
 export type RuleKind = "report_assembly" | "email_triage" | "email_to_records" | "app_to_app_copy" | "single_app_entry";
 
@@ -74,7 +78,7 @@ export interface FixOptionFigures {
 export interface FixOption {
   /** 1..3 */
   option_no: number;
-  kind: ProposedFixKind;
+  kind: StoredFixKind;
   /** The rule kind, or `estimate` for an option built from a bare FixEstimate (no rule ran). */
   rule: RuleKind | "estimate";
   recommended: boolean;
