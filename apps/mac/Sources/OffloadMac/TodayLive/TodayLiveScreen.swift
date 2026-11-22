@@ -14,7 +14,7 @@ public struct TodayLiveScreen: View {
 }
 
 /// The menu bar item's line ("today · 3 h 10 m · mostly Xcode"), drawn above m3-04's menu content; nothing when
-/// nothing was counted today.
+/// nothing was counted today. In `.cloud` the model reads today's record for it itself (review 1, finding 5).
 public struct TodayMenuLine: View {
   @ObservedObject var model: TodayLiveModel
 
@@ -22,7 +22,8 @@ public struct TodayMenuLine: View {
 
   public var body: some View {
     if let line = model.menuLine {
-      Text(line).monospacedDigit()
+      // Read again (at most once a minute) whenever the menu shows the line; the model also reads once at launch.
+      Text(line).monospacedDigit().task { await model.refreshMenuLine() }
       Divider()
     }
   }

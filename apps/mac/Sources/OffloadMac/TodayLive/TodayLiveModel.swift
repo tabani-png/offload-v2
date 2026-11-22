@@ -101,6 +101,11 @@ public final class TodayLiveModel: ObservableObject {
   /// `.cloud`: today's record, for the menu bar line.
   @Published private var cloudToday: DayRecord?
   private var cardIdentity: String?
+  /// An import just finished, so the recount that follows is its days: only that recount (or one with nothing shown
+  /// yet) shows the counting line, not live capture's minute-by-minute recount (review 1, finding 4).
+  private var importRecount = false
+  /// The menu line's own read of today (`.cloud`) or recount of today (`.local` while capturing), once a minute.
+  private var lastMenuRefresh: Date?
   private var cancellables: Set<AnyCancellable> = []
 
   /// The cloud reads of one day are not repeated within this many seconds unless asked (Try again, a new day).
@@ -146,6 +151,8 @@ public final class TodayLiveModel: ObservableObject {
     if let m = models[id] { return m }
     let m = TodayLiveModel(app: app)
     models[id] = m
+    // The menu bar builds its content at launch: its line is read then, not only once Today was opened.
+    Task { await m.refreshMenuLine() }
     return m
   }
 
@@ -169,11 +176,13 @@ public final class TodayLiveModel: ObservableObject {
 
   private func analysingChanged(_ a: Bool) {
     analysing = a
+    if !a { importRecount = false }
     if isLocal { rebuildLocal() }
   }
 
   private func phaseChanged(_ p: RecordingsImportModel.Phase) {
     phase = p
+    if case .done = p { importRecount = true }
     if isLocal { rebuildLocal() }
   }
 
@@ -193,7 +202,7 @@ public final class TodayLiveModel: ObservableObject {
     setContent(built)
     if case .reading(let file, let total) = phase {
       state = .importing(file: file, of: total)
-    } else if analysing {
+    } else if analysing && (built == nil || importRecount) {
       state = .importing(file: 0, of: 0)
     } else if let built {
       state = .ready(built)
@@ -227,7 +236,11 @@ public final class TodayLiveModel: ObservableObject {
   /// once the minute has passed.
   public func tick() async {
     if isLocal {
-      if app.isCapturing { await app.insights.recompute(days: [todayLabel]) }
+      if app.isCapturing {
+        importRecount = false
+        lastMenuRefresh = now()
+        await app.insights.recompute(days: [todayLabel])
+      }
       rebuildLocal()
     } else {
       await readCloud(force: false)
@@ -268,7 +281,10 @@ public final class TodayLiveModel: ObservableObject {
       let opportunities = try await app.backends.builds?.openOpportunities() ?? []
       // The person may have stepped to another day meanwhile.
       guard day == shown else { return }
-      if shown == todayLabel { cloudToday = record }
+      if shown == todayLabel {
+        cloudToday = record
+        lastMenuRefresh = t
+      }
       cloudRecord = record
       cloudWeek = week
       cloudOpportunities = opportunities
@@ -276,6 +292,8 @@ public final class TodayLiveModel: ObservableObject {
       rebuildCloud()
     } catch {
       guard day == shown else { return }
+      // The menu line shows nothing rather than an old number either (review 1, finding 5).
+      if shown == todayLabel { cloudToday = nil }
       cloudRecord = nil
       setContent(nil)
       isLoading = false
@@ -453,6 +471,29 @@ public final class TodayLiveModel: ObservableObject {
   }
 
   // MARK: Menu bar
+
+  /// The menu's own refresh, at most once a minute, so its line is there without Today open: `.cloud` reads today's
+  /// record (a failure or 404 clears the line); `.local` recounts today while live capture runs, and otherwise the
+  /// line is the snapshot's and nothing is read.
+  public func refreshMenuLine() async {
+    let t = now()
+    if let last = lastMenuRefresh, t.timeIntervalSince(last) < Self.cloudReadInterval { return }
+    if isLocal {
+      guard app.isCapturing else { return }
+      lastMenuRefresh = t
+      await app.insights.recompute(days: [todayLabel])
+      return
+    }
+    guard let brain = app.backends.brain else { return }
+    lastMenuRefresh = t
+    let today = todayLabel
+    do {
+      let record = try await brain.dayRecord(day: today)
+      cloudToday = record
+    } catch {
+      cloudToday = nil
+    }
+  }
 
   /// "today · 3 h 10 m · mostly Xcode"; nil when nothing was counted today.
   public var menuLine: String? {
