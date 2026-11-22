@@ -107,6 +107,7 @@ Conventions:
 | **Builds started on this Mac** | The build ids the Mac keeps (`BuildRecordStore`) because the API has no list route for builds: id, the suggestion's name as shown (a title the brain derived from masked activity), fix id, start time and, after install, the routine id and install time, in this Mac's `UserDefaults`. No hashes, definitions or screen text (slice m3-13). |
 | **Interim masker** | `InterimTextMasker`, the recordings import's on-device masker until m3-02's `OffloadMasker.TextMasker` lands: URLs to host plus `<doc:h_…>`, tokens to `[SECRET]`, cards, account numbers and codes to placeholders, emails, phones and person names to pseudonyms under a local pseudonym key. |
 | **Import space** | One recordings import: its observations carry `source = "import"` and its `import_id`, never mix with live data, and are wiped together ("Remove imported data", forget scope `import`). |
+| **App cue** | The app (and, from an address bar, the host) a recording's window chrome shows when it has no macOS menu bar: a known URL-bar host or window title from a fixed table (`packages/contracts/rules/app-cues.json`), else "Browser" with the host. Names come only from the table. |
 | **Source purged** | A figure whose raw evidence passed its TTL. It keeps its value and arithmetic and shows the purge date. |
 | **Forget** / **Wipe** | Forget deletes a member's data by entity, date range, import or all. Wipe deletes a tenant and destroys its keys. |
 

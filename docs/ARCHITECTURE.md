@@ -141,7 +141,14 @@ Parts:
   file is read only once its size has held for 3 s; timestamps are the recordings' own (never rebased); screenshots
   and screenwatch archives are read too (MIGRATION 5.7); exclusions are read again before every file and, for frames,
   matched against the frame's OCR text (hosts, titles, private-window markers); app names come from the menu bar only
-  when it is one and the masker leaves the name unchanged. Masked observations go to an `ImportSink`
+  when it is one and the masker leaves the name unchanged. Without a menu bar (window recordings, exports), **app
+  cues** read the window chrome (the top 18 % of the frame, at least 96 px): a URL-bar host names a known web app
+  (`mail.google.com` → Gmail) or gives "Browser" plus the host, else a known window title (Gmail, QuickBooks,
+  HubSpot, Slack, Excel, Google Sheets, …) names the app; names come only from the cue table and a host is kept only
+  when the masker leaves it unchanged (slice m3-05c; the table is also `packages/contracts/rules/app-cues.json` for
+  section 5). A recording starts at its container's creation date, else its name's time, else its modified time
+  minus its length, with recordings that would overlap (copied files sharing a modified time) laid end to end in
+  file order, 180 s apart. Masked observations go to an `ImportSink`
   (`POST /v1/imports`, then the uploader with the `import_id`; forget scope `import`), slice m3-05.
 - **Backend mode** (m3-10): `.local` by default; `.cloud` only with an `https` API base URL (`UserDefaults`
   `ai.offload.api.baseURL`) and a member token, which exists only after enrollment. In `.local` the brain and builds
@@ -306,7 +313,9 @@ days without the real values ([ADR 0028](adr/0028-stable-keyed-pseudonyms.md)).
 
 **Understanding** (harvested from the old `sessionize.ts`, `understanding/*`; lands in M5):
 - Spans: continuous focus on one app + title + host; minimum span 10 s; idle merges up to 15 min; idle start backdated
-  120 s.
+  120 s. Imported spans whose app is `recording.unknown` or `screenwatch.screen` may take an app from the app cue
+  table (`packages/contracts/rules/app-cues.json`, the rules the Mac applies, slice m3-05c) matched on `host` and on
+  the masked text.
 - Span descriptions: rules first (surface, verb, object); the Haiku `label` route only within fixed vocabularies.
 - Embeddings: local embedder, 1024 dims, stored in pgvector.
 - Task induction: steps joined by exact surface + verb + object key, else best embedding match (assign threshold 0.7);
