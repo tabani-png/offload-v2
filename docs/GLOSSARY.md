@@ -99,6 +99,8 @@ Conventions:
 | **Recordings import** | Optional backfill: read an existing folder of screen recordings (or screenshots, or a screenwatch archive) on the Mac into an **import space**, kept apart from live data and wiped as a unit. |
 | **Local insights** | What the recordings import and live capture show, counted in code on the Mac in `.local` backend mode: active time, sessions, focus blocks, switches, top apps and sites (host only) and the things you repeat with minutes per week. Every number is a Figure; no model call, nothing sent (slice m3-10). |
 | **Things you repeat** | Local insights' repeats: the same 2 to 4 steps (app, title shape, host) inside one session, on 2 or more days and 3 or more times, with minutes per week, a confidence label and evidence, ranked locally. Their key is the brain's task key shape (`k_` + 12 hex). |
+| **Review slot** | When the weekly review lands: a weekday and a local time (default Friday 4:00 PM, from onboarding's rhythm). Before it the Weekly review shows last week's review; at and after it, this week's. Kept on the Mac in `.local`, as the profile's `review_slot` in `.cloud` (slice m3-12). |
+| **Your usual** | The comparison on the weekly review's tiles: the median of up to 8 earlier weeks with data. "first week" when there is none (slice m3-12). |
 | **Backend mode** | Where the Mac's screens get their data: `.local` (local insights, the default; no API client exists) or `.cloud` (the brain and builds APIs, only with an https API base URL and a member token). |
 | **Sample data** | A fixed, labelled example shown only in `.local` backend mode where no real data can exist yet (a build). Always carries the label "Sample data: cloud not connected" and is never mixed with counted numbers. |
 | **Interim masker** | `InterimTextMasker`, the recordings import's on-device masker until m3-02's `OffloadMasker.TextMasker` lands: URLs to host plus `<doc:h_…>`, tokens to `[SECRET]`, cards, account numbers and codes to placeholders, emails, phones and person names to pseudonyms under a local pseudonym key. |
@@ -234,7 +236,7 @@ Conventions:
 | Term | Meaning |
 |---|---|
 | **Today** | The Mac/web home screen: the day grid, repeats, one suggested fix. |
-| **Weekly review** | One sentence, a few tiles, goals, quick questions. Charts one tap deeper. |
+| **Weekly review** | One sentence, a few tiles against your usual week, goals, up to 4 one-tap questions whose answers tune next week's ranking. Charts one tap deeper. On the Mac it is counted from local insights in `.local` and read from the brain in `.cloud` (slice m3-12). |
 | **Build progress** | The screen that shows checks running, failures being fixed, spend against the cap, and the install step. |
 | **"How it was counted"** | The drill-down behind every number: arithmetic and evidence. |
 | **"What was sent"** | The screen that shows the local egress ledger. |
