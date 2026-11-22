@@ -77,6 +77,9 @@ public struct RecordingIngestor: Sendable {
     var result = IngestResult()
     /// The app name and host of the last focus written (m3-05c: a host change is a new focus too).
     var lastFocus: String?
+    /// The app name of the last focus written and whether that frame was excluded.
+    var lastAppName: String?
+    var lastExcluded = false
     var lastText: String?
     var throttle = KeyframeThrottle()
 
@@ -120,12 +123,17 @@ public struct RecordingIngestor: Sendable {
       let excluded = ImportExclusions.isExcluded(bundleID: app, appName: appName, lines: lines.map(\.text), rules: exclusions)
       if excluded { host = nil }
       let focusKey = host.map { appName + "\u{0}" + $0 } ?? appName
-      if focusKey != lastFocus {
+      // A frame of the same app where OCR missed the URL bar keeps the span (m3-05c); a different host, or a frame
+      // whose exclusion state changed, starts a new one.
+      let missedHost = host == nil && appName == lastAppName && excluded == lastExcluded
+      if focusKey != lastFocus && !missedHost {
         result.observations.append(.focus(id: ingestor.ids.next(at: date), ts: date, importID: importID,
                                           appBundleID: app, appName: appName, host: host))
         lastFocus = focusKey
         lastText = nil
       }
+      lastAppName = appName
+      lastExcluded = excluded
       if excluded { return }
 
       let body = lines.filter { !MenuBarApp.isInBand($0, frameHeight: frame.height) }.map(\.text).joined(separator: "\n")
