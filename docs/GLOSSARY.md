@@ -85,6 +85,8 @@ Conventions:
 | **Upload kind** | One of the closed set `observation_batch`, `review_event`, `notice_ack`, `keyframe`, `step_result`. Anything else is rejected `unknown_kind`. |
 | **Keyframe** | A masked, downscaled screenshot. Stays on the Mac unless the user turns on `keyframes_to_cloud`. |
 | **Exclusion** | An app, host or title marker that is never observed. Built-in plus user-added ("Never watch"). |
+| **Never watch** | The person's own exclusions, chosen on onboarding screen 9, in Settings or from the menu bar item. Applied on the Mac before any server call. |
+| **Local now summary** | The "last 10 minutes" line on onboarding screen 3: top apps by active minutes and app switches, counted in code on the Mac from the local buffer. No model call, nothing uploaded. |
 | **Data class** | `C0` raw on device, `C1` masked observations, `C2` derived user model, `C3` secrets, `C4` governance and account, `C5` build material, `C6` connector content. See [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md#2-data-classes). |
 | **Connector content** | Data read from a connected app (C6): fixture reads, instant reads, token maps. 30 days from capture. |
 | **Masking** | Destroying sensitive values (secrets, card numbers, IDs, bank numbers, codes) or replacing them with pseudonyms or placeholders before data leaves its boundary. |
@@ -94,7 +96,8 @@ Conventions:
 | **Pseudonym match** | The Mac hashes candidate values from a connector and reports which pseudonym each matches ("is this the sheet?"). |
 | **Person placeholder** | A per-run placeholder from the model router's second pass for names the device missed: `<person:TAG.N>`, `<person:TAG.N.first>`, `<person:TAG.me>`. `TAG` is a random 4-letter tag per run. |
 | **Raw TTL** | How long C1 metadata lives in the cloud. Default 30 days; C1 text snapshots 7 days ([OQ-02](OPEN_QUESTIONS.md#oq-02-raw-ttl-for-masked-observations-in-the-cloud)). |
-| **Recordings import** | Optional backfill: read an existing folder of screen recordings into an **import space**, kept apart from live data and wiped as a unit. |
+| **Recordings import** | Optional backfill: read an existing folder of screen recordings (or screenshots, or a screenwatch archive) on the Mac into an **import space**, kept apart from live data and wiped as a unit. |
+| **Import space** | One recordings import: its observations carry `source = "import"` and its `import_id`, never mix with live data, and are wiped together ("Remove imported data", forget scope `import`). |
 | **Source purged** | A figure whose raw evidence passed its TTL. It keeps its value and arithmetic and shows the purge date. |
 | **Forget** / **Wipe** | Forget deletes a member's data by entity, date range, import or all. Wipe deletes a tenant and destroys its keys. |
 
