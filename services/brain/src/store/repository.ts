@@ -12,7 +12,7 @@ import type { WeekRecord } from "../records/week-record.ts";
 import type { Answer, ReviewAnswer } from "../review/answers.ts";
 import type { ReviewOpportunity } from "../review/week-review.ts";
 import type { LedgerEntry } from "../user-model/ledger.ts";
-import { hasLeak, hasLink } from "../user-model/names.ts";
+import { hasAnyLink, hasLeak } from "../user-model/names.ts";
 import type { Proposition } from "../user-model/types.ts";
 import { uuidv7 } from "./ids.ts";
 import type { Tx } from "./tenant.ts";
@@ -206,7 +206,7 @@ export async function countWeeksBefore(tx: Tx, isoWeek: string): Promise<number>
 
 export async function setWeekNarrative(tx: Tx, isoWeek: string, narrative: string): Promise<void> {
   guard("narrative", narrative);
-  if (hasLink(narrative)) throw new LeakError("the weekly sentence would store a link; refused");
+  if (hasAnyLink(narrative)) throw new LeakError("the weekly sentence would store a link; refused");
   await tx.unsafe(`UPDATE week_records SET narrative = $2 WHERE ${OWN} AND iso_week = $1`, [isoWeek, narrative]);
 }
 

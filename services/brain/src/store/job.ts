@@ -8,7 +8,7 @@ import { checkNarrative, writeWeekSentence } from "../records/narrative.ts";
 import { buildRollup } from "../records/rollup.ts";
 import { BASELINE_WEEKS, buildWeekRecord, type WeekTask } from "../records/week-record.ts";
 import type { CompleteText, UnderstandingWindow } from "../user-model/ports.ts";
-import { hasLink } from "../user-model/names.ts";
+import { hasAnyLink } from "../user-model/names.ts";
 import { updateMemberModel } from "../user-model/update.ts";
 import * as repo from "./repository.ts";
 import type { RunInTenant, TenantContext, Tx } from "./tenant.ts";
@@ -36,11 +36,15 @@ export interface MemberUpdateResult {
   months: string[];
   quarters: string[];
   ranked: number;
+  /** True when learning is paused (ONBOARDING 11.12): nothing was read from the window or written. */
+  paused: boolean;
 }
 
 export async function runMemberUpdate(tx: Tx, input: MemberUpdateInput): Promise<MemberUpdateResult> {
   const { now } = input;
   const profile = await repo.getProfile(tx);
+  // Learning paused: records are not updated, even from a window ingested before the pause.
+  if (profile.learning_paused) return { days: [], weeks: [], months: [], quarters: [], ranked: 0, paused: true };
   if (input.window.timezone !== profile.timezone) {
     throw new TimezoneMismatchError(`the window's timezone ${input.window.timezone} is not the profile's timezone ${profile.timezone}`);
   }
@@ -93,7 +97,7 @@ export async function runMemberUpdate(tx: Tx, input: MemberUpdateInput): Promise
     await repo.saveOpportunities(tx, { isoWeek: latest, workspaceId: input.workspaceId, ranked: r, now });
     ranked = r.length;
   }
-  return { days: u.dayRecords.map((d) => d.day), weeks, months, quarters, ranked };
+  return { days: u.dayRecords.map((d) => d.day), weeks, months, quarters, ranked, paused: false };
 }
 
 /** Reads the week (transaction 1), asks the model outside any transaction, stores a checked sentence (transaction 2). */
@@ -104,7 +108,7 @@ export async function writeWeekNarrative(run: RunInTenant, ctx: TenantContext, i
   if (source === "code") return "code";
   return run(ctx, async (tx) => {
     const week = await repo.getWeekRecord(tx, isoWeek);
-    if (week === null || hasLink(sentence) || !checkNarrative(sentence, week).ok) return "code" as const;
+    if (week === null || hasAnyLink(sentence) || !checkNarrative(sentence, week).ok) return "code" as const;
     await repo.setWeekNarrative(tx, isoWeek, sentence);
     return "model" as const;
   });
