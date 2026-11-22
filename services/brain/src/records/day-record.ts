@@ -1,5 +1,5 @@
 // Day records and episodes (old brain/src/memory/day-record.ts): one record per closed member-timezone day, code only.
-// Derived only: minutes, counts, bundle ids, masked task names and observation ids as evidence. Window titles are
+// Derived only: minutes, counts, bundle ids, bare hosts, masked task names and observation ids as evidence. Window titles are
 // never read here.
 import { createHash } from "node:crypto";
 import { taskName } from "../user-model/names.ts";
@@ -21,6 +21,8 @@ export interface Episode {
   ended_at: string;
   minutes: number;
   apps: string[];
+  /** Bare hosts of the instance's spans (m5-04); absent on episodes stored before migration 0002. */
+  hosts?: string[];
   task_key: string | null;
   /** Masked verb-object name. */
   name: string;
@@ -84,9 +86,10 @@ export function buildDayRecords(
       for (const i of t.instances) {
         if (dayOf(i.start, tz) !== day) continue;
         const apps = [...new Set(i.spanIds.map((id) => spansById.get(id)?.appBundleId).filter((x): x is string => x !== undefined))].sort();
+        const hosts = [...new Set(i.spanIds.map((id) => spansById.get(id)?.host).filter((x): x is string => x !== undefined && x !== ""))].sort();
         const e: Episode = {
           id: `ep_${i.id}`, kind: "task_instance", day, started_at: iso(i.start), ended_at: iso(i.end), minutes: r1(i.activeSeconds / 60),
-          apps, task_key: key, name: nameOfKey.get(key)!, evidence: [...i.observationIds], source_purged_at: null,
+          apps, hosts, task_key: key, name: nameOfKey.get(key)!, evidence: [...i.observationIds], source_purged_at: null,
         };
         dayEpisodes.push(e);
         const x = perTask.get(key) ?? { seconds: [], episodeIds: [] };
@@ -118,7 +121,7 @@ export function buildDayRecords(
       dayEpisodes.push({
         id: `ep_fb_${createHash("sha256").update(`${b.key}|${start}`).digest("hex").slice(0, 12)}`, kind: "focus_block", day,
         started_at: iso(start), ended_at: iso(b.end), minutes: r1(b.seconds / 60), apps: [...new Set(b.spans.map((s) => s.appBundleId))].sort(),
-        task_key: b.key, name: nameOfKey.get(b.key)!, evidence: [...new Set(b.spans.flatMap((s) => s.observationIds))], source_purged_at: null,
+        hosts: [...new Set(b.spans.map((s) => s.host).filter((h) => h !== ""))].sort(), task_key: b.key, name: nameOfKey.get(b.key)!, evidence: [...new Set(b.spans.flatMap((s) => s.observationIds))], source_purged_at: null,
       });
     }
 

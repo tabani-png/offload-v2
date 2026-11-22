@@ -6,6 +6,9 @@ export type WorkKind = (typeof WORK_KINDS)[number];
 
 const BROWSERS = new Set(["com.google.Chrome", "com.apple.Safari", "company.thebrowser.Browser", "org.mozilla.firefox", "com.microsoft.edgemac", "com.brave.Browser"]);
 
+/** A web browser: its host, not the browser, names the work (m5-04 task evidence). */
+export const isBrowser = (bundleId: string): boolean => BROWSERS.has(bundleId);
+
 const APP_KIND: Readonly<Record<string, WorkKind>> = {
   "com.apple.Terminal": "code",
   "com.googlecode.iterm2": "code",

@@ -235,6 +235,24 @@ User model shapes (handlers in `services/brain/src/http/handlers.ts`, slices p43
 | `POST /v1/builds/{id}/deploy` (**deploy approval**) | `{ artifact_sha256, receipt_hash, definition_hash }` | 201 `{ routine_id, version }`; 403 `hash_mismatch`; 409 `state_conflict` unless `ready`, and for a build already deployed (once only, also when two arrive at once; a deploy that fails before the routine exists can be retried) |
 | `GET /v1/builds/{id}/receipt` | | `{ receipt, receipt_hash, signature, key_id }` |
 
+`Opportunity` (finder opportunities as stored by slice m5-04; read with `listOpportunityViews` /
+`getOpportunityView` in `services/brain/src/store/repository.ts`, routed by m5-05): `{ id, source, task_key, title,
+description, iso_week, rank, state, not_now_until, goal_id, goal: { id, text } | null, score: Figure, factors: {
+weekly_hours_saved, persistence, goal_weight, alignment, confidence, payback_weeks, decline_penalty } (Figures),
+leave_alone_first, options[] }`. These are the fields the Mac's Today decoders read (`BuildsModels.swift`), except
+`missing_connections`, which comes with `needs_connection`.
+`listOpportunityViews` without a week reads the latest week that has any opportunity of the member (any source,
+ranked or not), and a `state` filter applies within that week; whether the route lists earlier weeks' open
+opportunities too is m5-05's decision. `leave_alone_first` is true when no option saves 0.5 h per week; then no option is
+recommended. Otherwise option 1 is the recommended one and saves at least 0.5 h per week. (The Mac does not read
+`leave_alone_first` yet; it preselects the recommended option, else option 1.) Each option
+(`FixOption`) is `{ id, option_no (1–3), kind (fix kind), rule (rule kind), recommended, title, detail, estimate
+(Figure, hours per week: the saving the Today card shows, equal to `figures.weekly_hours_saved`), steps: [{ system,
+surface: "web" | "desktop", provider, label, adapter: "mcp" | "composio" | "openapi" | "browser" | null, runs_on:
+"cloud" | "device" }], figures: { weekly_hours_saved, setup_hours, payback_weeks, confidence } (Figures), chosen_at
+}`; its `option_id` is what `POST /v1/opportunities/{id}/answer` takes. Option figures resolve through
+`GET /v1/figures/{figure_id}/evidence` like the factors.
+
 The approval token is internal: the server mints it when it accepts `build-approvals` (or `deploy`, batch approve,
 graduation), stores only `sha256(token)`, and the workflow claims it atomically. Clients never see it. A workflow that
 finds the approval already claimed gets `approval_used` (internal; surfaced on the build as `failed` only if it ever

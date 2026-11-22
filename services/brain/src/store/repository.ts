@@ -1,8 +1,12 @@
 // Repository for the user model's R-model tables. Every function runs inside RunInTenant: tenant_id and member_id
 // are written from the transaction's app.tenant_id / app.member_id, never passed in. Rows are never deleted here
-// (except figure_index rows of a re-saved record and open finder opportunities that left the top 5). A write whose
+// (except figure_index rows of a re-saved record, open finder opportunities that left the top 5 and the options of an
+// open opportunity, which are replaced when it is ranked again). A write whose
 // text holds an email address or a URL is refused (old assertDerivedOnly, kept as a second line behind names.ts).
 import type { RankedOpportunity } from "../opportunities/score.ts";
+import { LEAVE_ALONE_BELOW_HOURS } from "../opportunities/rules.ts";
+import type { FixOption } from "../opportunities/types.ts";
+import type { Figure } from "../records/figure.ts";
 import { defaultProfile, type Goal, type PatchResult, type Profile } from "../profile/profile.ts";
 import { addWeeks, weekDays } from "../records/dates.ts";
 import type { DayRecord, Episode } from "../records/day-record.ts";
@@ -129,12 +133,12 @@ export async function saveEpisodes(tx: Tx, episodes: readonly Episode[]): Promis
   guard("episodes", episodes);
   for (const e of episodes) {
     await tx.unsafe(
-      `INSERT INTO episodes (tenant_id, member_id, id, kind, day, started_at, ended_at, minutes, apps, task_key, name, evidence, source_purged_at)
-       VALUES (${TID}, ${MID}, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `INSERT INTO episodes (tenant_id, member_id, id, kind, day, started_at, ended_at, minutes, apps, task_key, name, evidence, source_purged_at, hosts)
+       VALUES (${TID}, ${MID}, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (tenant_id, member_id, id) DO UPDATE SET kind = EXCLUDED.kind, day = EXCLUDED.day, started_at = EXCLUDED.started_at,
          ended_at = EXCLUDED.ended_at, minutes = EXCLUDED.minutes, apps = EXCLUDED.apps, task_key = EXCLUDED.task_key, name = EXCLUDED.name,
-         evidence = EXCLUDED.evidence`,
-      [e.id, e.kind, e.day, e.started_at, e.ended_at, e.minutes, e.apps, e.task_key, e.name, e.evidence, e.source_purged_at],
+         evidence = EXCLUDED.evidence, hosts = EXCLUDED.hosts`,
+      [e.id, e.kind, e.day, e.started_at, e.ended_at, e.minutes, e.apps, e.task_key, e.name, e.evidence, e.source_purged_at, e.hosts ?? []],
     );
   }
 }
@@ -286,22 +290,157 @@ export async function listReviewAnswers(tx: Tx): Promise<ReviewAnswer[]> {
   return (await rows(tx, `SELECT iso_week, subject_key, question_kind, answer, goal_id, answered_at FROM review_answers WHERE ${OWN} ORDER BY iso_week, subject_key`)).map(answerOf);
 }
 
-export async function saveOpportunities(tx: Tx, input: { isoWeek: string; workspaceId: string; ranked: readonly RankedOpportunity[]; now: number }): Promise<void> {
+/** The API `Opportunity` (docs/API.md) of a stored finder opportunity, with its options. */
+export interface OpportunityView {
+  id: string;
+  source: "finder" | "manual" | "instant_read" | "agent";
+  task_key: string | null;
+  title: string;
+  iso_week: string;
+  rank: number | null;
+  state: string;
+  not_now_until: string | null;
+  /** Masked description ('' for finder opportunities). */
+  description: string;
+  goal_id: string | null;
+  /** The goal the opportunity advances, as the Mac decodes it (`OpportunityGoal`); null without one. */
+  goal: { id: string; text: string } | null;
+  score: Figure | null;
+  factors: Partial<RankedOpportunity["factors"]>;
+  /** No option saves 0.5 h a week: no option is recommended and "leave it alone" should come first. */
+  leave_alone_first: boolean;
+  /** Each option with its row id and `estimate`, the hours-per-week Figure the Mac shows ("saves N h/wk"); it equals
+   * `figures.weekly_hours_saved`. */
+  options: Array<FixOption & { id: string; estimate: Figure; chosen_at: string | null }>;
+}
+
+/** Episodes of the days from..to, read through day_records.episode_ids (never by episodes.day alone: a re-analysed
+ * day can leave older episode rows behind). */
+export async function listWeekEpisodes(tx: Tx, from: string, to: string): Promise<Episode[]> {
+  const rs = await rows(
+    tx,
+    `SELECT e.id, e.kind, e.day::text AS day, e.started_at, e.ended_at, e.minutes::float8 AS minutes, e.apps, e.hosts, e.task_key, e.name, e.evidence, e.source_purged_at
+       FROM day_records d JOIN episodes e ON e.tenant_id = d.tenant_id AND e.member_id = d.member_id AND e.id = ANY(d.episode_ids)
+      WHERE d.tenant_id = ${TID} AND d.member_id = ${MID} AND d.day BETWEEN $1::date AND $2::date
+      ORDER BY e.started_at, e.id`,
+    [from, to],
+  );
+  return rs.map((r) => ({
+    id: r["id"], kind: r["kind"], day: r["day"], started_at: iso(r["started_at"])!, ended_at: iso(r["ended_at"])!, minutes: Number(r["minutes"]), apps: r["apps"],
+    hosts: r["hosts"], task_key: r["task_key"], name: r["name"], evidence: r["evidence"], source_purged_at: iso(r["source_purged_at"]),
+  }));
+}
+
+type StoredOption = OpportunityView["options"][number];
+const optionOf = (r: Row): StoredOption => ({
+  id: r["id"], option_no: Number(r["option_no"]), kind: r["kind"], rule: r["rule"], recommended: r["recommended"], title: r["title"], detail: r["detail"],
+  steps: r["steps"], figures: r["figures"], estimate: r["estimate"], chosen_at: iso(r["chosen_at"]),
+});
+
+async function optionsOf(tx: Tx, opportunityIds: readonly string[]): Promise<Map<string, StoredOption[]>> {
+  const out = new Map<string, StoredOption[]>();
+  if (opportunityIds.length === 0) return out;
+  for (const r of await rows(tx, `SELECT * FROM fixes WHERE ${OWN} AND opportunity_id = ANY($1::uuid[]) ORDER BY opportunity_id, option_no`, [opportunityIds])) {
+    const id = String(r["opportunity_id"]);
+    out.set(id, [...(out.get(id) ?? []), optionOf(r)]);
+  }
+  return out;
+}
+
+function viewOf(r: Row, options: StoredOption[]): OpportunityView {
+  const { score, ...factors } = (r["factors"] ?? {}) as Partial<RankedOpportunity["factors"]> & { score?: Figure };
+  return {
+    id: r["id"], source: r["source"], task_key: r["task_key"], title: r["title"], iso_week: r["iso_week"], rank: r["rank"], state: r["state"],
+    not_now_until: r["not_now_until"] ?? null, description: r["description"] ?? "", goal_id: r["goal_id"], goal: r["goal"] ?? null,
+    score: score ?? null, factors,
+    leave_alone_first: options.length > 0 && Math.max(...options.map((o) => o.figures.weekly_hours_saved.value)) < LEAVE_ALONE_BELOW_HOURS,
+    options,
+  };
+}
+
+const OPP_COLS = `id, source, task_key, title, description, iso_week, rank, state, not_now_until::text AS not_now_until, goal_id, factors,
+  (SELECT jsonb_build_object('id', g.id, 'text', g.text) FROM goals g
+    WHERE g.tenant_id = opportunities.tenant_id AND g.member_id = opportunities.member_id AND g.id = opportunities.goal_id) AS goal`;
+
+/** The member's opportunities of `isoWeek` (default: the latest week that has any), optionally in one state, with their
+ * options. Ordered by rank, unranked last. */
+export async function listOpportunityViews(tx: Tx, opts: { isoWeek?: string; state?: string } = {}): Promise<OpportunityView[]> {
+  const week = opts.isoWeek ?? (await rows(tx, `SELECT max(iso_week) AS w FROM opportunities WHERE ${OWN}`))[0]?.["w"];
+  if (week === null || week === undefined) return [];
+  const rs = await rows(
+    tx,
+    `SELECT ${OPP_COLS} FROM opportunities WHERE ${OWN} AND iso_week = $1 AND ($2::text IS NULL OR state = $2) ORDER BY rank NULLS LAST, task_key, id`,
+    [week, opts.state ?? null],
+  );
+  const options = await optionsOf(tx, rs.map((r) => String(r["id"])));
+  return rs.map((r) => viewOf(r, options.get(String(r["id"])) ?? []));
+}
+
+export async function getOpportunityView(tx: Tx, id: string): Promise<OpportunityView | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
+  const [r] = await rows(tx, `SELECT ${OPP_COLS} FROM opportunities WHERE ${OWN} AND id = $1`, [id]);
+  if (r === undefined) return null;
+  return viewOf(r, (await optionsOf(tx, [id])).get(id) ?? []);
+}
+
+/** Upserts an open opportunity's options by option number (ids and created_at are kept) and drops numbers past them.
+ * Options of an opportunity that is no longer open, or has a chosen option, are left as they are. */
+async function saveOptions(tx: Tx, opp: { id: string; state: string }, workspaceId: string, options: readonly FixOption[], now: number): Promise<void> {
+  if (opp.state !== "open") return;
+  const [chosen] = await rows(tx, `SELECT 1 FROM fixes WHERE ${OWN} AND opportunity_id = $1 AND chosen_at IS NOT NULL LIMIT 1`, [opp.id]);
+  if (chosen !== undefined) return;
+  // Only option 1 is ever recommended, so upserting by option number keeps the one-recommended index true.
+  await tx.unsafe(`DELETE FROM fixes WHERE ${OWN} AND opportunity_id = $1 AND option_no > $2`, [opp.id, options.length]);
+  for (const o of options) {
+    await tx.unsafe(
+      `INSERT INTO fixes (tenant_id, id, member_id, workspace_id, opportunity_id, option_no, kind, rule, recommended, title, detail, estimate, confidence, effort_hours, figures, steps, created_at)
+       VALUES (${TID}, $1, ${MID}, $2, $3, $4, $5, $6, $7, $8, $9, $10::text::jsonb, $11, $12, $13::text::jsonb, $14::text::jsonb, $15)
+       ON CONFLICT (tenant_id, opportunity_id, option_no) DO UPDATE SET workspace_id = EXCLUDED.workspace_id, kind = EXCLUDED.kind, rule = EXCLUDED.rule,
+         recommended = EXCLUDED.recommended, title = EXCLUDED.title, detail = EXCLUDED.detail, estimate = EXCLUDED.estimate, confidence = EXCLUDED.confidence,
+         effort_hours = EXCLUDED.effort_hours, figures = EXCLUDED.figures, steps = EXCLUDED.steps`,
+      [
+        uuidv7(now), workspaceId, opp.id, o.option_no, o.kind, o.rule, o.recommended, o.title, o.detail, json(o.figures.weekly_hours_saved), o.figures.confidence.value,
+        o.figures.setup_hours.value, json(o.figures), json(o.steps), new Date(now).toISOString(),
+      ],
+    );
+  }
+}
+
+/** Stores the week's top 5 finder opportunities and, for each, its proposed options (by task key). An open finder
+ * opportunity that left the top 5 is deleted with its options. */
+export async function saveOpportunities(tx: Tx, input: { isoWeek: string; workspaceId: string; ranked: readonly RankedOpportunity[]; now: number; options?: ReadonlyMap<string, readonly FixOption[]> }): Promise<void> {
   guard("opportunities", input.ranked);
+  if (input.options !== undefined) guard("fix options", [...input.options.values()]);
   const keys = input.ranked.map((o) => o.task_key);
-  const gone = await rows(tx, `DELETE FROM opportunities WHERE ${OWN} AND iso_week = $1 AND source = 'finder' AND state = 'open' AND NOT (task_key = ANY($2::text[])) RETURNING task_key`, [input.isoWeek, keys]);
+  // Their options go with them through fixes' ON DELETE CASCADE (0002_fixes.sql). One whose option was picked stays
+  // (unranked), like its options in saveOptions (review 2 finding 3).
+  const gone = await rows(
+    tx,
+    `DELETE FROM opportunities o WHERE o.tenant_id = ${TID} AND o.member_id = ${MID} AND o.iso_week = $1 AND o.source = 'finder' AND o.state = 'open'
+       AND NOT (o.task_key = ANY($2::text[]))
+       AND NOT EXISTS (SELECT 1 FROM fixes f WHERE f.tenant_id = o.tenant_id AND f.opportunity_id = o.id AND f.chosen_at IS NOT NULL)
+     RETURNING o.task_key`,
+    [input.isoWeek, keys],
+  );
   for (const g of gone) await tx.unsafe(`DELETE FROM figure_index WHERE ${OWN} AND record_kind = 'opportunity' AND record_key = $1`, [`${input.isoWeek}/${g["task_key"]}`]);
   await tx.unsafe(`UPDATE opportunities SET rank = NULL WHERE ${OWN} AND iso_week = $1 AND source = 'finder' AND NOT (task_key = ANY($2::text[]))`, [input.isoWeek, keys]);
   for (const o of input.ranked) {
     const factors = { ...o.factors, score: o.score };
-    await tx.unsafe(
+    const [saved] = await rows(
+      tx,
       `INSERT INTO opportunities (tenant_id, id, member_id, workspace_id, source, task_key, title, description, iso_week, rank, score, factors, state, goal_id, created_at)
        VALUES (${TID}, $1, ${MID}, $2, 'finder', $3, $4, '', $5, $6, $7, $8::text::jsonb, 'open', $9, $10)
        ON CONFLICT (tenant_id, member_id, iso_week, task_key) WHERE source = 'finder'
-       DO UPDATE SET title = EXCLUDED.title, rank = EXCLUDED.rank, score = EXCLUDED.score, factors = EXCLUDED.factors, goal_id = EXCLUDED.goal_id`,
+       DO UPDATE SET title = EXCLUDED.title, rank = EXCLUDED.rank, score = EXCLUDED.score, factors = EXCLUDED.factors, goal_id = EXCLUDED.goal_id
+       RETURNING id, state`,
       [uuidv7(input.now), input.workspaceId, o.task_key, o.name, input.isoWeek, o.rank, o.score.value, json(factors), o.goal_id, new Date(input.now).toISOString()],
     );
-    await indexFigures(tx, "opportunity", `${input.isoWeek}/${o.task_key}`, { factors });
+    const opp = { id: String(saved!["id"]), state: String(saved!["state"]) };
+    const options = input.options?.get(o.task_key);
+    if (options !== undefined) await saveOptions(tx, opp, input.workspaceId, options, input.now);
+    // The record "how it was counted" resolves: the factors and every stored option's figures.
+    const stored = (await optionsOf(tx, [opp.id])).get(opp.id) ?? [];
+    await indexFigures(tx, "opportunity", `${input.isoWeek}/${o.task_key}`, { factors, options: stored.map((x) => x.figures) });
   }
 }
 

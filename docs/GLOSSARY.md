@@ -145,6 +145,9 @@ Conventions:
 | **Instant read** | A read-only scan of connected apps' last 30 days of metadata that proposes opportunities on day one, with estimated savings. |
 | **Opportunity score** | `weeklyHoursSaved × persistence × goalWeight × confidence ÷ max(1, paybackWeeks) × declinePenalty` ([ARCHITECTURE section 6](ARCHITECTURE.md#6-opportunity-finder)). |
 | **Fix** | What Offload proposes for an opportunity. Has one **fix kind**. |
+| **Fix rules** | The code table that maps a task's evidence (systems it touches, frequency, duration, cadence) to a **rule kind** (`report_assembly`, `email_triage`, `email_to_records`, `app_to_app_copy`, `single_app_entry`) and its fix kinds, and computes each option's estimate ([ARCHITECTURE section 6](ARCHITECTURE.md#6-opportunity-finder)). No model. |
+| **Fix option** | One of up to 3 numbered proposals for an opportunity: a fix kind, its steps with the connector each would use, and an estimate (weekly hours saved, setup hours, payback, confidence, each a Figure). Stored in `fixes`. |
+| **Task evidence** | What the fix rules read about one task in one week: minutes, instances, days seen, systems (bare hosts and desktop apps) and cadence. Counts and ids only. |
 | **Fix kind** | Build kinds: `agent_workflow`, `api_integration`, `scheduled_routine`, `script` (a script or macOS Shortcut), `browser_automation`, `small_app`. Non-build outcomes: `setup_change`, `remove_step`, `leave_alone`. |
 | **Fix brief** | The spec of a build fix: inputs, outputs, steps with class and `runs_on`, pinned connections, capabilities, acceptance lines, limits, budget. Has a `brief_hash`. |
 | **Fix designer** | The brain module that picks fix kinds (code), pins connections, runs fixture capture and writes the brief (Opus words, code numbers). |

@@ -13,6 +13,14 @@ export { buildRollup, theilSen, type RollupRecord } from "./records/rollup.ts";
 export { checkNarrative, weekSentence, writeWeekSentence } from "./records/narrative.ts";
 export { figure, type Figure } from "./records/figure.ts";
 export { rankOpportunities, opportunityScore, type FixEstimate, type RankedOpportunity } from "./opportunities/score.ts";
+// Fix rules (m5-04): task evidence -> one to three proposed fix options with estimates; m1-06 passes fixRules() to
+// the understanding job, m5-05 reads stored opportunities with listOpportunityViews / getOpportunityView.
+export * from "./opportunities/types.ts";
+export { buildTaskEvidence, CADENCE_WEEKS, type EvidenceInput } from "./opportunities/evidence.ts";
+export { ADAPTER_ORDER, LAUNCH_CATALOG, resolveConnector, type CatalogApp } from "./opportunities/connectors.ts";
+export { FIX_KIND_TABLE, FIX_RULES, fixRules, LEAVE_ALONE_BELOW_HOURS, MIN_INSTANCES, type FixProposal, type FixRule, type FixRules } from "./opportunities/rules.ts";
+export { runMemberUpdate, type MemberUpdateInput, type MemberUpdateResult } from "./store/job.ts";
+export { getOpportunityView, listOpportunityViews, type OpportunityView } from "./store/repository.ts";
 export { applyProfilePatch, defaultProfile, userContextOf, type Goal, type Profile } from "./profile/profile.ts";
 export { parseReviewAnswer, type ReviewAnswer } from "./review/answers.ts";
 export { buildWeekReview, type WeekReview } from "./review/week-review.ts";
