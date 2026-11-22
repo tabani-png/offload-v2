@@ -12,7 +12,7 @@ parallel_group: M3-E
 owns: [apps/mac/Sources/OffloadMac/BuildProgress/**, apps/mac/Tests/OffloadMacTests/M313/**]
 verify: bash slices/m3-13-mac-build-progress/verify.sh
 min_tests: 60
-paths_in_scope: [apps/mac/Sources/OffloadMac/BuildProgress/**, apps/mac/Tests/OffloadMacTests/M313/**, apps/mac/README.md, docs/GLOSSARY.md, slices/m3-13-mac-build-progress/**]
+paths_in_scope: [apps/mac/Sources/OffloadMac/BuildProgress/**, apps/mac/Tests/OffloadMacTests/M313/**, apps/mac/README.md, docs/GLOSSARY.md, docs/SECURITY_PRIVACY.md, slices/m3-13-mac-build-progress/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadActuator/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Sources/OffloadMac/TodayLive/**, apps/mac/Sources/OffloadMac/WeeklyReview/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**, apps/mac/Tests/OffloadMacTests/M310/**, apps/mac/Tests/OffloadMacTests/M311/**, apps/mac/Tests/OffloadMacTests/M312/**]
 red_tests: [LIST, STEPS, ATTEMPTS, HEADLINE, HELDOUT, BUDGET, PLAN, OKBUILD, INSTALL, SAVING, POLL, SAMPLE, HANDOFF, STATES, FIGURES, COPY, CANCEL]
 ---
@@ -131,7 +131,9 @@ cloud backend is configured.
 - **The fix id.** m3-10's `Opportunity` has no `fix_id`, and an option's `id` is its fix id (`FixOption.id`, "the fix
   id"); so the plan step reads the fix named by the hand-off's `option_id`, else the recommended option, else the
   first. While the opportunity is `open`, `chosen`, `capturing_fixtures` or `designing` it says "Designing the fix…";
-  in `needs_connection` it says "Connect <apps> first."; in any other state it reads the fix, and a 404 keeps waiting.
+  in `needs_connection` it says "Connect <apps> first."; in `ready_for_approval` it reads the fix, and a 404 keeps waiting;
+  `needs_you` (the design ended, ARCHITECTURE section 7) stops the plan with a sentence; an unknown state keeps waiting
+  (review4.md finding 2).
 - **The measured line** uses the outcome's `ratio` × `estimated_minutes_per_week` ÷ 60 for "saved … h/wk measured"
   (the outcome has no single measured-per-week field; `weeks` holds per-week values whose unit the API does not name).
   The install's `routine_id` and the install time are kept on the build's record, so the outcome is found by routine
@@ -289,5 +291,32 @@ sheet?" (m5-06); any change to m3-10's folders.
      building again.
   4. **Not now** is shown in every phase but `starting` (OK, build on its way), and does nothing while starting.
   5. The measured hours stay computed on the Mac, for the owner (review1.md item 6, review2.md item 4).
+- **Review 4** (`logs/m3-13-mac-build-progress.review4.md`, verdict CHANGES; every finding taken; commits say
+  "review4.md"):
+  1. `verify.sh` BASE pointed at the pre-rebase m3-10 commit (`d3d6651`, no longer in the branch), so m3-10's
+     placeholder commit was charged to this slice's owned path. BASE is now `e80962a`, the parent of "status
+     in_progress, BASE set" after the rebase; `verify.sh` passes its scope check again.
+  2. The fix is read only in `ready_for_approval`. `needs_you` says "Designing this fix stopped and needs you. Nothing
+     is built until then." and drops the kept plan; an unknown state keeps waiting (tested).
+  3. **Not now** is the glossary's answer: it posts `answer: not_now` (asked again in 4 weeks), says "Set aside.
+     Offload asks about it again in 4 weeks." and drops the plan; a failure keeps the plan and says why. A stopped
+     plan has **Close** instead, which only hides it (nothing posted; its kept plan is already dropped). The review-2
+     and review-3 tests that pinned the local-only Not now changed with this.
+  4. **API gap** (next to the missing `GET /v1/builds`): if the app quits after the server accepted OK, build but
+     before the 202 is handled, the `build_id` is never recorded and that build cannot be listed on this Mac. A later
+     visit reads the opportunity as being built and says "This suggestion is already being built or was built. A
+     build this Mac didn't record isn't listed here."
+  5. The Sample data label sits above the scrolling content, so it never scrolls away.
+  6. Actions are faded once: each disabled button by `ActionLook`, the row not again, so the saving caption keeps the
+     muted caption colour (#5D6874 on #F4F5F2, about 5.3:1).
+  7. No milestone names in copy: a missing outcomes route says "measured after install, once Offload measures
+     outcomes"; the COPY test now rejects `M<digit>`.
+  8. The capped headline formats the build's own `cap_usd`, as the meter does.
+  9. **Scope widened** to `docs/SECURITY_PRIVACY.md` (one row, additive): the two `UserDefaults` keys
+     (`ai.offload.builds.startedOnThisMac`, `ai.offload.builds.planWaiting`) are listed with what they hold and how
+     they are removed. A forget and sign-out path that clears them is still needed when those flows land.
+  Notes kept for the owner: the build-loop port has no `GET /v1/builds/{id}/definition`, so Install cannot be enabled
+  against it (API.md wins; see API gaps); test plan step 2 needs m3-11 or m3-12; the measured hours stay computed on
+  the Mac (review1.md item 6).
 - `BASE` is set after m3-10 is `done`, so m3-10's placeholder commit in `BuildProgress/` is not counted against this
   slice's `owns`.
