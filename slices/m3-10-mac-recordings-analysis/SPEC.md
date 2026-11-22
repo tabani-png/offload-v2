@@ -206,8 +206,10 @@ on a Mac with the m3-09 test build.
 - **Local insights rules** (all in code, every number a `Figure` with its arithmetic):
   - *Active time*: a focus event opens a span on its app (title and host as given); any event is activity; the span
     ends at the next focus, `idle_start`, `pause`, or, when the next event is more than 300 s later, at the last
-    activity + 120 s (the idle threshold, as m3-04's local now summary). `idle_start` is already backdated by the
-    readers. Spans cross midnight by splitting at the day boundary in the person's time zone.
+    activity + 120 s (the idle threshold, as m3-04's local now summary). `idle_start` is written the idle threshold
+    after the last activity (m3-05's readers, the observer), so it is moved back by 120 s when read, as m3-04's local
+    now summary does: a span opened after that point is dropped and one running past it is cut there (corrected in
+    review 2; this line first said the readers had already moved it back). Spans cross midnight by splitting at the day boundary in the person's time zone.
   - *Sessions*: a maximal run of spans with no idle gap of 300 s or more; sessions under 60 s are dropped. *Focus
     block*: a session of 25 minutes or more with at most 2 app switches per 10 minutes. *Switches*: focus changes to a
     different app.
@@ -314,6 +316,12 @@ contents (m3-11, m3-12, m3-13); keyframes; `services/**` and `packages/**`.
 `m3-10-mac-recordings-analysis: SKIPPED (needs macOS)`; with `REQUIRE_MAC=1` (CI `mac` job) a skip fails.
 
 ## Test plan (owner, on the m3-09 test build)
+What this slice lets the owner see: the import and its done line ("done · N moments read · N things you repeat") in
+the floating panel, on the Recordings screen and in Settings. Today still shows m3-04's skeleton and Weekly review and
+Builds are placeholders, so the day figures and the things you repeat appear on screen only when m3-11 (Today) and
+m3-12 (Weekly review) land. In Local mode onboarding skips screens 5 to 12, so the onboarding Recordings step (screen
+11) is not seen on the test build; the import starts from the Recordings screen.
+
 1. Install the test build from the CI artifact, finish onboarding with **Not now** on screen 4 (Local mode).
 2. The window opens on Today with the sidebar (Today, Weekly review, Builds, Recordings, Settings). Settings says
    "on this Mac only" for the backend mode.
@@ -398,5 +406,23 @@ contents (m3-11, m3-12, m3-13); keyframes; `services/**` and `packages/**`.
     now said in the test plan and SECURITY_PRIVACY); the `.cloud` clients write nothing to the egress ledger yet
     (finding 9): they are a second path out of the Mac (ADR 0035 makes the uploader the egress guard), dormant in the
     test build (`NoMemberToken`, so `.local`), and need a ledger hook before `.cloud` is turned on.
+- **Review 2** (2026-11-22, `logs/m3-10-mac-recordings-analysis.review2.md`), changes made:
+  - *idle_start* (finding 1, a real error in this SPEC's Design note): it is now moved back by the idle threshold.
+    The test fixtures were in the wrong shape (`idle_start` at the exact end of activity); they now follow the
+    readers (`idle_start` = last activity + 120 s), so their expected figures are unchanged. The live day test now
+    expects 480 s, the local now summary's figure for the same events, instead of 600 s. New tests: an importer of a
+    60 s recording through the local sink and store counts 60 s, and insights agree with `LocalNowSummary`. The 300 s
+    gap rule for live streams without an `idle_start` stays as this SPEC says.
+  - *Unfinished imports* (finding 2): at launch `OnDeviceRecordings.make` deletes the files and ledger entries of
+    imports that are not listed (an import is listed only once it finished), so nothing is counted that cannot be
+    removed, and the next import reads those recordings again.
+  - *Restored Settings window* (finding 3): it shows a "Show recordings settings" button until the person asks for it
+    (the menu bar's Recordings… asks), so no folder is read at launch by that path either.
+  - *`.cloud`* (finding 4): only `.local` builds the on-device import; `.cloud` keeps m3-05's import as it was built,
+    and the Recordings screen's caption follows the backend's provenance.
+  - *Protection class* (finding 5): `OnDeviceFiles.writeOptions` is pinned by a SINK test. It was changed in review 1
+    without a red test first; the test came after (the protection class itself is not readable on every CI volume,
+    so the test checks the options the files are written with).
+  - *Owner expectations* (finding 6): the Test plan now says where the analysis can be seen in this slice.
 - **Security review needed** before `done` (SECURITY_PRIVACY section 13): the interim masker, the local sink and the
   local pseudonym key.
