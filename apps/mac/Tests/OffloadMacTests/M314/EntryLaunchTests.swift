@@ -179,21 +179,31 @@ extension M314 {
   @Test("LAUNCH: Local mode and the missing recordings import are said in the menu, never hidden")
   @MainActor func modeIsLabelled() {
     // GLOSSARY "Local mode": signed out, or signed in without upload consent, so nothing is uploaded.
-    #expect(ModeLines.lines(local: true, importerReady: false, importOffered: false)
+    #expect(ModeLines.lines(local: true, importerReady: false, importOffered: false, choice: .onDevice)
             == [ModeLines.local, ModeLines.importComing])
-    #expect(ModeLines.lines(local: true, importerReady: true, importOffered: true) == [ModeLines.local])
-    #expect(ModeLines.lines(local: false, importerReady: true, importOffered: false) == [ModeLines.importAfterSending])
-    #expect(ModeLines.lines(local: false, importerReady: true, importOffered: true) == [])
+    #expect(ModeLines.lines(local: true, importerReady: true, importOffered: true, choice: .onDevice) == [ModeLines.local])
+    #expect(ModeLines.lines(local: false, importerReady: true, importOffered: false, choice: .uploader)
+            == [ModeLines.importAfterSending])
+    #expect(ModeLines.lines(local: false, importerReady: true, importOffered: true, choice: .uploader) == [])
+    // An on-device import held back by the screen-2 gate: never told to "Start sending" (that starts nothing here).
+    #expect(ModeLines.lines(local: true, importerReady: true, importOffered: false, choice: .onDevice)
+            == [ModeLines.local, ModeLines.importAfterSetup])
     #expect(ModeLines.local == "Local mode: nothing leaves this Mac")
     // PRODUCT copy rules: an unbuilt feature carries a "coming" label; no em dashes, no ADR 0016 terms.
     #expect(ModeLines.importComing.lowercased().contains("coming"))
-    for line in [ModeLines.local, ModeLines.importComing, ModeLines.importAfterSending] {
+    for line in [ModeLines.local, ModeLines.importComing, ModeLines.importAfterSending, ModeLines.importAfterSetup] {
       #expect(!line.contains("\u{2014}") && !line.lowercased().contains("dry"))
     }
     // This build (no on-device text reading yet): both lines.
     let c = M314App.composition(state: M314State.watchingLocally)
     defer { c.capture.stop() }
     #expect(c.modeLines == [ModeLines.local, ModeLines.importComing])
+    // With m3-10's on-device import plugged in, before screen 2: the setup line, not "Start sending".
+    let early = M314App.composition(state: M314State.fresh,
+                                    seams: CompositionSeams(textRecognizer: M314Recognizer(), onDeviceImportSink: M314LocalSink()),
+                                    realRecordings: true)
+    defer { early.capture.stop() }
+    #expect(early.modeLines == [ModeLines.local, ModeLines.importAfterSetup])
     // An enrolled Mac before "Start sending" is still Local mode.
     var enrolled = M314State.sending
     enrolled.uploadConsent = false

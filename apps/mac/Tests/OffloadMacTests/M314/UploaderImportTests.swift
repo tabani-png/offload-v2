@@ -336,6 +336,8 @@ extension M314 {
     let second = await uploader.flush()
     #expect(second.skipped)
     #expect(second.sentObjects == 0)
+    // Past the 300 s gate, so only the running flush can make tick() do nothing.
+    rig.time.advance(by: 301)
     #expect(await uploader.tick() == nil)
     // B took nothing: the staged objects are still in the outbox.
     #expect(try rig.outbox.staged().map(\.id) == objects.map(\.id))

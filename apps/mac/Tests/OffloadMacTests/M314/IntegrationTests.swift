@@ -62,4 +62,53 @@ extension M314 {
     defer { later.capture.stop() }
     #expect(later.app.recordings?.isOffered == true)
   }
+
+  @Test("LAUNCH: the analysis hook can build the app model from the composition's parts, and gets the real import masker and the store's ledger")
+  @MainActor func analysisBuildsTheApp() throws {
+    var parts: AppModelParts?
+    var built: AppModel?
+    var inputs: AnalysisInputs?
+    let seams = CompositionSeams(analysis: { given in
+      inputs = given
+      return AnalysisPlug(makeApp: { p in
+        parts = p
+        // m3-10's closure adds `backends:`, `insights:` and `onDeviceRecordings:` to this call.
+        let app = p.make()
+        built = app
+        return app
+      })
+    })
+    let c = M314App.composition(backend: M314Fixture.cloud, state: M314State.sending, currentNoticeVersion: "1", seams: seams)
+    defer {
+      c.capture.stop()
+      c.uploads?.pause()
+    }
+    let p = try #require(parts)
+    #expect(c.app === built)
+    #expect((p.services.capture as AnyObject) === c.capture)
+    #expect((p.services.uploader as AnyObject) === c.uploads)
+    #expect(p.services.neverWatch === c.neverWatch)
+    #expect((p.events as? StoreEventSource)?.handle === c.capture.store)
+    #expect(p.uploadsAvailable)
+    #expect(p.currentNoticeVersion == "1")
+    // The composition still drives what the app it did not build does at launch.
+    #expect(c.app.launchPlan.startUploader)
+    #expect(c.uploads?.isRunning == true)
+    // The real masker (the capture's key) and the one ledger "Start fresh" resets.
+    let given = try #require(inputs)
+    #expect(given.importLedger === c.capture.context.importLedger)
+    #expect(!given.importMasker.mask("write to ana.lopez@example.com").contains("ana.lopez@example.com"))
+  }
+
+  @Test("IMPORT: the composition's own importer holds the store's ledger, the one Start fresh resets")
+  @MainActor func importerUsesTheStoreLedger() throws {
+    let wiring = M314Wiring()
+    let c = M314App.composition(state: M314State.watchingLocally,
+                                seams: CompositionSeams(textRecognizer: M314Recognizer(), onDeviceImportSink: M314LocalSink()),
+                                wiring: wiring)
+    defer { c.capture.stop() }
+    #expect(wiring.importer != nil)
+    let ledger = try #require(wiring.ledger)
+    #expect((ledger as AnyObject) === c.capture.context.importLedger)
+  }
 }

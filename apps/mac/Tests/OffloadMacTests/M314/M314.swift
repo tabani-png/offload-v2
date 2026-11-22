@@ -129,6 +129,7 @@ final class M314LocalSink: ImportSink, @unchecked Sendable {
   var neverWatch: NeverWatchStore?
   var recordingsBuilt = 0
   var lifecycleForUpdates: (any CaptureLifecycle)?
+  var ledger: (any RecordingLedger)?
 }
 
 @MainActor enum M314App {
@@ -148,8 +149,9 @@ final class M314LocalSink: ImportSink, @unchecked Sendable {
     )
     return AppComposition(
       environment: env, seams: seams,
-      recordings: { importer, sink, _, neverWatch in
+      recordings: { importer, sink, ledger, neverWatch in
         wiring.importer = importer
+        wiring.ledger = ledger
         wiring.sink = sink
         wiring.neverWatch = neverWatch
         wiring.recordingsBuilt += 1
