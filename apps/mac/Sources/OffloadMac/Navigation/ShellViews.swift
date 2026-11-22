@@ -128,7 +128,7 @@ public struct RecordingsScreen: View {
             .padding(.horizontal, Tokens.Space.s24)
         }
         if let recordings = app.recordings {
-          RecordingsAnalysisLine(model: recordings, insights: insights)
+          RecordingsAnalysisLine(model: recordings, insights: insights, provenance: app.backends.provenance)
           RecordingsSettingsView(model: recordings)
           if let onDevice = app.onDeviceRecordings {
             FolderCandidatesView(onDevice: onDevice, model: recordings, folders: onDevice.folderCandidates)
@@ -147,11 +147,13 @@ public struct RecordingsScreen: View {
 struct RecordingsAnalysisLine: View {
   @ObservedObject var model: RecordingsImportModel
   @ObservedObject var insights: InsightsModel
+  /// "counted on this Mac" only when it is (review 2, finding 4).
+  let provenance: DataProvenance
 
   var body: some View {
     let items = AnalysisProgress.items(model, insights: insights)
     VStack(alignment: .leading, spacing: Tokens.Space.s4) {
-      ProvenanceLabel(.onDevice)
+      ProvenanceLabel(provenance)
       if case .done = model.phase, !items.isEmpty { MetaItemsLine(items: items) }
     }
     .padding(.horizontal, Tokens.Space.s24)
@@ -219,5 +221,33 @@ public struct SettingsScreen: View {
       .padding(.vertical, Tokens.Space.s24)
     }
     .background(Theme.paper)
+  }
+}
+
+/// The Settings window (m3-05's, opened from the menu bar while setting up). Restored by macOS at launch it shows only
+/// a button, so no folder is read before the person asks (review 2, finding 3).
+public struct SettingsWindowView: View {
+  @ObservedObject var app: AppModel
+  @ObservedObject var navigation: NavigationModel
+
+  public init(app: AppModel) {
+    self.app = app
+    self.navigation = app.navigation
+  }
+
+  public var body: some View {
+    switch SettingsWindowContent.forRequested(navigation.settingsRequested) {
+    case .recordings:
+      OffloadSettingsView(app: app)
+    case .waiting:
+      VStack(spacing: Tokens.Space.s16) {
+        Button(NavigationCopy.showRecordingsSettings) { navigation.requestSettings() }
+          .buttonStyle(SecondaryButtonStyle())
+      }
+      .padding(Tokens.Space.s24)
+      .frame(minWidth: 520, minHeight: 200)
+      .background(Theme.paper)
+      .preferredColorScheme(.light)
+    }
   }
 }

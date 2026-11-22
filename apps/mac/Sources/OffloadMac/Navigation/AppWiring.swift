@@ -20,7 +20,11 @@ public struct LocalAnalysis {
     self.rules = rules
   }
 
-  public static func live(neverWatch: NeverWatchStore, events: LocalEventSource) -> LocalAnalysis {
+  /// Only `.local` imports into the on-device sink; `.cloud` keeps m3-05's import exactly as it was built (its sink is
+  /// the uploader's, m3-02), so nothing is counted here that the cloud should have (review 2, finding 4).
+  public static func importsOnThisMac(mode: BackendMode) -> Bool { mode.isLocal }
+
+  public static func live(neverWatch: NeverWatchStore, events: LocalEventSource, mode: BackendMode) -> LocalAnalysis {
     let folders = OnDeviceRecordings.Folders.live()
     let box = ExclusionRulesBox()
     let store = InsightsStore(sources: InsightsStore.Sources(
@@ -28,8 +32,11 @@ public struct LocalAnalysis {
       answers: FileLocalAnswerStore(file: folders.paths.answers)
     ))
     let insights = InsightsModel(store: store)
-    let onDevice = try? OnDeviceRecordings.make(neverWatch: neverWatch, store: UserDefaultsRecordingsFolderStore(),
-                                                folders: folders, panel: AnalysedImportPanel(insights: insights))
+    var onDevice: OnDeviceRecordings?
+    if importsOnThisMac(mode: mode) {
+      onDevice = try? OnDeviceRecordings.make(neverWatch: neverWatch, store: UserDefaultsRecordingsFolderStore(),
+                                              folders: folders, panel: AnalysedImportPanel(insights: insights))
+    }
     return LocalAnalysis(insights: insights, onDevice: onDevice, rules: box)
   }
 }

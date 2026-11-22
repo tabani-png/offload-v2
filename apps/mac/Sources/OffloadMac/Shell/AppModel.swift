@@ -106,7 +106,7 @@ public final class AppModel: ObservableObject {
     let events: LocalEventSource = NoLocalEvents()
     let backends = Backends.make(mode: BackendMode.resolve(
       baseURL: UserDefaults.standard.string(forKey: BackendMode.baseURLDefaultsKey), tokens: NoMemberToken()))
-    let local = LocalAnalysis.live(neverWatch: neverWatch, events: events)
+    let local = LocalAnalysis.live(neverWatch: neverWatch, events: events, mode: backends.mode)
     let services = OnboardingServices(
       account: UnavailableAccountService(), consent: LocalConsentService(), uploader: NoUploader(), capture: NoCapture(),
       profile: LocalProfileService(), neverWatch: neverWatch, exclusions: LocalExclusionService(),

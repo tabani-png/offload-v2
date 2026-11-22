@@ -21,7 +21,8 @@ struct OffloadApp: App {
 
     // Settings, Recordings (m3-05). A window, not a `Settings` scene, so the menu bar item can open it in front.
     Window(RecordingsCopy.settingsTitle, id: "settings") {
-      OffloadSettingsView(app: app)
+      // m3-10: a window macOS restores shows a button until the person asks, so no folder is read at launch.
+      SettingsWindowView(app: app)
     }
     .windowResizability(.contentMinSize)
     // Not listed in the Window menu: it opens only from the menu bar item, which shows it only while sending. A
@@ -59,6 +60,7 @@ struct MenuBarOpener: View {
           app.navigation.selection = .recordings
           openWindow(id: "main")
         } else {
+          app.navigation.requestSettings()
           openWindow(id: "settings")
         }
         NSApp.activate()

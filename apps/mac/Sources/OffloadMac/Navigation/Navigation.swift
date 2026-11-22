@@ -46,6 +46,11 @@ public final class NavigationModel: ObservableObject {
   @Published public var selection: Screen
   /// The hand-off to Build progress; m3-13 reads it once when Builds appears and clears it.
   @Published public var pendingBuild: BuildRequest?
+  /// The person asked for the Settings window this launch (the menu bar's Recordings… while setting up). A window macOS
+  /// restores at launch shows nothing that reads a folder until then (review 2, finding 3).
+  @Published public private(set) var settingsRequested = false
+
+  public func requestSettings() { settingsRequested = true }
 
   public init(selection: Screen = .today) { self.selection = selection }
 
@@ -72,6 +77,14 @@ public enum AppWindowContent: Equatable, Sendable {
     route == .today ? .shell : .setup
   }
 
+}
+
+/// What the Settings window shows: m3-05's Recordings settings once asked for, else a button that asks.
+public enum SettingsWindowContent: Equatable, Sendable {
+  case waiting
+  case recordings
+
+  public static func forRequested(_ requested: Bool) -> SettingsWindowContent { requested ? .recordings : .waiting }
 }
 
 /// Where a screen's numbers come from.
@@ -128,6 +141,7 @@ public enum NavigationCopy {
   public static let weeklyReviewPlaceholder = "Your weekly review shows here."
   public static let buildsPlaceholder = "Builds you start show here."
   public static let reviewSettingsTitle = "Weekly review"
+  public static let showRecordingsSettings = "Show recordings settings"
   public static let localImportUnavailable = "Offload couldn't set up its folder on this Mac, so recordings can't be read here yet. Quit and open Offload again to retry."
 
   /// "connected to api.example.com".
@@ -156,7 +170,7 @@ public enum NavigationCopy {
   public static var all: [String] {
     Screen.allCases.map(\.title) + [
       sampleData, countedOnThisMac, backendTitle, backendLocal, backendLocalHelp, foldersTitle, useFolder,
-      weeklyReviewPlaceholder, buildsPlaceholder, reviewSettingsTitle, localImportUnavailable,
+      weeklyReviewPlaceholder, buildsPlaceholder, reviewSettingsTitle, showRecordingsSettings, localImportUnavailable,
       backendCloud(host: "api.example.com"),
     ] + [RecordingFolderCandidate.Kind.screenwatch, .folder, .screenRecordings, .desktop, .movies].map(folderKind)
   }
