@@ -12,7 +12,7 @@ extension M312 {
 
   static let friday = ReviewSlot(day: .fri, time: "16:00", timeZone: M312Clock.utc)
   static let fridayTrigger = DateComponents(hour: 16, minute: 0, weekday: 6)
-  static let id = ReviewScheduler.notificationID
+  static let reviewID = ReviewScheduler.notificationID
 
   @MainActor static func scheduler(_ notifier: FakeReviewNotifier, store: MemoryReviewSettingsStore = MemoryReviewSettingsStore(),
                                    box: SlotBox = SlotBox(M312.friday)) -> ReviewScheduler {
@@ -44,7 +44,7 @@ extension M312 {
     #expect(scheduler.isOn)
     #expect(store.notify)
     #expect(notifier.askCount == 1)
-    #expect(notifier.pending == [Self.id: Self.fridayTrigger])
+    #expect(notifier.pending == [Self.reviewID: Self.fridayTrigger])
     #expect(ReviewScheduler.trigger(for: Self.friday) == Self.fridayTrigger)
     await scheduler.setOn(false)
     await scheduler.setOn(true)
@@ -79,7 +79,7 @@ extension M312 {
     box.slot = ReviewSlot(day: .mon, time: "09:30", timeZone: M312Clock.utc)
     await scheduler.slotChanged()
     #expect(notifier.pending.count == 1)
-    #expect(notifier.pending[Self.id] == DateComponents(hour: 9, minute: 30, weekday: 2))
+    #expect(notifier.pending[Self.reviewID] == DateComponents(hour: 9, minute: 30, weekday: 2))
     #expect(notifier.scheduleCount == 2)
   }
 
@@ -94,7 +94,7 @@ extension M312 {
     #expect(!scheduler.isOn)
     #expect(!store.notify)
     #expect(notifier.pending.isEmpty)
-    #expect(notifier.removed.contains(Self.id))
+    #expect(notifier.removed.contains(Self.reviewID))
     box.slot = ReviewSlot(day: .tue, time: "11:00", timeZone: M312Clock.utc)
     await scheduler.slotChanged()
     #expect(notifier.pending.isEmpty)
@@ -108,7 +108,7 @@ extension M312 {
     let on = Self.scheduler(allowed, store: store)
     await on.start()
     #expect(on.isOn)
-    #expect(allowed.pending == [Self.id: Self.fridayTrigger])
+    #expect(allowed.pending == [Self.reviewID: Self.fridayTrigger])
     #expect(allowed.askCount == 0)
     let refused = FakeReviewNotifier(status: .denied)
     let off = Self.scheduler(refused, store: store)
@@ -163,7 +163,7 @@ extension M312 {
     #expect(stored.day == .sat)
     #expect(stored.time == "09:30")
     #expect(hub.settings.slotText == "Sat 9:30 AM")
-    #expect(notifier.pending == [Self.id: DateComponents(hour: 9, minute: 30, weekday: 7)])
+    #expect(notifier.pending == [Self.reviewID: DateComponents(hour: 9, minute: 30, weekday: 7)])
     // Fri 20 Nov 18:00 is before Saturday 9:30, so last week is shown again.
     #expect(hub.review.week.id == "2026-W46")
   }
