@@ -255,7 +255,10 @@ public struct CompositionSeams {
                    uploadsAvailable: parts.uploadsAvailable, backends: backends, insights: local.insights,
                    onDeviceRecordings: local.onDevice)
         },
-        afterLaunch: { app in app.startLocalAnalysis(rules: local.rules) })
+        afterLaunch: { app in
+          app.startLocalAnalysis(rules: local.rules)
+          app.weeklyReview.start()
+        })
     })
     let secrets = KeychainSecretStore()
     let store = StoreContext(home: StoreLayout.defaultHome(), secrets: secrets)

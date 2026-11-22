@@ -2,7 +2,7 @@
 id: m3-12-mac-weekly-review
 title: Weekly review on the Mac (one sentence, tiles against your usual week, goals, up to 4 questions whose answers tune next week's ranking), at the review slot with an optional notification, from local insights or the brain's weekly review
 milestone: M3
-status: ready
+status: in_progress
 depends_on: [m3-10-mac-recordings-analysis]
 parallel_safe: true
 human_gated: true
@@ -12,7 +12,7 @@ parallel_group: M3-E
 owns: [apps/mac/Sources/OffloadMac/WeeklyReview/**, apps/mac/Tests/OffloadMacTests/M312/**]
 verify: bash slices/m3-12-mac-weekly-review/verify.sh
 min_tests: 55
-paths_in_scope: [apps/mac/Sources/OffloadMac/WeeklyReview/**, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Tests/OffloadMacTests/M312/**, apps/mac/README.md, docs/GLOSSARY.md, slices/m3-12-mac-weekly-review/**]
+paths_in_scope: [apps/mac/Sources/OffloadMac/WeeklyReview/**, apps/mac/Sources/OffloadMac/Shell/AppModel.swift, apps/mac/Sources/OffloadMac/App/OffloadApp.swift, apps/mac/Tests/OffloadMacTests/M312/**, apps/mac/README.md, docs/GLOSSARY.md, slices/m3-12-mac-weekly-review/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Shell/Launch.swift, apps/mac/Sources/OffloadMac/Shell/AppMover.swift, apps/mac/Sources/OffloadMac/Shell/MenuBar.swift, apps/mac/Sources/OffloadMac/Shell/RootView.swift, apps/mac/Sources/OffloadMac/Shell/LiveServices.swift, apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Sources/OffloadMac/TodayLive/**, apps/mac/Sources/OffloadMac/BuildProgress/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**, apps/mac/Tests/OffloadMacTests/M310/**, apps/mac/Tests/OffloadMacTests/M311/**, apps/mac/Tests/OffloadMacTests/M313/**]
 red_tests: [WEEK, SLOT, SENTENCE, TILES, USUAL, GOALS, QUESTIONS, ANSWERS, NOTES, NOTIFY, SETTINGS, CLOUD, STATES, FIGURES, COPY]
 ---
@@ -42,7 +42,7 @@ Scope changes). `human_gated: true`: the owner answers real questions about his 
     daylight saving changes) and `ReviewSchedule.shownWeek(now:slot:)`: the current week once its slot has passed,
     else the previous week.
   - `WeeklyReviewModel` (@MainActor): `week`, `content: ReviewContent?`, `state` (`.loading`, `.ready`, `.empty`,
-    `.notYet(week)`, `.failed(ReviewError)`), `previousWeek()`, `nextWeek()`, `answer(_ question:, _ choice:)`,
+    `.notYet(week)`, `.noReview(week)`, `.failed(ReviewError)`), `previousWeek()`, `nextWeek()`, `answer(_ question:, _ choice:)`,
     `refresh()`.
   - `ReviewContent` (pure, Equatable): `title` ("Week of Nov 9 · review"), `sentence`, `subtitleItems` ("week 8 of
     what Offload knows about you", "every number opens to how it was counted"), `tiles: [ReviewTile]` (label, value
@@ -87,7 +87,7 @@ Scope changes). `human_gated: true`: the owner answers real questions about his 
   `answers` and `answered`; chip labels by answer: `keep` "Keep", `not_now` "Not now", `build` "OK, build", `never`
   "Never", `leave_alone` "Leave it alone", `other_goal` "It's for another goal". Answering posts
   `POST /v1/review/answers` with `{ iso_week, subject_key, question_kind, answer, goal_id? }` (`goal_id` only with
-  `keep`, `build` or `other_goal`, required with `other_goal`). A 404 is `.notYet` (a future week). The slot comes from
+  `keep`, `build` or `other_goal`, required with `other_goal`). A 404 is `.noReview` (weeks before their slot are `.notYet` and never requested; review 1). The slot comes from
   `GET /v1/profile` and changes go through `PATCH /v1/profile` `{ review_slot: { day, time } }`.
 - **After an answer** (both modes): `build` adds "queued · same build screen as today" and calls m3-10's
   `navigation.startBuild` (`.localRepeat` or the opportunity); `never` adds "it won't come back unless the hours rise
@@ -105,9 +105,66 @@ Scope changes). `human_gated: true`: the owner answers real questions about his 
   the toggle turns off and the line reads "Notifications are off for Offload in System Settings." The notification
   says "Your weekly review is ready." with no numbers and no names (it shows on a locked screen).
 - **States**: `.empty` (`.local`, no data in the week): "Nothing counted this week yet." with **Choose recordings**;
-  `.notYet`: "Your review for this week lands Friday at 4:00 PM."; `.failed`: one sentence per `APIError` code with
+  `.notYet` (the current week before its slot): "Your review for this week lands Friday at 4:00 PM."; `.noReview`
+  (`.cloud`, a 404 after the slot): "There is no review for this week."; `.loading` also while local insights are
+  being counted and the week is still empty; `.failed`: one sentence per `APIError` code with
   **Try again**. No state shows a number that was not counted; sample data is never shown here.
 - **Provenance**: `.local` shows "counted on this Mac" (m3-10's caption).
+
+### Implementation design (2026-11-22, before the red tests)
+- **Types and files** (`WeeklyReview/`): `ISOWeek.swift`; `ReviewSlot.swift` (`ReviewSlot`, `ReviewSettingsStore` with
+  `UserDefaultsReviewSettingsStore` and `MemoryReviewSettingsStore`, `ReviewSchedule`); `WeekStats.swift` (one ISO
+  week of m3-10 day insights, and a repeat's minutes in a week); `ReviewContent.swift` (`ReviewContent`, `ReviewTile`,
+  `GoalRow`, `WeekQuestion`, `ReviewChip`); `LocalReview.swift` (`ReviewContent.local`); `CloudReview.swift`
+  (`ReviewContent.cloud`); `ReviewSentence.swift`; `ReviewNotifier.swift`; `ReviewScheduler.swift`;
+  `WeeklyReviewModel.swift` (`WeeklyReviewModel`, `ReviewSettingsModel`, `WeeklyReviewHub`); `ReviewCopy.swift`; the
+  two views. The screen's question type is `WeekQuestion`, because `ReviewQuestion` is already m3-10's brain model.
+- **Hook**: `AppModel` gains one lazy stored property, `weeklyReview = WeeklyReviewHub(app: self)`, and `live()` one
+  line, `app.weeklyReview.start()`. The hub holds the review model, the settings model and the scheduler, built from
+  `app.backends`, `app.insights`, `app.navigation` and `app.onboarding` (goals and rhythm); it holds no reference to
+  `AppModel`. `WeeklyReviewScreen(app:)` and `WeeklyReviewSettings(app:)` read `app.weeklyReview`.
+- **Weeks**: `ISOWeek` uses an ISO 8601 calendar in the person's time zone; week 1 is the week holding 4 January, so a
+  week id is built from that Monday plus whole days (correct across daylight saving changes). Local weeks come from the
+  snapshot's day labels.
+- **Tiles** (local): hours are `Figure`s with one decimal (`unit: "hours"`), switches per hour one decimal
+  (`per_hour`); each tile also carries its `usual` (median, `Figure`), its `delta` (percent, `Figure`, rounded to a
+  whole number) and its `run` (weeks in a row, `Figure`) when shown. The delta line is the run line when the tile moved
+  the same way 3 or more weeks in a row (consecutive ISO weeks with data, counted as changes: 4 falling weeks read
+  "down 3 weeks running"), else the percent line, else "first week". "same as your usual" at 0%. A tile with nothing
+  to compare (first week, Saved by fixes, every cloud tile) has the neutral tone.
+- **Sentence**: priority "grew N weeks in a row" (the highest-ranked not declined repeat with at least 3 rises in a
+  row, ending at the shown week), then "Your first week", then about (|delta| < 5%), more or less. `check` reads every
+  number in the sentence once the given names (repeat names, goal texts) are taken out, and accepts a number only when
+  it is a figure's value as shown (one decimal, or the value as the brain wrote it). A refused sentence is replaced by a
+  sentence without numbers ("Here is your week."). Cloud sentences go through the same check against the cloud tiles.
+- **Goals**: up to 3 of `ProfileAnswers.goals`; id `g_` + first 10 hex of SHA-256 of the goal text trimmed and
+  lowercased (the brain's text rule without its `created_at`, so the Mac's ids stay the same across launches). A goal's
+  hours are the week's minutes of the repeats whose latest answer (any week, as `RankingAdjustments`) names it; trend
+  is shown from 2 changes in a row ("↑ 2 weeks"; down adds the item "drifting").
+- **Questions** (local): repeats with time in the shown week, ordered by their score without this week's answers
+  (minutes per week × persistence × confidence, so answering does not reorder the list), then the key. A repeat answered
+  this week stays in its place, ticked, with its answer chip on; one not answered is left out when declined. At most 4.
+  With goals, a repeat never answered `keep` or `other_goal` gets the goal question (question i asks about goal
+  i mod count, "another goal" offers the others; with one goal that chip is not shown); otherwise the build question.
+  The first question's why line starts "Top repeat:"; the others give the same numbers without it.
+- **Cloud**: tiles by position ("Active", "Focus", "Meetings", "Switches / hour"; a fifth or later by unit), values as
+  the brain sent them, no delta line. Questions read "What next for <name>?" with one chip per answer the brain lists
+  (`other_goal` only when goals exist). OK, build hands `.opportunity(id: subject_key, optionID: nil)` to Build
+  progress (the review question carries the task key, not an opportunity id).
+- **Model**: `.local` never calls a client even when one is present (the mode decides). The screen follows "now"
+  until the person steps to another week. Answers are written, then `insights.reload()` re-ranks and the content is
+  rebuilt from the new snapshot. Cloud answers are posted, then the question is marked answered in place.
+- **Notifications**: `ReviewNotifier` has `authorization()`, `requestAuthorization()`, `schedule(at:id:)`,
+  `remove(id:)`. The scheduler asks macOS only when the status is not determined; a denied status turns the toggle off
+  with its line without asking again. One pending request id `ai.offload.weekly-review`, a repeating calendar trigger
+  on weekday, hour and minute. `LiveReviewNotifier` touches `UNUserNotificationCenter` only inside a bundle, shows the
+  banner while Offload is in front and opens Weekly review when clicked.
+- **Empty week with older data**: an imported archive often holds only older weeks, so the empty state also offers
+  "See the week of Oct 5" for the latest week with data (added after self-review, with its own red test).
+- **Settings**: the slot is edited with a day picker and an hour-and-minute picker (minute precision, so the owner can
+  set it two minutes ahead). `.local` saves to `UserDefaults` (`ai.offload.review.day`, `ai.offload.review.time`,
+  `ai.offload.review.notify`, `ai.offload.review.offered`); `.cloud` sends `PATCH /v1/profile` with only `review_slot`, and reads the slot from
+  `GET /v1/profile` when Settings or the screen loads. The notification toggle is kept on this Mac in both modes.
 
 ## Red tests (write these first, run them, see them fail)
 Folder `apps/mac/Tests/OffloadMacTests/M312/`, Swift Testing, every test `@Test("TAG: ...")` inside
@@ -127,7 +184,7 @@ fixtures.
 | NOTES | build note and `navigation.startBuild` with the right request; never note; counter text |
 | NOTIFY | toggle off by default; turning on asks once and schedules one weekly trigger at the slot; denied turns it off with the line; slot change reschedules (still one); turning off removes it; the text has no number |
 | SETTINGS | the Settings section shows the slot and the toggle; editing the slot in `.local` saves to the store, in `.cloud` sends `PATCH /v1/profile` with only `review_slot` |
-| CLOUD | `GET /v1/review/week?w=2026-W47` request; WeekReview fixture maps to content; 404 is `.notYet`; no request in `.local` |
+| CLOUD | `GET /v1/review/week?w=2026-W47` request; WeekReview fixture maps to content; 404 is `.noReview`, a week before its slot is `.notYet` without a request; no request in `.local` |
 | STATES | empty with Choose recordings; not yet line with the slot in words; failed sentences with Try again |
 | FIGURES | every number in `ReviewContent` traces to a Figure with arithmetic |
 | COPY | strings have no em dash, banned word or ADR 0016 term; captions lowercase with `·` items as separate items |
@@ -164,3 +221,62 @@ folders.
 - `Shell/AppModel.swift` is shared (m3-04, m3-05, m3-10); this slice adds one line to `live()`.
 - `BASE` is set after m3-10 is `done`, so m3-10's placeholder commits in `WeeklyReview/` are not counted against this
   slice's `owns`.
+- Build notes (2026-11-22): the screen's question type is `WeekQuestion` (m3-10's `ReviewQuestion` is the brain wire
+  shape). `ReviewTone` has a third value, `neutral`, for tiles with nothing to compare (first week, Saved by fixes,
+  cloud tiles) and goals without a trend: the SPEC's good or needs-you would otherwise colour a number that was not
+  compared. Cloud tiles show no line against your usual (the brain's WeekReview has no usual). Cloud **OK, build**
+  hands `.opportunity(id: subject_key, optionID: nil)` to Build progress, because the review question carries the task
+  key, not an opportunity id (for m3-13 and the API owners). Local goal ids hash the trimmed, lowercased text only
+  (the brain also hashes `created_at`, which the Mac does not have), so a local id and a cloud id for the same goal
+  differ; they never mix because answers stay in their own mode. The AppModel edit is a lazy stored property plus one
+  line in `live()` (3 lines), not one line: the hub must be kept somewhere and AppModel is the app's root.
+  `LiveReviewNotifier` installs itself as `UNUserNotificationCenter`'s delegate only when no delegate is set, to show
+  the banner while Offload is in front and open Weekly review on click.
+- Reference repos: nothing ported. The old repo's `ReviewModel`/`ReviewView` (release/mac-testable) are the workflow
+  approval review built around the run mode ADR 0016 removes, not the weekly review; Clicky has no notification or
+  week code. The layout follows the owner-approved mockup (`Weekly`, lines 629 to 709). No NOTICE change.
+- Not verified here: Swift does not build on Linux; the slice suite (82 tests) and the UserNotifications delegate
+  conformance under Swift 6 are first checked by the macOS CI run.
+- Review 1 (2026-11-22, independent Opus 5.5 review, `VERDICT: CHANGES`), red tests first (`b0c58a4`), then fixes:
+  1. (major) The notification is now offered on the review screen (ONBOARDING section 12): a line with **Tell me when
+     my review is ready** and **No thanks** on the ready and not-yet states, until answered or the Settings toggle is
+     used (`ReviewSettingsModel.showsNotificationOffer`, kept as `ai.offload.review.offered`).
+  2. (major) Clicking the notification calls `WeeklyReviewHub.openFromNotification()`: Weekly review opens on the week
+     the slot shows, also from another week. A screen left open moves at the slot (`startFollowingSlot()`, a
+     main-actor sleep until `ReviewSchedule.next`).
+  3. The delegate's completion handlers are `@Sendable`; the presenter is installed when the hub is made (a click that
+     launches Offload finds it); `SlotHolder` is `@MainActor`; `ReviewCopy.all` is built from smaller lists.
+  4. An empty local week reads `.loading` while insights are being counted.
+  5. `.cloud`: a 404 after the slot is `.noReview` ("There is no review for this week."), not "lands Friday"; the
+     SPEC's "A 404 is `.notYet`" is changed (only weeks before their slot are not yet, and those are never requested).
+  6. A slot read from the profile (or a changed rhythm) moves the notification and tells the screen; at launch the
+     screen's week moves without a request.
+  7. Tests: next week's questions are checked on real W48 data; each line's numbers are checked against its own
+     figures; the hub at launch, `.cloud` without a client and the click handler are tested. (The red-test commit
+     `8a8bda3` said 72 tests; it added 68.)
+  8. Switches per hour is switches ÷ active minutes × 60 ("20 switches ÷ 160 min active × 60 = 7.5 an hour"), so the
+     arithmetic reproduces the value. m3-10's day figure keeps its own rule (`Analysis/` is out of this slice's scope).
+  9. Saved by fixes is a plain view (not a dimmed button); goal rows use `.contain` so the hours button stays reachable.
+  10. The note after an answer sits beside the chips, as the mockup's `k0`.
+- Scope widened (review 2, finding 1): `apps/mac/Sources/OffloadMac/App/OffloadApp.swift` gets one additive modifier
+  on the menu bar label, `.modifier(WeeklyReviewWindowOpener(hub: app.weeklyReview))`. A click on the review
+  notification must reopen the main window, a SwiftUI `Window` scene that only `openWindow(id: "main")` reopens once
+  closed (the app keeps running with no window), and the menu bar label is the one view always alive. `Shell/RootView.swift`
+  stays untouched. The modifier lives in `WeeklyReview/`.
+- Review 2 (2026-11-22, independent Opus 5.5 review, `VERDICT: CHANGES`), red tests first (`24df762`), then fixes:
+  1. (major) A click on the notification opens the main window: `WeeklyReviewHub.windowRequests` rises and
+     `WeeklyReviewWindowOpener` (on the menu bar label, see the scope note above) calls `openWindow(id: "main")`; an
+     open main window behind Settings is also brought forward.
+  2. The slot timer sleeps on the continuous clock (it counts time the Mac slept), and `NSWorkspace.didWakeNotification`
+     calls `didWake()`, which moves a screen whose slot passed during sleep.
+  3. `slotPassed()` moves the week but loads only when the screen already asked for content (no weekly request in
+     `.cloud` nobody asked for).
+  4. A goal "not linked yet" is plain text, not a dimmed button.
+  5. Accepted, not changed: the brain's sentence is checked against the review's four tiles only, so a sentence that
+     quotes another week-record number (switch count, meeting minutes) is replaced by "Here is your week.". The brain
+     checks the sentence against the whole week record (brain port `records/narrative.ts`, `checkNarrative`), which the
+     review does not send. Safe under ADR 0003; for the API owners: send the sentence's figures with `WeekReview`.
+  6. The chip menu uses `.menuStyle(.button)` with `.buttonStyle(.borderless)`. Whether the delegate's methods match
+     the SDK ("nearly matches optional requirement") is for the first macOS CI log.
+  7. Linux: `verify-all.sh` is green here with a disposable Postgres 17 (`DATABASE_URL` set); without one, `bun test`
+     stops on the database tests, which is the environment, not this slice.

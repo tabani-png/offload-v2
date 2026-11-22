@@ -29,6 +29,8 @@ public final class AppModel: ObservableObject {
   public let insights: InsightsModel
   /// m3-10: the on-device recordings import (the folders found, the local sink); nil when it could not be set up.
   public let onDeviceRecordings: OnDeviceRecordings?
+  /// m3-12: the weekly review (its screen, its Settings section and the review notification), built on first use.
+  public private(set) lazy var weeklyReview: WeeklyReviewHub = WeeklyReviewHub(app: self)
 
   private var frontmostObserver: NSObjectProtocol?
   private var backgroundChecks: Task<Void, Never>?
@@ -105,9 +107,8 @@ public final class AppModel: ObservableObject {
     }
   }
 
-  // The live app is built by the one composition root, `AppComposition.live()` (m3-14): it injects the capture and
-  // upload runtimes, the shared Never watch store and the recordings model, then starts the frontmost-app tracking
-  // and the background permission checks below. m3-10's local analysis is plugged in there, not by a second `live()`.
+  // The live app is built by the one composition root, `AppComposition.live()` (m3-14). m3-10's local analysis
+  // and m3-12's weekly review start there, not from a second `AppModel.live()`.
 
   /// Screen 11 and Settings, Recordings (m3-05).
   public var recordings: RecordingsImportModel? { onboarding.services.recordings }

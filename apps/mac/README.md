@@ -58,6 +58,18 @@ holds the sidebar shell (Today, Weekly review, Builds, Recordings, Settings), th
 wiring. `TodayLive/`, `WeeklyReview/` and `BuildProgress/` start as placeholders owned by m3-11, m3-12 and m3-13.
 Tests: `Tests/OffloadMacTests/M310/`.
 
+Weekly review (slice m3-12): `Sources/OffloadMac/WeeklyReview/` holds the screen and its Settings section. In `.local`
+it is counted from local insights (`ReviewContent.local`: tiles against your usual week, one sentence from a closed set
+checked against its figures, goals with the hours of the repeats linked to them, up to 4 questions); answers are kept
+on this Mac through `LocalAnswerStore`, so local ranking reads them at once. In `.cloud` it reads
+`GET /v1/review/week?w=` and posts `POST /v1/review/answers`. `ISOWeek`, `ReviewSlot` and `ReviewSchedule` decide which
+week is shown; `ReviewScheduler` keeps one repeating notification (`ai.offload.weekly-review`) at the review slot while
+"Tell me when my review is ready" is on (off by default); `AppModel.live()` starts it through `WeeklyReviewHub`.
+Settings keys: `ai.offload.review.day`, `ai.offload.review.time`, `ai.offload.review.notify`,
+`ai.offload.review.offered`. The screen offers the notification once; clicking it opens the main window on this week's review
+(`WeeklyReviewWindowOpener` on the menu bar label). Tests:
+`Tests/OffloadMacTests/M312/`.
+
 Today on the Mac (slice m3-11): `Sources/OffloadMac/TodayLive/` replaces m3-10's placeholder with the mockup's Daily
 screen wired to real data. In `.local` it reads m3-10's local insights (the header, the day grid of the top apps, What
 you did, "Keeps coming back this week" with each count opening to how it was counted, one suggested fix whose Not now

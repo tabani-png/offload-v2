@@ -9,7 +9,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m3-12-mac-weekly-review"
-BASE=""   # set to the commit this slice starts from (after m3-10 is done) when status becomes in_progress
+BASE="d3d66519c8809874b1b68dbb796f41e28a2c8105"   # set when status became in_progress (on top of m3-10, which is still in_progress on this stack)
 PKG="apps/mac"
 TEST_DIR="apps/mac/Tests/OffloadMacTests/M312"
 SUITE="OffloadMacTests.M312"

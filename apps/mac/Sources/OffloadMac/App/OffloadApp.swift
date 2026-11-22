@@ -42,6 +42,8 @@ struct OffloadApp: App {
       MenuBarOpener(app: app, updates: updates, modeLines: modeLines)
     } label: {
       MenuBarLabel(app: app)
+        // m3-12: a click on the review notification opens the main window on Weekly review.
+        .modifier(WeeklyReviewWindowOpener(hub: app.weeklyReview))
     }
   }
 }
