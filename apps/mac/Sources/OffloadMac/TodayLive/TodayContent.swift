@@ -253,11 +253,13 @@ public struct TodayContent: Equatable, Sendable {
     return TodayContent(title: TodayCopy.title(day: record.day, today: today, timeZone: timeZone),
                         headline: TodayCopy.headline(minutes: activeMinutes), headlineMost: nil, headlineFigure: t.activeMinutes,
                         subtitleItems: subtitle, grid: nil, kinds: kinds, did: did, repeats: repeats,
-                        fix: first.map(cloudCard), provenance: .cloud)
+                        fix: first.map { cloudCard($0, week: week) }, provenance: .cloud)
   }
 
   /// The card of an opportunity: up to 3 options by number, then Leave it alone.
-  static func cloudCard(_ o: Opportunity) -> FixCard {
+  /// The title's count opens to the week task's `instances` when the opportunity names a task of that week (review 2,
+  /// finding 2); otherwise the title has no how line and is drawn as plain text.
+  static func cloudCard(_ o: Opportunity, week: WeekRecord?) -> FixCard {
     let candidates = o.options.filter { $0.kind != "leave_alone" }
     var order = Array(candidates.indices)
     order.sort { a, b in
@@ -278,7 +280,9 @@ public struct TodayContent: Equatable, Sendable {
                              detail: leave?.detail ?? TodayCopy.leaveAloneDetail, saves: nil, saving: nil, recommended: false,
                              leavesAlone: true, how: nil))
     let status = o.goal.map { TodayCopy.rankedFirst(goal: $0.text) } ?? TodayCopy.suggestedFix
-    return FixCard(source: .opportunity(id: o.id), status: status, title: o.title, figure: nil, how: nil, options: rows,
+    let count = o.taskKey.flatMap { key in week?.tasks.first { $0.taskKey == key }?.instances }
+    return FixCard(source: .opportunity(id: o.id), status: status, title: o.title, figure: count,
+                   how: count.map { TodayCopy.how($0.arithmetic, weekdays: nil) }, options: rows,
                    defaultSelection: rows.firstIndex { $0.recommended } ?? 0)
   }
 

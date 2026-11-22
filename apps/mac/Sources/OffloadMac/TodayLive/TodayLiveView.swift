@@ -403,13 +403,15 @@ struct FixCardView: View {
         Circle().fill(Theme.needsYou).frame(width: 8, height: 8).accessibilityHidden(true)
         CaptionLine(card.status, onChrome: true)
       }
-      HowToggle(key: "fix", model: model, reduceMotion: reduceMotion, help: card.figure?.arithmetic ?? "") {
-        Text(card.title).textStyle(Tokens.TypeScale.display).foregroundStyle(Theme.chromeInk)
-          .fixedSize(horizontal: false, vertical: true)
-          .multilineTextAlignment(.leading)
+      if let figure = card.figure, card.how != nil {
+        HowToggle(key: "fix", model: model, reduceMotion: reduceMotion, help: figure.arithmetic) {
+          fixTitle
+        }
+        .padding(.top, Tokens.Space.s8)
+      } else {
+        // Nothing to open: plain text, not a dimmed button (review 2, finding 2).
+        fixTitle.padding(.top, Tokens.Space.s8)
       }
-      .disabled(card.how == nil)
-      .padding(.top, Tokens.Space.s8)
       if model.isHowShown("fix"), let how = card.how { HowLine(text: how).padding(.top, 4) }
       if !card.options.isEmpty {
         VStack(spacing: 6) {
@@ -459,6 +461,12 @@ struct FixCardView: View {
     }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("today.fix")
+  }
+
+  var fixTitle: some View {
+    Text(card.title).textStyle(Tokens.TypeScale.display).foregroundStyle(Theme.chromeInk)
+      .fixedSize(horizontal: false, vertical: true)
+      .multilineTextAlignment(.leading)
   }
 
   func handle(_ key: TodayKey) -> KeyPress.Result {
