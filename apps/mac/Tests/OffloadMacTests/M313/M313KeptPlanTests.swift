@@ -87,7 +87,7 @@ extension M313 {
     second.disappear()
   }
 
-  @Test("PLAN: the kept plan is cleared once OK, build is accepted, on Not now, when it stops, after 10 minutes and when already running")
+  @Test("PLAN: the kept plan is cleared once OK, build is accepted, on Not now, when it stops and when already running; kept after 10 minutes")
   @MainActor func keptPlanCleared() async {
     // Accepted (202).
     let accepted = M313Client()
@@ -130,7 +130,9 @@ extension M313 {
     await m4.startPlan(opportunityID: "opp_1", optionID: "fix_1")
     now.advance(601)
     #expect(await m4.planStep() == nil)
-    #expect(plans4.load() == nil)
+    #expect(m4.plan?.phase == .tooLong)
+    // Too long stops the poll but keeps the plan, so "Check back later" can be kept (review3.md finding 1).
+    #expect(plans4.load() != nil)
 
     // Already running.
     let running = M313Client()
@@ -175,15 +177,19 @@ extension M313 {
       M313F.record("b_two", name: "Weekly report", fixID: "fix_1", at: "2026-11-22T10:00:00Z"),
     ])
     let client = M313Client()
-    client.script("build", .error(.notFound), .value(M313F.fanningOut))
+    // b_two's first read fails, so it was never loaded when the gone build is removed (review3.md finding 2).
+    client.script("build", .error(.notFound), .error(M313F.offline), .value(M313F.fanningOut))
     client.fallback("fix", .value(M313F.fix))
     let model = M313M.cloud(client, store: store)
     await model.refresh()
     #expect(model.selected == "b_two")
+    #expect(model.detail == nil)
     // Choose the gone one, then remove it.
     await model.select(M313F.buildID)
     #expect(model.detail == nil)
+    let before = client.count("build b_two")
     await model.remove(buildID: M313F.buildID)
+    #expect(client.count("build b_two") == before + 1)
     #expect(model.selected == "b_two")
     #expect(model.detail?.title == "Building · Weekly report")
     #expect(model.detail?.steps.first?.detail == "what it builds and what it must not touch · fingerprint 7c41e2")
