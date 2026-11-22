@@ -67,7 +67,18 @@ extension M312 {
   @Test("ANSWERS: after a local answer the next snapshot ranks it at once; Never drops the repeat from the top")
   @MainActor func answersRankAtOnce() async throws {
     let store = MemoryLocalAnswerStore()
-    let (model, insights) = await Self.fiveModel(store: store)
+    // The five patterns of W47, and A then B and C then D again on Mon and Tue of W48, so next week has questions.
+    var later = M312Events(origin: .imported("imp-m312-w48"), prefix: "w48")
+    for day in 0..<2 {
+      for (i, pair) in [("A", "B"), ("C", "D")].enumerated() {
+        let steps: [M312Step] = [(app: M312App.letter(pair.0), host: nil, minutes: 12 - i * 2),
+                                 (app: M312App.letter(pair.1), host: nil, minutes: 12 - i * 2)]
+        later.session(M312Clock.monday(week: 48, day: day, hour: 8 + i * 2), steps)
+      }
+    }
+    let insights = await M312Kit.insights(M312Data.fivePatterns + later.events, answers: store)
+    let model = M312Kit.model(insights: insights)
+    await model.refresh()
     let q = try #require(model.content?.questions.first)
     #expect(insights.snapshot.topRepeats.first?.key == q.subjectKey)
     let never = try #require(q.chips.first { $0.answer == .never })
@@ -78,8 +89,10 @@ extension M312 {
     // The question stays in place, answered; the next week does not ask it.
     #expect(model.content?.questions.first?.subjectKey == q.subjectKey)
     #expect(model.content?.questions.first?.answered == .never)
-    let next = ReviewContent.local(snapshot: insights.snapshot, week: M312Clock.week("2026-W48"), goals: [], answers: store.answers())
-    #expect(next == nil || next?.questions.contains { $0.subjectKey == q.subjectKey } == false)
+    let next = try #require(ReviewContent.local(snapshot: insights.snapshot, week: M312Clock.week("2026-W48"), goals: [],
+                                                answers: store.answers()))
+    #expect(!next.questions.contains { $0.subjectKey == q.subjectKey })
+    #expect(next.questions.map(\.name) == ["C, then D"])
   }
 
   @Test("ANSWERS: a cloud answer posts the exact body and leaves goal_id out when there is none")
@@ -292,11 +305,13 @@ extension M312 {
     #expect(c.provenance == .cloud)
   }
 
-  @Test("CLOUD: a 404 for the week is not yet, never an error")
+  @Test("CLOUD: a 404 for the week is no review, never an error")
   @MainActor func cloudNotFound() async {
     let (model, _) = Self.cloudModel([.json(404, M312Fixtures.notFound)])
     await model.refresh()
-    #expect(model.state == .notYet(M312Clock.week("2026-W47")))
+    // After the slot a 404 means the brain has no review for the week (review 1, finding 5); "not yet" is only for a
+    // week before its slot, which is never requested.
+    #expect(model.state == .noReview(M312Clock.week("2026-W47")))
     #expect(model.content == nil)
   }
 

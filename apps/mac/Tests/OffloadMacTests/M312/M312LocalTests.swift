@@ -111,7 +111,8 @@ extension M312 {
     let c = try #require(Self.local(M312Data.tilesWeek))
     #expect(c.tiles[0].value?.arithmetic.hasSuffix("= 2.7 h") == true)
     #expect(c.tiles[1].value?.arithmetic.hasSuffix("= 2 h") == true)
-    #expect(c.tiles[2].value?.arithmetic == "20 switches ÷ 2.7 h active = 7.5 an hour")
+    // The arithmetic reproduces its value: 20 ÷ 160 × 60 = 7.5 (review 1, finding 8).
+    #expect(c.tiles[2].value?.arithmetic == "20 switches ÷ 160 min active × 60 = 7.5 an hour")
     #expect(c.tiles[0].value?.evidence.isEmpty == false)
   }
 
@@ -374,12 +375,16 @@ extension M312 {
     let key = M312Data.key(M312Data.snapshot(e.events), named: m312PatternName)
     let ship = ReviewGoals.id("Ship a product")
     let c = try #require(Self.local(e.events, answers: [Self.answer(key, .keep, goal: ship)], goals: ["Ship a product", "Close 2 deals"]))
-    let shown: [String] = [c.sentence] + c.subtitleItems + c.tiles.flatMap { [$0.valueText] + [$0.deltaLine].compactMap { $0 } }
-      + c.goals.flatMap { [$0.hoursText].compactMap { $0 } + $0.trendItems } + c.questions.compactMap(\.whyLine)
+    // Each line is checked against its own figures (review 1, finding 7), so a line cannot borrow another's number.
+    var lines: [(text: String, figures: [Figure])] = [(c.sentence, c.sentenceFigures + c.tiles.flatMap(\.figures))]
+    lines += c.subtitleItems.map { ($0, [c.weeksKnown].compactMap { $0 }) }
+    for t in c.tiles { lines += ([t.valueText] + [t.deltaLine].compactMap { $0 }).map { ($0, t.figures) } }
+    for g in c.goals { lines += ([g.hoursText].compactMap { $0 } + g.trendItems).map { ($0, g.figures) } }
+    for q in c.questions { lines += [q.whyLine].compactMap { $0 }.map { ($0, q.why) } }
     var numbers = 0
-    for s in shown {
-      numbers += ReviewSentence.numbers(in: s).count
-      #expect(ReviewSentence.check(s, figures: c.figures, names: c.names), "not from a figure: \(s)")
+    for line in lines {
+      numbers += ReviewSentence.numbers(in: line.text).count
+      #expect(ReviewSentence.check(line.text, figures: line.figures, names: c.names), "not from its figures: \(line.text)")
     }
     #expect(numbers >= 10)
     #expect(c.subtitleItems == ["week 4 of what Offload knows about you", "every number opens to how it was counted"])

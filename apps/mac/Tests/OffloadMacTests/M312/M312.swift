@@ -47,11 +47,18 @@ typealias M312Step = (app: (String, String), host: String?, minutes: Int)
 /// Builds imported events in the readers' shape (m3-05): `idle_end`, a focus per step, `idle_start` 120 s after the
 /// session's last activity. Ids sort in the order the events were added.
 struct M312Events {
-  var origin: InsightEvent.Origin = .imported("imp-m312")
+  var origin: InsightEvent.Origin
+  /// Event ids are `<prefix>-00001`, …: two builders in one test use different prefixes.
+  var prefix: String
   private(set) var events: [InsightEvent] = []
 
+  init(origin: InsightEvent.Origin = .imported("imp-m312"), prefix: String = "m312") {
+    self.origin = origin
+    self.prefix = prefix
+  }
+
   private mutating func add(_ kind: InsightEvent.Kind, _ at: Date, app: (String, String)? = nil, host: String? = nil) {
-    let id = String(format: "m312-%05d", events.count + 1)
+    let id = prefix + "-" + ISOWeek.pad(events.count + 1, 5)
     events.append(InsightEvent(id: id, ts: at, kind: kind, appBundleID: app?.0, appName: app?.1, title: nil, host: host,
                                origin: origin))
   }
