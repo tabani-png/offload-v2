@@ -311,7 +311,7 @@ Status: open. Raised 2026-11-22 by [ADR 0039](adr/0039-routine-definition-v2-and
   text may go to the cloud) and keeps it to the fields a fix must parse. E2B is already a sub-processor
   ([SECURITY_PRIVACY.md section 10](SECURITY_PRIVACY.md#10-sub-processors)).
 - **Blocks**: M5 (ROADMAP task m5-11, span tokenisation of the `parse_text` fields that slice
-  `m5-10-workflow-backend` adds to the brief). Until answered, the
+  [m5-10](../slices/m5-10-workflow-backend/SPEC.md) adds to the brief). Until answered, the
   fixture code keeps whole-value tokens and a text-parsing build says it could not replay real text.
 - **Affects**: [ADR 0011](adr/0011-sandboxed-build-workers.md), [ADR 0027](adr/0027-fixture-capture-and-connector-content.md),
   [SECURITY_PRIVACY.md](SECURITY_PRIVACY.md#2-data-classes) (C6 in sandboxes).

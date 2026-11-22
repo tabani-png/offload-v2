@@ -25,14 +25,14 @@ facts (M7), month and quarter records (M7), Helm (M8), all of `ee/` (M8, M9).
 
 Test naming: `TAG: sentence` inside the package's `tests/<slice-id>/` folder, as in
 [AGENTS.md](../AGENTS.md#slice-format). Swift slices use a suite named after the slice (for example `M302`) in
-`apps/mac/Tests/OffloadMacTests/<suite>/`. Slice specs exist for M1, M3 and the Wave 1 slices m2-02, m2-03, m2-12,
-m3-03 and m5-03; [WAVE1.md](WAVE1.md) maps the old plan's Wave 1 workstreams (PR #42 W1-A to W1-H) to these slices,
+`apps/mac/Tests/OffloadMacTests/<suite>/`. Slice specs exist for M1, M3, the Wave 1 slices m2-02, m2-03, m2-12,
+m3-03 and m5-03, and m5-10 (execution backend, [ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md)); [WAVE1.md](WAVE1.md) maps the old plan's Wave 1 workstreams (PR #42 W1-A to W1-H) to these slices,
 with owners and the operator items each waits on. Other tasks are listed in the format
 id, depends on, tier, size, parallel group, paths: the same fields as the slice front-matter (`model_tier`, `size`,
 `parallel_group`, `owns`; [AGENTS.md](../AGENTS.md#slice-format)). Tier: Opus plans and reviews, Sonnet implements.
 Size: S (under a day), M (1 to 2 days), L (3 to 5 days). Parallel group: `M<milestone>-<letter>`, run in letter order;
 tasks in one group can run at the same time if their slices are `parallel_safe`. The slices use groups `M1-A` to
-`M1-D`, `M2-A`, `M3-A` to `M3-C` and `M5-A`.
+`M1-D`, `M2-A`, `M3-A` to `M3-C`, `M5-A` and `M5-C`.
 
 ## M0. Harness, architecture, operator items and spikes
 
@@ -85,6 +85,7 @@ Only the owner can do these. Lead times are typical, not promises; check each wh
 | S5 | OAuth and MCP for his real tools: Google internal client, Notion and Linear MCP registration, Stripe restricted key | 1 day | [ADR 0033](adr/0033-pinned-connector-resolution-and-launch-catalog.md) |
 | S6 | `browser.step` mechanism (browser extension with native messaging, attended) | 2 days, before M6 | [ADR 0025](adr/0025-execution-placement-and-mac-actuator.md) |
 | S7 | Transform isolate for routine artifacts (quickjs-emscripten candidate) | inside m1-05 | [ADR 0026](adr/0026-routine-artifact-contract.md) |
+| S8 | Port one Activepieces piece (MIT; QuickBooks or Xero) into an allowlisted direct-API adapter run by the broker; record effort and the per-piece license check | 1 day, before M6 | [ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md) |
 
 ## M1. Foundations
 
@@ -487,7 +488,9 @@ Tasks after the two slices:
   masking second pass and budgets; Today (day grid, "what you did", repeats with "how it was counted", one suggested
   fix); opportunity finder (score formula, goal alignment, decline penalty, drain boost); instant read; weekly review v1
   (one sentence checked by code, tiles vs usual week, goals, up to 4 questions); pseudonym match on the Mac ("is this
-  the sheet?"); observed opportunities enter the M2 build path; Build progress on the Mac; keyframes opt-in.
+  the sheet?"); observed opportunities enter the M2 build path; Build progress on the Mac; keyframes opt-in;
+  the execution backend: `routine.json` v2, tool choice, scaffold, static validation, held-out instances, read shapes,
+  rollback and the stability record ([ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md)).
 - **Exit criteria**: after one real week, Muhammad's Today shows one ranked suggested fix from observed work with 2 or
   3 options; he builds it through the same path as M2; the weekly review lands at his review slot; answers change next
   week's ranking; its saving is measured with a grade A baseline.
@@ -538,6 +541,58 @@ Tasks after the two slices:
   - `REVIEW: week record is generated at review_slot in the member's timezone (fake clock)`
   - `REVIEW: GET /v1/review/week for a future week is 404`
   - `KEYFRAME: a keyframe upload without keyframes_to_cloud is 403 consent_missing`
+  - Slice tests of [m5-10](../slices/m5-10-workflow-backend/SPEC.md), with the held-out cases in its
+    [ACCEPTANCE.md](../slices/m5-10-workflow-backend/ACCEPTANCE.md):
+    `IR: a v1 routine upgrades to v2 with class defaults and the same steps`,
+    `IR: a retry policy on a commit step is rejected with retry_not_allowed`,
+    `IR: a transform step with max_attempts above 1 is rejected`,
+    `IR: skip_item is rejected outside a foreach and on commit steps with skip_not_allowed`,
+    `IR: dedupe outside a commit step or with a key naming a non-item field is dedupe_invalid`,
+    `IR: definition_hash changes when the backend, a retry policy, a dedupe key or a read shape changes`,
+    `IR: generated v2 schemas are fresh and round-trip with zod`,
+    `SCAFFOLD: the same brief gives a byte-identical routine.json`,
+    `SCAFFOLD: steps, capabilities, connections, trigger, limits and dedupe keys come from the brief only`,
+    `SCAFFOLD: an artifact that changes a locked field fails with scaffold_changed`,
+    `TOOLS: an unverified catalog entry is never chosen but a connection the user added and pinned is`,
+    `TOOLS: a commit candidate without an argument allowlist is never chosen`,
+    `TOOLS: a candidate failing above 10% over at least 20 calls is skipped and one at 19 calls is not`,
+    `TOOLS: verified candidates are ordered mcp, composio, openapi, browser`,
+    `TOOLS: within one rung an existing connection wins, then wider capability coverage`,
+    `TOOLS: a model-named candidate that is in no catalog list is dropped`,
+    `TOOLS: every rate in the tool choice is a Figure with arithmetic`,
+    `VALIDATE: a template path that the read shape does not have is unknown_field`,
+    `VALIDATE: a capability or connection_ref outside the brief is refused`,
+    `VALIDATE: a model output schema with a number field is model_number`,
+    `VALIDATE: a transform that does not load in the isolate is transform_invalid`,
+    `VALIDATE: limits above the brief are limits_above_brief`,
+    `VALIDATE: every issue has a code and a JSON pointer and no fixture value`,
+    `REPLAY: the native backend replays the visible instances and its items equal the expected items`,
+    `REPLAY: replaying the same fixture set twice gives the same batch_hash`,
+    `REPLAY: a read that fails twice with 503 then succeeds counts 2 retries on the fake clock`,
+    `REPLAY: a commit step has no retry and its items are returned, never sent`,
+    `REPLAY: skip_item sets one element aside and the run fails with no items when skips exceed max_skipped_items`,
+    `REPLAY: an item whose dedupe key is pending or sent from an earlier run within the window is dropped and counted`,
+    `REPLAY: runRoutine never calls a connector commit`,
+    `HELDOUT: splitHeldOut holds out 2 of 8, 1 of 5, 1 of 4 and none of 3, deterministically per build`,
+    `HELDOUT: two builds of the same brief draw different splits`,
+    `HELDOUT: the worker bundle never contains a held-out instance`,
+    `HELDOUT: case A passes the reference artifact and fails each broken artifact`,
+    `HELDOUT: case B passes the reference artifact and fails each broken artifact`,
+    `HELDOUT: case C passes the reference artifact and fails each broken artifact`,
+    `HELDOUT: a case set in which no run expects an item is refused as no_teeth`,
+    `DEPLOY: deploy binds artifact_sha256, receipt_hash and definition_hash with backend native and starts ask_before_commit`,
+    `DEPLOY: any hash mismatch is 403 hash_mismatch and writes no version`,
+    `DEPLOY: a backend not registered as passing the conformance suite is 403 backend_not_allowed`,
+    `ROLLBACK: rolling back from version 2 to version 1 creates version 3 with rolled_back_from 1, ask_before_commit and streak 0`,
+    `ROLLBACK: a changed pin on the target version is 409 needs_review and writes no version`,
+    `DRIFT: a read missing a required key puts the routine in needs_review with read_shape_changed and commits nothing`,
+    `DRIFT: an extra key or a missing optional key is not drift`,
+    `DRIFT: the stability record counts runs, items, skips, dedupes and retries with arithmetic and run ids`,
+    `DRIFT: a commit through an opaque_workflow connection asks even in auto_commit`,
+    `BACKEND: the native backend passes the conformance suite`,
+    `BACKEND: a test backend that commits without an approved item hash fails the suite`,
+    `BACKEND: a test backend whose compiled routine holds a secret-shaped value fails the suite`,
+    `BACKEND: a test backend that writes fixture text into durable state fails the suite`
 
 | Id | Task | Depends on | Tier | Size | Parallel group | Paths |
 |---|---|---|---|---|---|---|
@@ -547,6 +602,8 @@ Tasks after the two slices:
 | m5-04 | Opportunity finder, instant read, options | m5-02, m2-01 | Sonnet | M | M5-B | `services/brain/**` |
 | m5-05 | Today and weekly review APIs and Mac screens | m5-04 | Sonnet | L | M5-B | `services/api/**`, `apps/mac/**` |
 | m5-06 | Pseudonym match flow and Build progress on the Mac | m5-04, m3-06 | Sonnet | M | M5-B | `apps/mac/**`, `services/api/**` |
+| [m5-10](../slices/m5-10-workflow-backend/SPEC.md) | Execution backend: `routine.json` v2, native backend and conformance suite, tool choice, scaffold, static validation, replay with held-out instances, deploy, rollback, drift ([ADR 0039](adr/0039-routine-definition-v2-and-execution-backends.md)) | M2 (m2-04, m2-05, m2-07, m2-09, m2-10), m5-03 | Opus plan, Sonnet build | L | M5-C | `packages/execution-backend/**`, `packages/routine-sdk/src/**`, `services/runtime/src/backends/**`, `services/api/src/routines/**` |
+| m5-11 | Span tokenisation of `parse_text` fields in fixture capture, after [OQ-31](OPEN_QUESTIONS.md#oq-31-masked-text-fields-in-build-sandboxes) | m5-10, m2-04 | Sonnet | M | M5-D | `packages/masking/src/spans/**`, the m2-04 fixture capture module |
 
 ## M6. Build and run depth
 

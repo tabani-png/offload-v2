@@ -297,7 +297,7 @@ Safety and the single-player loop are core ([OPEN_CORE.md](../OPEN_CORE.md#2-fea
   2,000 nodes. The owner should hear this plainly.
 - **The model writes less of each fix.** The graph comes from the brief. Workers write transforms, prompts and
   templates, which the checks, replay and held-out instances test.
-- **Contract changes land first, in slice `m5-10-workflow-backend`**,
+- **Contract changes land first, in slice [m5-10-workflow-backend](../../slices/m5-10-workflow-backend/SPEC.md)**,
   which updates [API.md](../API.md) and [DATA_MODEL.md](../DATA_MODEL.md):
   - `routine.json` v2;
   - brief fields `item_identity`, `parse_text`, `tool_choice`;
