@@ -203,8 +203,18 @@ All `R-model` unless noted. All have `tenant_id`, `member_id` and carry `member_
 | `week_records` | `(tenant_id, member_id, iso_week)` | `iso_week` (`YYYY-Www`), `hours jsonb`, `focus jsonb`, `tasks jsonb` (per task key: minutes, instances, median minutes, baseline minutes, vs baseline %, status `new`/`recurring`/`gone`), `fixes jsonb` (estimated vs measured), `weeks_observed`, `narrative`, `generated_at` | MI |
 | `month_records` | `(tenant_id, member_id, month)` | `month` (`YYYY-MM`), `persistent[]`, `trend jsonb` (Theil-Sen slope per task key and goal), `drift jsonb`, `realized jsonb`, `outcomes jsonb` (per shipped fix: `pending`, `on_track`, `partial`, `under`, `unmeasured`, and the "Didn't pay off: undo?" flag), `narrative` | MI (M7) |
 | `quarter_records` | `(tenant_id, member_id, quarter)` | `quarter` (`YYYY-Qn`), same shape as month | MI (M7) |
-| `figure_index` | `(tenant_id, member_id, figure_id)` | `record_kind` (`day`, `week`, `month`, `quarter`, `opportunity`, `run_saving`), `record_key`, `json_pointer`, `created_at` | MI. Same retention as its record |
+| `figure_index` | `(tenant_id, member_id, figure_id, record_kind, record_key)` (identical figures in two records share an id) | `record_kind` (`day`, `week`, `month`, `quarter`, `opportunity`, `run_saving`), `record_key`, `json_pointer`, `created_at` | MI. Same retention as its record |
 | `review_answers` | `(tenant_id, member_id, iso_week, subject_key)` | `question_kind`, `answer` (`keep`, `not_now`, `build`, `never`, `leave_alone`, `yes`, `no`, `other_goal`, `confirm_name`, `dont_track`, `undo`), `goal_id`, `answered_at` | MI. Latest wins. `not_now` lasts 4 weeks |
+
+User model storage as built (slices p43a and p43b; migration `services/brain/sql/0001_user_model.sql`, adopted
+by `packages/db` later): vectors are `real[]` until pgvector is installed; `goals.position` keeps the user's order and
+a trigger refuses a fourth active goal; `episodes.day`; `week_records.from_day`, `to_day`, `days_recorded[]`;
+`month_records` and `quarter_records` also hold `weeks[]`, `hours`, `by_task`, `notes[]` and `generated_at`;
+`propositions` has one current version per `key` and `invalid_at ≥ valid_at`; `opportunities.goal_id`. `offload_app`
+has no DELETE on these tables except `figure_index` and `opportunities`. A day's episodes are read through
+`day_records.episode_ids`, never by `episodes.day` alone: a re-analysed day can leave older episode rows that only
+forget removes. Day records, episodes and the ledger use the profile's timezone; the member update job refuses a
+window built in another one.
 
 ## 5. Capture
 
