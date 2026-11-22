@@ -26,10 +26,10 @@ public struct AVRecordingCreationDates: RecordingCreationDates {
   public func creationDate(of url: URL) -> Date? {
     guard FileManager.default.fileExists(atPath: url.path) else { return nil }
     let asset = AVURLAsset(url: url)
-    var items: [AVMetadataItem] = []
+    // QuickTime's own creation date first: the common key may fall back to the movie header's write time.
+    var items = AVMetadataItem.metadataItems(from: asset.metadata(forFormat: .quickTimeMetadata),
+                                             filteredByIdentifier: .quickTimeMetadataCreationDate)
     if let item = asset.creationDate { items.append(item) }
-    items += AVMetadataItem.metadataItems(from: asset.metadata(forFormat: .quickTimeMetadata),
-                                          filteredByIdentifier: .quickTimeMetadataCreationDate)
     for item in items {
       if let date = item.dateValue { return date }
       if let text = item.stringValue, let date = Self.date(fromISO: text) { return date }
@@ -96,8 +96,10 @@ public enum RecordingStartTime {
   ///    `gap`), start = end − duration. A file far from the others keeps its modified time minus its length; files
   ///    sharing a modified time are laid end to end, the last in name order ending at that time. The result depends
   ///    only on the files, not on the order they are listed in.
+  /// `occupied` holds the spans of recordings already imported from the same folder: a file planned in step 3 is
+  /// moved before any of them it would touch (within `gap`), so a copy imported later does not land on them.
   public static func plan(_ files: [RecordingTimes], now: Date, futureSlack: TimeInterval = 600,
-                          gap: TimeInterval = sharedTimeGap) -> [RecordingStart?] {
+                          gap: TimeInterval = sharedTimeGap, occupied: [DateInterval] = []) -> [RecordingStart?] {
     let limit = now.addingTimeInterval(futureSlack)
     var out = [RecordingStart?](repeating: nil, count: files.count)
     var ordered: [Int] = []
@@ -121,7 +123,12 @@ public enum RecordingStartTime {
     for i in ordered.reversed() {
       var end = files[i].modified
       if let nextStart { end = min(end, nextStart.addingTimeInterval(-gap)) }
-      let start = end.addingTimeInterval(-max(0, files[i].duration ?? 0))
+      let length = max(0, files[i].duration ?? 0)
+      var start = end.addingTimeInterval(-length)
+      while let clash = occupied.first(where: { start < $0.end.addingTimeInterval(gap) && end > $0.start.addingTimeInterval(-gap) }) {
+        end = clash.start.addingTimeInterval(-gap)
+        start = end.addingTimeInterval(-length)
+      }
       out[i] = RecordingStart(start: start, source: .modifiedOrdered)
       nextStart = start
     }

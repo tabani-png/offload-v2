@@ -58,6 +58,15 @@ public enum AppCues {
     "zip", "dmg", "pkg", "eml", "msg", "ics", "vcf", "sql", "py", "js", "ts", "swift", "sh", "html", "htm", "css",
   ]
 
+  /// The top-level domains an unknown host may end in when it shows no scheme and no path (review 1: a dotted name
+  /// in a title, "amara.okafor" or "Budget.final", is not a host).
+  public static let tlds: [String] = [
+    "com", "org", "net", "edu", "gov", "mil", "int", "io", "co", "ai", "app", "dev", "me", "us", "uk", "de", "fr",
+    "es", "it", "nl", "be", "ch", "at", "se", "no", "dk", "fi", "ie", "pt", "pl", "cz", "ca", "au", "nz", "jp", "cn",
+    "in", "br", "mx", "za", "sg", "hk", "eu", "info", "biz", "so", "ly", "to", "tv", "cloud", "tech", "xyz", "site",
+    "online", "store", "shop", "link",
+  ]
+
   /// The table, in the JSON file's order (the order breaks ties).
   public static let rules: [AppCueRule] = [
     AppCueRule(id: "gmail", appName: "Gmail", appBundleID: "web.gmail",
@@ -123,9 +132,16 @@ public enum AppCues {
     let band = chromeBandHeight(frameHeight: frameHeight)
     let chrome = lines.filter { $0.box.y < band }.sorted { ($0.box.y, $0.box.x) < ($1.box.y, $1.box.x) }
     for line in chrome {
-      for found in urlHosts(in: line.text) where masker.mask(found.host) == found.host {
-        let rule = self.rule(forHost: found.host, path: found.path) ?? browser
-        return AppCue(appName: rule.appName, appBundleID: rule.appBundleID, host: found.host, ruleID: rule.id)
+      for found in urlHosts(in: line.text) {
+        // The masker sees the host as the frame showed it and as it would be kept.
+        guard masker.mask(found.shown) == found.shown, masker.mask(found.host) == found.host else { continue }
+        if let rule = self.rule(forHost: found.host, path: found.path) {
+          return AppCue(appName: rule.appName, appBundleID: rule.appBundleID, host: found.host, ruleID: rule.id)
+        }
+        // A host the table does not know must look like a URL: a scheme, a path or a common top-level domain.
+        let tld = found.host.split(separator: ".").last.map(String.init) ?? ""
+        guard found.hasScheme || !found.path.isEmpty || tlds.contains(tld) else { continue }
+        return AppCue(appName: browser.appName, appBundleID: browser.appBundleID, host: found.host, ruleID: browser.id)
       }
     }
     for line in chrome {
@@ -140,6 +156,10 @@ public enum AppCues {
   public struct URLHost: Equatable, Sendable {
     public var host: String
     public var path: String
+    /// The token had a scheme (`https://`).
+    public var hasScheme: Bool
+    /// The host as the frame showed it (its case kept), for the masker only.
+    public var shown: String
   }
 
   /// URL-bar hosts in one line: `https://mail.google.com/mail/u/0`, `qbo.intuit.com/app`, `www.example.org`. A token
@@ -149,21 +169,28 @@ public enum AppCues {
     var out: [URLHost] = []
     for raw in line.split(whereSeparator: { $0.isWhitespace }) {
       guard !raw.contains("@") else { continue }
-      var token = raw.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "()[]<>{}\"'.,;:!|"))
-      if let r = token.range(of: "://") { token = String(token[r.upperBound...]) }
-      var hostPart = token
+      var token = String(raw).trimmingCharacters(in: CharacterSet(charactersIn: "()[]<>{}\"'.,;:!|"))
+      var hasScheme = false
+      if let r = token.range(of: "://") {
+        token = String(token[r.upperBound...])
+        hasScheme = true
+      }
+      var shown = token
       var path = ""
       if let cut = token.firstIndex(where: { $0 == "/" || $0 == "?" || $0 == "#" }) {
-        hostPart = String(token[..<cut])
+        shown = String(token[..<cut])
         if token[cut] == "/" {
           let rest = token[cut...]
-          path = String(rest.prefix { $0 != "?" && $0 != "#" })
+          path = String(rest.prefix { $0 != "?" && $0 != "#" }).lowercased()
         }
       }
-      if let colon = hostPart.firstIndex(of: ":") { hostPart = String(hostPart[..<colon]) }
-      while hostPart.hasSuffix(".") { hostPart.removeLast() }
-      guard isHost(hostPart) else { continue }
-      out.append(URLHost(host: hostPart, path: path))
+      if let colon = shown.firstIndex(of: ":") { shown = String(shown[..<colon]) }
+      while shown.hasSuffix(".") { shown.removeLast() }
+      // URL bars show hosts in lowercase; a capitalised dotted word without a scheme is a name ("Okafor.Contract").
+      guard hasScheme || shown == shown.lowercased() else { continue }
+      let host = shown.lowercased()
+      guard isHost(host) else { continue }
+      out.append(URLHost(host: host, path: path, hasScheme: hasScheme, shown: shown))
     }
     return out
   }

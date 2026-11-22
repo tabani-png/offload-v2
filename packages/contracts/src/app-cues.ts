@@ -32,6 +32,8 @@ export const AppCueTableSchema = z.strictObject({
   chrome_band: z.strictObject({ fraction: z.number().gt(0).lt(1), min_px: z.number().int().positive() }),
   browser: z.strictObject({ app_name: appName, app_bundle_id: appBundleId }),
   not_tlds: z.array(z.string().regex(/^[a-z]+$/)),
+  /** Top-level domains an unknown host may end in when it has no scheme and no path. */
+  tlds: z.array(z.string().regex(/^[a-z]+$/)).min(1),
   apps: z.array(AppCueRuleSchema).min(1),
 });
 export type AppCueTable = z.infer<typeof AppCueTableSchema>;
