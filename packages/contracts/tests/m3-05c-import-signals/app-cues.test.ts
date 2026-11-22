@@ -45,6 +45,9 @@ test("TABLE: ids and titles are unique, every app has a host or a title, and the
   }
   expect(appCueTable.not_tlds).toContain("xlsx");
   expect(appCueTable.not_tlds).toContain("pdf");
+  // Unknown hosts without a scheme or path need one of these top-level domains (review 1: "amara.okafor" is no host).
+  expect(appCueTable.tlds).toContain("com");
+  expect(appCueTable.tlds.some((t) => appCueTable.not_tlds.includes(t))).toBe(false);
 });
 
 test("TABLE: every app name, bundle id and host fits the observation contract's focus", () => {

@@ -118,4 +118,20 @@ extension M305C {
     #expect(M305C.cue(m305cWindow(tab: "Untitled 3", body: "Totals")) == nil)
     #expect(M305C.cue(m305cWindow(tab: "Quarterly plan", url: "Search or enter address", body: "x")) == nil)
   }
+
+  @Test("CUES: a dotted name in a title or tab line is not a host and does not win over the URL bar (review 1)")
+  func dottedNamesAreNotHosts() {
+    let docs = [m305cLine("Okafor.Contract - Google Docs", y: 10), m305cLine("docs.google.com/document/d/x/edit", y: 50)]
+    #expect(M305C.cue(docs) == AppCue(appName: "Google Docs", appBundleID: "web.google-docs", host: "docs.google.com",
+                                      ruleID: "google-docs"))
+    for text in ["amara.okafor", "Budget.final", "Q4 plan.psd", "Okafor.Contract", "notes.draft v2"] {
+      #expect(M305C.cue([m305cLine(text, y: 50)]) == nil, "\(text)")
+    }
+    // An unknown host needs a URL's shape: a scheme, a path, or a common top-level domain.
+    #expect(M305C.cue([m305cLine("https://intranet.acme.corp", y: 50)])?.host == "intranet.acme.corp")
+    #expect(M305C.cue([m305cLine("intranet.acme.corp/wiki", y: 50)])?.host == "intranet.acme.corp")
+    #expect(M305C.cue([m305cLine("intranet.acme.corp", y: 50)]) == nil)
+    #expect(M305C.cue([m305cLine("acme-supplies.com", y: 50)])?.host == "acme-supplies.com")
+    #expect(AppCues.tlds.contains("com") && !AppCues.tlds.contains("final"))
+  }
 }

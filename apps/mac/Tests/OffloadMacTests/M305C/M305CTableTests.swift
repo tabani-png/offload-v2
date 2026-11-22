@@ -18,6 +18,7 @@ extension M305C {
     #expect(browser["app_name"] as? String == AppCues.browser.appName)
     #expect(browser["app_bundle_id"] as? String == AppCues.browser.appBundleID)
     #expect(json["not_tlds"] as? [String] == AppCues.notTLDs)
+    #expect(json["tlds"] as? [String] == AppCues.tlds)
     let apps = try #require(json["apps"] as? [[String: Any]])
     #expect(apps.count == AppCues.rules.count)
     for (row, rule) in zip(apps, AppCues.rules) {

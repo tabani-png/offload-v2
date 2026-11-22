@@ -141,6 +141,53 @@ extension M305C {
     #expect(idle == [.idleEnd, .idleStart, .idleEnd, .idleStart, .idleEnd, .idleStart])
   }
 
+  @Test("START: recordings already imported are kept clear of: a new file sharing their modified time goes before them (review 1)")
+  func occupiedSpansAreAvoided() {
+    let m = M305Clock.date(2026, 11, 14, 10, 0, 0)
+    let taken = [DateInterval(start: m.addingTimeInterval(-60), duration: 60)]
+    let plan = RecordingStartTime.plan([M305C.times("c.mov", modified: m)], now: M305Clock.now, occupied: taken)
+    #expect(plan == [RecordingStart(start: m.addingTimeInterval(-60 - 180 - 60), source: .modifiedOrdered)])
+    // Far from it, a file keeps its own time.
+    let far = RecordingStartTime.plan([M305C.times("d.mov", modified: m.addingTimeInterval(7200))], now: M305Clock.now, occupied: taken)
+    #expect(far == [RecordingStart(start: m.addingTimeInterval(7140), source: .modifiedOrdered)])
+  }
+
+  @Test("START: a copied recording imported later does not land on one imported before with the same modified time (review 1)")
+  func laterCopyDoesNotOverlap() async throws {
+    let folder = M305Files.folder()
+    defer { M305Files.remove(folder) }
+    let m = M305Clock.date(2026, 11, 14, 10, 0, 0)
+    for name in ["clip-a.mov", "clip-b.mov"] { M305Files.put(folder, name, modified: m) }
+    let fakes = M305Importer()
+    let first = try #require(await M305C.run(fakes, folder: folder).report?.space)
+    M305Files.put(folder, "clip-c.mov", modified: m)
+    let second = try #require(await M305C.run(fakes, folder: folder).report?.space)
+    #expect(first.id != second.id)
+    let all: [ImportObservation] = fakes.sink.observations(in: first.id) + fakes.sink.observations(in: second.id)
+    let idle = all.filter { $0.kind == .idleEnd || $0.kind == .idleStart }.sorted { $0.ts < $1.ts }
+    let spans: [ImportObservation.Kind] = idle.map(\.kind)
+    #expect(spans == [.idleEnd, .idleStart, .idleEnd, .idleStart, .idleEnd, .idleStart])
+  }
+
+  @Test("START: when the length cannot be read without opening the file, the video is opened to read it (review 1)")
+  func unknownLengthOpensTheVideo() async throws {
+    let folder = M305Files.folder()
+    defer { M305Files.remove(folder) }
+    let m = M305Clock.date(2026, 11, 14, 10, 0, 0)
+    M305Files.put(folder, "clip.mov", modified: m)
+    let fakes = M305Importer()
+    let readers = RecordingImporter.Readers(openVideo: { url in FakeRecording(M305Script.twoApps(url.lastPathComponent)) },
+                                            openImage: { _ in ImportFrame(width: 1, height: 1, tag: "x") },
+                                            duration: { _ in nil })
+    let importer = RecordingImporter(recognizer: M305AnyNameRecognizer(scripts: [:], images: [:]), masker: fakes.masker,
+                                     exclusions: fakes.exclusions, sink: fakes.sink, ledger: fakes.ledger, readers: readers,
+                                     clock: fakes.clock, timeZone: M305Clock.utc)
+    let log = ProgressLog()
+    await importer.run(folder: folder) { log.add($0) }
+    let space = try #require(log.report?.space)
+    #expect(fakes.sink.observations(in: space.id).first?.ts == m.addingTimeInterval(-60))
+  }
+
   @Test("START: the live reader takes the creation date from the container's metadata; a file without one gives nil")
   func liveCreationDate() throws {
     let dir = M305Files.folder()
