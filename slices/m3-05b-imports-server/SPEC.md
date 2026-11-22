@@ -12,8 +12,8 @@ parallel_group: M3-C
 owns: [services/api/src/imports/**]
 verify: bash slices/m3-05b-imports-server/verify.sh
 min_tests: 20
-paths_in_scope: [services/api/src/**, services/api/tests/m3-05b-imports-server/**, packages/contracts/src/**, packages/contracts/schemas/**, packages/contracts/scripts/**, packages/db/migrations/0007_imports.sql, slices/m3-05b-imports-server/**, docs/API.md, docs/DATA_MODEL.md, docs/ARCHITECTURE.md, docs/ROADMAP.md, docs/SECURITY_PRIVACY.md]
-paths_out_of_scope: [ee/**, apps/**, services/brain/**, services/builder/**, services/runtime/**, services/broker/**, services/api/tests/m3-01-ingest-batches/**, .github/**, docs/adr/**]
+paths_in_scope: [services/api/src/**, services/api/tests/m3-05b-imports-server/**, packages/contracts/src/**, packages/contracts/schemas/**, packages/contracts/scripts/**, apps/mac/Sources/OffloadContracts/Generated/**, packages/db/migrations/0007_imports.sql, slices/m3-05b-imports-server/**, docs/API.md, docs/DATA_MODEL.md, docs/ARCHITECTURE.md, docs/ROADMAP.md, docs/SECURITY_PRIVACY.md]
+paths_out_of_scope: [ee/**, apps/web/**, apps/mac/Package.swift, apps/mac/Sources/OffloadMac/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadImport/**, apps/mac/Tests/**, services/brain/**, services/builder/**, services/runtime/**, services/broker/**, services/api/tests/m3-01-ingest-batches/**, .github/**, docs/adr/**]
 red_tests: [IMPORT]
 ---
 
@@ -126,6 +126,8 @@ Tests live in `services/api/tests/m3-05b-imports-server/`, real Postgres (the m3
 | IMPORT | IMPORT: an import_id sent in upper case is the same import space for ingest and forget | review 1, finding 4 |
 | IMPORT | IMPORT: forget waits for a dispatcher that holds the import's outbox event and still wipes it | 202, no FK error (review 1, finding 2) |
 | IMPORT | IMPORT: forget finds an import's outbox events through an index, not a scan of the outbox | EXPLAIN of forget's own query as `offload_app` in `withTenant`, 3000 other events: Index Cond on `import_id` (review 1 finding 3, review 2 finding 1) |
+| IMPORT | IMPORT: the committed generated Swift types match gen-swift.ts, import types included | byte-compare on Linux, as M302's Swift test does on macOS (mac CI on `fe9be56`) |
+| IMPORT | IMPORT: generated Swift types do not reuse a public type name OffloadImport declares | no shared name, so the Mac app's import composition still compiles |
 
 ## Out of scope
 The Mac sink and uploader (m3-02); forget scopes `entity`, `range`, `all` and `GET /v1/me/export` (M7); derived user
@@ -147,6 +149,13 @@ state (none references an import yet); the analysis anchored to an import's last
   (spot-checked) and passes with it.
 - API.md's `observations.ingested` payload row said `{ device_id, member_id, count, first_ts, last_ts }`, which m3-01
   never wrote; it now states the real payload plus `import_id`.
+- 2026-11-22, mac CI red on `fe9be56` (`UPLOAD: generated Swift types are fresh`): the new schemas had no generated
+  Swift. `apps/mac/Sources/OffloadContracts/Generated/**` is now in scope (only the generator's output; `apps/**`
+  narrowed in `paths_out_of_scope` so the rest of the Mac app stays out). Regenerating as-is would emit
+  `public enum ImportSourceKind` in OffloadContracts, the name OffloadImport already declares by hand; OffloadImport does
+  not import OffloadContracts, so OffloadMac's `ImportComposition.swift` and the M314 tests, which import both and name
+  it unqualified, would stop compiling. `gen-swift.ts` therefore renames that generated enum to `ImportSpaceSourceKind`
+  (a fixed rename table), and two Linux tests guard freshness and the name clash.
 
 ## Progress
 - [x] SPEC, verify.sh, ROADMAP row (`8cdf499`)
