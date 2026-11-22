@@ -198,6 +198,8 @@ fix rules and `FixEstimate` (m5-04: `estimateFor` is passed through), `offload s
   `SLICE_UPSTREAM=$(git merge-base HEAD origin/main) bash scripts/verify-all.sh` green
 - [x] review 1 (CHANGES): findings 1 to 8, 10 and 11 fixed with red tests first (0ce0a04, then 43966f6, c41cdcc);
   finding 9 recorded under Known limits
+- [x] after review 1: `verify.sh` PASS (38 slice tests, 479 in the full suite); `verify-all` green with
+  `SLICE_UPSTREAM=$(git merge-base HEAD origin/main)`
 - [ ] review 2, then `status: done`
 
 Known limits (for m1-06 and later):
