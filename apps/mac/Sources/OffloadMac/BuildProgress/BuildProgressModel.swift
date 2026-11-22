@@ -862,7 +862,7 @@ public final class BuildProgressModel: ObservableObject {
 
   // MARK: Words
 
-  /// "Can't reach Offload. Retrying." only when the Mac is offline; any other failure in its own words (review 1,
+  /// "Can't reach Offload. Retrying." only when the Mac is offline; any other failure in its own words (pre-review
   /// finding 5).
   private func connectionWords(_ error: any Error) -> String {
     if let e = error as? APIError, !e.isOffline { return BuildCopy.sentence(for: e) }

@@ -80,7 +80,7 @@ struct BuildRowView: View {
   let choose: () -> Void
   let remove: () -> Void
 
-  // Remove from list sits beside the row's button, not inside it, so a click and VoiceOver reach it (review 1,
+  // Remove from list sits beside the row's button, not inside it, so a click and VoiceOver reach it (pre-review
   // finding 2).
   var body: some View {
     VStack(alignment: .leading, spacing: Tokens.Space.s4) {
