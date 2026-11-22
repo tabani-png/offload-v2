@@ -93,6 +93,9 @@ describe("p45a held-out writer", () => {
     expect(sent).not.toContain("FROZEN slug check");
     expect(sent).not.toContain(visible.hash);
     expect(HELDOUT_WRITER_SYSTEM).toMatch(/different fixtures/i);
+    // under the user split the tool gets a clean environment and can read the check's temp folders
+    expect(HELDOUT_WRITER_SYSTEM).toMatch(/no environment variables/i);
+    expect(HELDOUT_WRITER_SYSTEM).toMatch(/never write the expected values/i);
     expect(HELDOUT_WRITER_SYSTEM).toMatch(/boundar/i);
   });
 
