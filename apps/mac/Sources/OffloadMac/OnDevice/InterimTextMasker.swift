@@ -67,13 +67,28 @@ public struct InterimTextMasker: ImportTextMasker {
   /// The pseudonym key's bytes (Data, so the masker is Sendable).
   private let key: Data
   private let names: any PersonNameFinder
+  /// Installed apps' names, lowercased: never a person name (review 6).
+  private let appNames: Set<String>
+  /// Results for short inputs seen before (window titles, menu bar names repeat on every row and frame).
+  private let cache = MaskCache()
 
-  public init(key: Data, names: any PersonNameFinder = NaturalLanguageNameFinder()) {
+  /// `appNames` are the names of the apps installed on this Mac (`InstalledAppNames`); with MenuBarApp's table they
+  /// are never taken for a person, so a recording's menu bar app keeps its name.
+  public init(key: Data, names: any PersonNameFinder = NaturalLanguageNameFinder(), appNames: Set<String> = []) {
     self.key = key
     self.names = names
+    self.appNames = Set(appNames.map { Self.normalisedName($0) })
   }
 
   public func mask(_ text: String) -> String {
+    let short = text.utf16.count <= MaskCache.maxKeyLength
+    if short, let hit = cache.value(for: text) { return hit }
+    let out = maskUncached(text)
+    if short { cache.store(out, for: text) }
+    return out
+  }
+
+  func maskUncached(_ text: String) -> String {
     var s = text
     s = maskURLs(s)
     s = maskSecrets(s)
@@ -116,7 +131,9 @@ public struct InterimTextMasker: ImportTextMasker {
   /// "host/path?q#f" → "host/<doc:h_…>"; "host", "host/" or "host?q" → "host".
   func hostAndDoc(_ rest: String) -> String {
     let cut = rest.firstIndex { $0 == "/" || $0 == "?" || $0 == "#" } ?? rest.endIndex
-    let hostPart = String(rest[..<cut])
+    var hostPart = String(rest[..<cut])
+    // User info (`user:password@`) never stays (review 4, finding 3).
+    if let at = hostPart.lastIndex(of: "@") { hostPart = String(hostPart[hostPart.index(after: at)...]) }
     var path = ""
     if cut < rest.endIndex, rest[cut] == "/" {
       let afterHost = rest[cut...]
@@ -184,13 +201,16 @@ public struct InterimTextMasker: ImportTextMasker {
   /// Names the finder reports, kept only when they start with a capital letter, have 1 to 4 words, are not already a
   /// placeholder and are not all never-name words.
   func maskFoundNames(_ text: String) -> String {
+    // A bare app name (the menu bar name m3-05's ingestor checks) is never a person (review 6).
+    if isAppName(text) { return text }
     let found = names.personNames(in: text).map { NSRange($0, in: text) }.sorted { $0.location < $1.location }
     guard !found.isEmpty else { return text }
     let ns = text as NSString
     var kept: [NSRange] = []
     for r in found where r.length > 0 {
       if let last = kept.last, NSIntersectionRange(last, r).length > 0 { continue }
-      if Self.isName(ns.substring(with: r)) { kept.append(r) }
+      let candidate = ns.substring(with: r)
+      if Self.isName(candidate), !isAppName(candidate) { kept.append(r) }
     }
     let out = NSMutableString(string: text)
     for r in kept.reversed() { out.replaceCharacters(in: r, with: personPseudonym(ns.substring(with: r))) }
@@ -203,6 +223,17 @@ public struct InterimTextMasker: ImportTextMasker {
     let tokens = s.split(whereSeparator: { $0.isWhitespace }).map { $0.lowercased().trimmingCharacters(in: .punctuationCharacters) }
     guard (1...4).contains(tokens.count) else { return false }
     return !tokens.allSatisfy { neverNames.contains($0) }
+  }
+
+  /// An installed app's name or one in MenuBarApp's table (which maps it to a known bundle id).
+  func isAppName(_ s: String) -> Bool {
+    let n = Self.normalisedName(s)
+    guard !n.isEmpty else { return false }
+    return appNames.contains(n) || !MenuBarApp.bundleID(for: n).hasPrefix("recording.")
+  }
+
+  static func normalisedName(_ s: String) -> String {
+    s.lowercased().split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
   }
 
   /// `<person:h_…>` with m3-02's normalisation: NFKC, trimmed, lowercased, single spaces.
@@ -274,4 +305,50 @@ public struct InterimTextMasker: ImportTextMasker {
 
 extension Character {
   var isASCIIDigit: Bool { isASCII && isNumber }
+}
+
+/// A bounded memo of mask results for short inputs. Shared by copies of one masker (a class), so one import reuses it.
+final class MaskCache: @unchecked Sendable {
+  static let maxKeyLength = 512
+  static let capacity = 4096
+  private let lock = NSLock()
+  private var entries: [String: String] = [:]
+
+  func value(for key: String) -> String? {
+    lock.lock()
+    defer { lock.unlock() }
+    return entries[key]
+  }
+
+  func store(_ value: String, for key: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    if entries.count >= Self.capacity { entries.removeAll(keepingCapacity: true) }
+    entries[key] = value
+  }
+}
+
+/// The names of the apps in the Applications folders (`Name.app` → "Name"), so the name tagger never takes an app for a
+/// person. Listed once when the on-device import is built; these folders are not ones macOS guards.
+public enum InstalledAppNames {
+  public static func folders(home: URL) -> [URL] {
+    ["/Applications", "/Applications/Utilities", "/System/Applications", "/System/Applications/Utilities"]
+      .map { URL(fileURLWithPath: $0, isDirectory: true) } + [home.appendingPathComponent("Applications", isDirectory: true)]
+  }
+
+  /// Sorted, unique.
+  public static func list(folders: [URL]) -> [String] {
+    var names = Set<String>()
+    for dir in folders {
+      for entry in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] where entry.lowercased().hasSuffix(".app") {
+        names.insert(String(entry.dropLast(4)))
+        // The menu bar shows the bundle's name, which can differ from the file's ("Alfred 5.app" shows "Alfred").
+        let plist = dir.appendingPathComponent(entry).appendingPathComponent("Contents/Info.plist")
+        if let info = NSDictionary(contentsOf: plist), let name = info["CFBundleName"] as? String, !name.isEmpty {
+          names.insert(name)
+        }
+      }
+    }
+    return names.sorted()
+  }
 }
