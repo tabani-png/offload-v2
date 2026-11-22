@@ -95,16 +95,19 @@ extension M313 {
     #expect(client.calls.count == calls)
   }
 
-  @Test("PLAN: Not now closes the plan, posts nothing and stops reading the opportunity")
+  @Test("PLAN: Not now answers not_now (asked again in 4 weeks), closes the plan and stops reading the opportunity")
   @MainActor func planNotNow() async {
     let client = M313Client()
-    client.script("answer", .value(M313F.opportunity("designing")))
+    // review4.md finding 3: "Not now" is the glossary's answer, so it is posted.
+    client.script("answer", .value(M313F.opportunity("designing")), .value(M313F.opportunity("not_now")))
     client.fallback("opportunity", .value(M313F.opportunity("designing")))
     let model = M313M.cloud(client, sleeper: M313Sleeper(limit: 3))
     model.appear(pending: .opportunity(id: "opp_1", optionID: "fix_1"))
     await model.startTask?.value
     #expect(model.planTask != nil)
-    model.dismissPlan()
+    await model.setAside()
+    #expect(client.calls.contains("answer opp_1 not_now -"))
+    #expect(model.notice == "Set aside. Offload asks about it again in 4 weeks.")
     #expect(model.plan == nil)
     #expect(model.planTask == nil)
     #expect(await model.planStep() == nil)

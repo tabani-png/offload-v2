@@ -304,12 +304,12 @@ extension M313 {
     #expect(SavingLine.make(fix: nil, installed: true, outcome: .found(M313F.outcome("under", ratio: "null")))?.text == "not measured")
   }
 
-  @Test("SAVING: unmeasured says not measured; a 404 outcome route says measured after install, from M4; not loaded shows nothing")
+  @Test("SAVING: unmeasured says not measured; a 404 outcome route says it is measured after install; not loaded shows nothing")
   func savingOtherLines() {
     #expect(SavingLine.make(fix: M313F.fix, installed: true, outcome: .found(M313F.outcome("unmeasured")))?.text == "not measured")
     #expect(SavingLine.make(fix: M313F.fix, installed: true, outcome: .found(M313F.outcome("sideways")))?.text == "not measured")
     #expect(SavingLine.make(fix: M313F.fix, installed: true, outcome: .missing)?.text == "not measured")
-    #expect(SavingLine.make(fix: M313F.fix, installed: true, outcome: .routeMissing)?.text == "measured after install, from M4")
+    #expect(SavingLine.make(fix: M313F.fix, installed: true, outcome: .routeMissing)?.text == "measured after install, once Offload measures outcomes")
     #expect(SavingLine.make(fix: M313F.fix, installed: true, outcome: .notLoaded) == nil)
   }
 
@@ -393,11 +393,12 @@ extension M313 {
     }
   }
 
-  @Test("COPY: captions are lowercase (Mac and M4 aside) and their · facts split into separate items")
+  @Test("COPY: captions are lowercase (Mac and Offload aside), name no milestone, and their · facts split into separate items")
   func copyCaptions() {
     #expect(!BuildCopy.captions.isEmpty)
     for c in BuildCopy.captions {
-      let plain = c.replacingOccurrences(of: "Mac", with: "mac").replacingOccurrences(of: "M4", with: "m4")
+      #expect(c.firstMatch(of: try! Regex("\\bM[0-9]\\b")) == nil, "milestone in copy: \(c)")
+      let plain = c.replacingOccurrences(of: "Mac", with: "mac").replacingOccurrences(of: "Offload", with: "offload")
       #expect(plain == plain.lowercased(), "not lowercase: \(c)")
       for item in MetaItems.split(c) {
         #expect(!item.contains("·"), "dotted item: \(item)")

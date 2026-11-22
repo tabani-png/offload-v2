@@ -371,7 +371,7 @@ extension M313 {
     #expect(signer.bodies == [Data(expected.utf8)])
     #expect(deploy.value(forHTTPHeaderField: "Offload-Signature") == M313Signer.header)
     #expect(model.installLine == "Installed · version 1")
-    #expect(model.detail?.saving?.text == "measured after install, from M4")
+    #expect(model.detail?.saving?.text == "measured after install, once Offload measures outcomes")
   }
 
   @Test("INSTALL: 201 shows the version, keeps the routine on the record and reads its measured saving")
