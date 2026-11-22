@@ -233,5 +233,5 @@ folders.
 - Reference repos: nothing ported. The old repo's `ReviewModel`/`ReviewView` (release/mac-testable) are the workflow
   approval review built around the run mode ADR 0016 removes, not the weekly review; Clicky has no notification or
   week code. The layout follows the owner-approved mockup (`Weekly`, lines 629 to 709). No NOTICE change.
-- Not verified here: Swift does not build on Linux; the slice suite (73 tests) and the UserNotifications delegate
+- Not verified here: Swift does not build on Linux; the slice suite (69 tests) and the UserNotifications delegate
   conformance under Swift 6 are first checked by the macOS CI run.
