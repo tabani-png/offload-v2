@@ -11,7 +11,7 @@ size: M
 parallel_group: M3-C
 owns: [apps/mac/Tests/OffloadMacTests/M305C/**, packages/contracts/rules/**, packages/contracts/src/app-cues.ts, packages/contracts/tests/m3-05c-import-signals/**]
 verify: bash slices/m3-05c-import-signals/verify.sh
-min_tests: 26
+min_tests: 30
 paths_in_scope: [apps/mac/Sources/OffloadImport/**, apps/mac/Tests/OffloadMacTests/M305C/**, packages/contracts/rules/**, packages/contracts/src/app-cues.ts, packages/contracts/tests/m3-05c-import-signals/**, docs/ARCHITECTURE.md, docs/ONBOARDING.md, docs/GLOSSARY.md, docs/ROADMAP.md, docs/DATA_MODEL.md, slices/m3-05c-import-signals/**]
 paths_out_of_scope: [ee/**, services/**, apps/web/**, .github/**, docs/adr/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/Sources/OffloadMac/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M304/**, packages/contracts/src/index.ts, packages/contracts/schemas/**]
 red_tests: [CUES, SIGNALS, TABLE, START]
@@ -54,8 +54,10 @@ can apply the same rules to masked text (decision below).
     whose box starts inside the chrome band count. Order:
     1. **Host**: the first URL-bar host in reading order (top to bottom, then left to right). A host is a token of
        2 or more labels, each `[a-z0-9]` with inner `-`, last label letters only and not in `notTLDs`, the token
-       holds no `@` (an email address is never a host); a scheme, path, query and fragment are cut off. It is kept
-       only when the masker leaves it unchanged. The app is the table entry with the longest matching host pattern
+       holds no `@` (an email address is never a host); without a scheme it must already be lowercase (a URL bar's
+       host is; "Okafor.Contract" is a name); a scheme, path, query and fragment are cut off. It is kept only when
+       the masker leaves it unchanged, both as shown and lowercased. A host the table does not know must have a
+       URL's shape: a scheme, a path, or a last label in `AppCues.tlds` ("amara.okafor" is not a host). The app is the table entry with the longest matching host pattern
        (`host` or `host/path-prefix`; a pattern matches the host itself or any subdomain; the path prefix is used
        for matching only and is never kept), else `Browser`.
     2. **Title**: else, a table title found as a whole word (case-insensitive, bounded by a non-letter, non-digit)
@@ -82,20 +84,22 @@ can apply the same rules to masked text (decision below).
     1. `container_creation`: the creation date, when it is between 2000-01-01 and 2100-01-01 (QuickTime's zero date
        1904 and the Unix zero are not times) and the recording would not end in the future.
     2. `name`: else the name's time (`RecordingName.date(fromName:)`), on the same future rule.
-    3. `modified_ordered`: else, over all files of this kind in the run, sorted by (modified time, file name), from
-       the last: end = min(modified, next start − gap), start = end − duration. A file whose modified time is far
+    3. `modified_ordered`: else, over all files of this kind in the run, sorted by (modified time, file path), from
+       the last: end = min(modified, next start − gap), start = end − duration; then, while the span comes within
+       `gap` of an `occupied` span (a video of the same folder read in an earlier import, at its ledger start and
+       its length), end = that span's start − gap. A file whose modified time is far
        from the others keeps modified minus duration; files sharing a modified time are laid end to end, the
        name-order last one ending at the modified time. An unknown duration counts as 0.
   - `RecordingImporter.Readers` gains `creationDates: any RecordingCreationDates` (default
-    `NoRecordingCreationDates()`) and `duration: (@Sendable (URL) -> TimeInterval?)?` (default nil: the importer opens
-    the video to read its length). `Readers.live` uses `AVRecordingCreationDates()` and
+    `NoRecordingCreationDates()`) and `duration: (@Sendable (URL) -> TimeInterval?)?` (default nil, or nil for a file: the importer
+    opens the video to read its length). `Readers.live` uses `AVRecordingCreationDates()` and
     `AVRecordingFrameSource.duration(of:)`. The two-argument initializer keeps working.
   - `RecordingImporter.run` plans every new video's start before reading (after the import space is open) and reads
     each video at its planned start; a video with no usable start is skipped with the existing `futureTime` warning.
     Screenshots and screenwatch rows keep their times as before.
 - **JSON table for the cloud** (new): `packages/contracts/rules/app-cues.json`
   `{ version: 1, about, chrome_band: { fraction, min_px }, browser: { app_name, app_bundle_id }, not_tlds: [...],
-  apps: [{ id, app_name, app_bundle_id, hosts, titles }] }`, and `packages/contracts/src/app-cues.ts` with the zod
+  tlds: [...], apps: [{ id, app_name, app_bundle_id, hosts, titles }] }`, and `packages/contracts/src/app-cues.ts` with the zod
   schema `AppCueTable` and `appCueTable` (the parsed file). Not exported from `src/index.ts` (other chain slices
   edit that file); import it as `@offload/contracts/src/app-cues.ts`. The Swift table must equal the JSON (TABLE
   test reads the file from the repo).
@@ -163,14 +167,22 @@ Swift part prints SKIPPED; `REQUIRE_MAC=1` turns that into a failure.
   cannot resolve from inside itself; it uses the relative path now (assertions unchanged). Other packages (m5-01)
   import `@offload/contracts/src/app-cues.ts` (checked from `services/brain`).
 - Self-review added one SIGNALS test (a missed URL bar must not split a span), red first, then the fix.
+- Review 1 (independent Opus read of the diff, VERDICT: CHANGES), red tests first (`d10c0ae`), every finding fixed:
+  1 (high) dotted names in a title line ("Okafor.Contract", "amara.okafor", "plan.psd") were read as hosts and
+  could leave in `focus.host`: a host without a scheme must be lowercase as shown, the masker sees it as shown and
+  lowercased, and an unknown host needs a scheme, a path or a known top-level domain (`tlds`, new in the JSON);
+  2 (medium) the order was per run, so a copy imported later landed on an earlier import's span: the planner keeps
+  clear of the folder's already-imported videos (ledger start plus length); 3 (low) an unknown length was planned as
+  0: the importer opens the video to read it; 4 (low) the QuickTime creation date is read before the common key;
+  5 (nit) the order key is the file path (SPEC wording fixed); 6 (nit, accepted) the longest title wins on a line.
 
 ## Verification without a Mac
 This box has no macOS. The Swift was checked two ways before CI:
 - A throwaway Linux harness (outside the repo) compiled every `OffloadImport` file except `FrameReaders.swift` with
   the Swift 6.1.2 Linux toolchain in Swift 6 language mode, with stubs for `CGImage`, `autoreleasepool` and CryptoKit
   and the AVFoundation parts of `RecordingStart.swift` and `Readers.live` replaced. It ran every M305C test except
-  the one that writes a real `.mov` (25 of 26) plus the 64 existing M305 tests that need no UI or AVFoundation
-  (ingest, importer, names, ledger and sink): 89 passed. Mutating the ingestor's cue call or the importer's planned
+  the one that writes a real `.mov` (29 of 30) plus the 64 existing M305 tests that need no UI or AVFoundation
+  (ingest, importer, names, ledger and sink): 93 passed. Mutating the ingestor's cue call or the importer's planned
   start made the SIGNALS and START tests fail.
 - `AVRecordingCreationDates` and the START test with a generated `.mov` are compile-blind: the CI `mac` job is the
   first real check.
@@ -182,4 +194,6 @@ This box has no macOS. The Swift was checked two ways before CI:
 - [x] start time planner + importer wiring (`f4dd3a0`)
 - [x] docs (ARCHITECTURE, ONBOARDING, GLOSSARY, DATA_MODEL) (`5cefa6c`)
 - [x] self-review fix: missed URL bar keeps the span (red `m3-05c-import-signals: red test`, green `2cc53d7`)
-- [ ] independent review, verify.sh, verify-all, then CI `mac` (status stays `in_progress` until CI ran M305C)
+- [x] independent review 1 and its fixes (`d10c0ae` red, then green)
+- [x] verify.sh (Linux: scope + TS TABLE, Swift SKIPPED) and `SLICE_UPSTREAM=<merge-base> scripts/verify-all.sh` green
+- [ ] CI `mac` job runs M305C (30 tests); status stays `in_progress` until it has
