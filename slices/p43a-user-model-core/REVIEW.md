@@ -694,3 +694,38 @@ Finding 1 is MAJOR and blocks PASS. Fix it red test first. Fix findings 2 and 3 
 least T8 and T16 should get tests.
 
 VERDICT: CHANGES
+
+### Author response (round 4)
+
+Author: Claude Code (Opus 5.5), the author of both slices. Every behaviour change had its test committed and seen
+failing before the fix; every pin test was checked against the mutation you used (each a one-line change, then
+restored). Red commit `6da626b` (p43a), fix `8219ebf` (p43a), p43b tests `d66885b`, docs `ed99313`. After the round:
+`p43a-user-model-core: PASS` (67 tests, was 65), `p43b-user-model-store-api: PASS` (37 tests, was 35), full suite 154
+pass, `verify-all: green` (copy lint ok), 0 leftover test schemas or roles. Scope is unchanged; no assertion was
+weakened (test files only gained tests and list entries).
+
+1. **Fixed (MAJOR).** `checkNarrative` first collects every number character that is not an ASCII or full-width digit
+   (`/[^\P{N}0-9０-９]/u`: `٤`, `½`, `²`, `①`, …) as unknown, so such a sentence is always refused; it then
+   reads the text after NFKC, so full-width digits are checked like ASCII ones (`１２` passes against 12 h, `４０`
+   does not). New test `NARRATIVE: non-ASCII digits are read after NFKC; other number characters are refused`: all
+   four of your probes plus `③` are refused, and `writeWeekSentence` falls back to the code sentence for your
+   end-to-end sentence (`４０ hours …, ½ of it in meetings`). Red at `6da626b`. The job recheck and the API read path
+   use the same function, so the stored path is closed too.
+2. **Fixed.** `safeName` applies NFKC, then strips every `\p{N}` (and replaces `\p{Cc}`, `\p{Cf}`, `\p{Zl}`, `\p{Zp}`
+   with spaces). Your probe `Ｑ４ report for ٣ clients ①` becomes `Q report for clients` (LEAKS test, red at
+   `6da626b`).
+3. **Fixed (test).** New test `STORE: a stored weekly sentence survives a rebuild only while its numbers are still in
+   the record`: a sentence quoting the week's total survives a rerun of the same window and becomes null after a
+   rerun whose window changes the total (the test asserts the total changed). It passes against the code and fails
+   with the recheck removed (your T7).
+4. **Done (NIT).** Pinned all five, each failing under your mutation: T8 `STORE: a job rerun keeps an opportunity's
+   state` (`building` survives a rerun); T16 `REVIEW: an open opportunity that scores 0 (declined earlier) is not
+   asked about`; T10 a `never` answer with a `goal_id` is `schema_invalid` (REVIEW validation list); T12 a `{ text,
+   extra }` goal and T20 a tab are refused (PROFILE validation list).
+5. **Fixed (NIT).** Profile `line()` treats `\r`, `\n`, NEL, U+2028 and U+2029 as a second line and refuses any
+   `\p{Cc}` or `\p{Cf}` (so a zero-width space or a tab is refused); the `<user_context>` cleaner drops `\p{Cc}`,
+   `\p{Cf}`, `\p{Zl}` and `\p{Zp}`. PROFILE validation gained NEL, zero-width space and U+2028 cases, and PROMPTS
+   checks the cleaner (red at `6da626b`). Side effect named in API.md's rule: emoji joined with a zero-width joiner
+   are refused in goals.
+6. **Still deferred (scope).** `docs/GLOSSARY.md` is outside both slices' `paths_in_scope`; the round 1 response's
+   wording stands for a docs slice that owns it.
