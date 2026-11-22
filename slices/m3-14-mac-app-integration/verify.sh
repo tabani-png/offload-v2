@@ -89,6 +89,13 @@ for t in "$PKG"/Sources/* "$PKG"/Tests/*; do
   done
 done
 
+echo "== swift test identity checks"
+# Swift 6.3's SILGen crashes ("Invalid conformance in type-checked AST", signal 6) on `===` inside #expect or #require
+# when one side is cast to AnyObject and the other is a concrete class (CI 2). Compare ObjectIdentifier values instead.
+# Swift only compiles in CI, so this runs on every platform.
+hits="$(grep -rnE '#(expect|require)\(.*(as AnyObject\) ===|=== \(.* as AnyObject\))' "$PKG"/Tests --include='*.swift' || true)"
+[ -z "$hits" ] || fail "=== against an AnyObject cast inside #expect/#require: $hits"
+
 if [ "$(uname -s)" != "Darwin" ]; then
   if [ "${REQUIRE_MAC:-0}" = "1" ]; then echo "FAIL $SLICE_ID needs macOS and REQUIRE_MAC=1 is set"; exit 1; fi
   [ "$fails" -eq 0 ] || { echo "$SLICE_ID: $fails failing check(s)"; exit 1; }
