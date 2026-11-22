@@ -67,7 +67,8 @@ struct MenuBarOpener: View {
       updates: updates?.menu ?? [],
       checkForUpdates: { updates?.updater.checkForUpdates(nil) }
     )
-    // Hidden in Local mode and before "Start sending" (ONBOARDING section 8).
+    // Shown while the import is offered (ImportOffer, m3-14): through the uploader while sending; on this Mac once
+    // m3-10's local sink exists and onboarding is past screen 2.
     if app.recordings?.isOffered == true {
       Button(RecordingsCopy.menuItem) {
         openWindow(id: "settings")

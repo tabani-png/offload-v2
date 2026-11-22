@@ -23,14 +23,15 @@ public enum ModeLines {
 
 /// When the recordings import is offered (screen 11, Settings, the menu bar item), by where its data goes:
 /// - through the uploader: only while the person is sending, with no new notice waiting (ONBOARDING section 8);
-/// - on this Mac (m3-10's local sink): whenever that sink exists, in Local mode too, since nothing leaves the Mac
-///   (owner goal 2026-11-22; a divergence from ONBOARDING section 8 recorded in the SPEC).
+/// - on this Mac (m3-10's local sink): when that sink exists and onboarding is past screen 2 (or done), in Local mode
+///   too, since nothing leaves the Mac (owner goal 2026-11-22; a divergence from ONBOARDING section 8 recorded in the
+///   SPEC). Never before screens 1 and 2, so no folder is read and no prompt appears at a first launch.
 public enum ImportOffer {
   public static func isOffered(choice: ImportSinkChoice, hasOnDeviceSink: Bool, uploadsAvailable: Bool,
                                state: OnboardingState) -> Bool {
     switch choice {
     case .uploader: return uploadsAvailable && state.sending && !state.reconsentPending
-    case .onDevice: return hasOnDeviceSink
+    case .onDevice: return hasOnDeviceSink && (state.completed || state.screen > .permissions)
     }
   }
 }
