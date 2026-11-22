@@ -439,8 +439,9 @@ backend and several integration sources.
      per-step retries and timeouts; idempotent writes; credentials by reference; pinned-data tests; held-out
      acceptance before activation), enforced by lint on every routine definition and every export
      ([ADR 0039 section 3.4](../adr/0039-routine-definition-v2-and-execution-backends.md#34-workflow-design-rules)).
-   - An n8n export of each verified fix for the user's own n8n, checked against a schema and a pinned node catalog,
-     with `pinData` from the tokenised fixtures, labelled as running outside Offload's gate; and a push to the user's
+   - An n8n export of each verified fix for the user's own n8n, through node bindings whose shapes are checked against
+     the pinned n8n release, a schema and a pinned node catalog, with `pinData` from the tokenised fixtures (write nodes
+     pinned too), labelled as running outside Offload's gate and saying what was not verified; and a push to the user's
      own instance by its API, built but switched off until n8n answers in writing
      ([ADR 0039 section 9](../adr/0039-routine-definition-v2-and-execution-backends.md#9-the-n8n-export)).
    - A user can also connect their own n8n workflows to Offload as MCP tools, as before.
