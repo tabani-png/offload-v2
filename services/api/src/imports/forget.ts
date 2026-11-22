@@ -8,7 +8,7 @@ import { appendAudit, uuidv7, type Tx } from "@offload/db";
 
 /** The import's outbox events, locked ($1 member id, $2 import id). Exported for the index test. */
 export const FORGET_EVENTS_SQL = `select tenant_id, id from events_outbox
-  where payload ? 'import_id' and payload->>'import_id' = $2 and payload->>'member_id' = $1
+  where import_id = $2::uuid and payload->>'member_id' = $1
   order by id for update`;
 
 export interface ForgetImportInput {
@@ -37,8 +37,9 @@ export async function forgetImport(tx: Tx, f: ForgetImportInput): Promise<Forget
   if (found.rows.length === 0) return null;
 
   // Lock the import's events first: the dispatcher (outbox_claim) skips locked events, and one it already holds is
-  // waited for, so its delivery row is committed before the deletes below see it (no foreign-key race).
-  // `payload ? 'import_id'` lets the partial index events_outbox_import (migration 0007) answer this.
+  // waited for, so its delivery row is committed before the deletes below see it (no foreign-key race). A future
+  // dispatcher must keep its claim short: forget waits for any transaction that holds one of these rows.
+  // events_outbox.import_id is generated from the payload and indexed (events_outbox_import, migration 0007).
   const events = (await tx.query<{ tenant_id: string; id: string }>(FORGET_EVENTS_SQL, [f.memberId, f.importId])).rows;
   const eventIds = events.map((e) => e.id);
   if (eventIds.length > 0) await tx.query("delete from outbox_deliveries where event_id = any($1::uuid[])", [eventIds]);

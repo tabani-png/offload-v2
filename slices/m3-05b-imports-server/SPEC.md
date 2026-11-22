@@ -77,8 +77,10 @@ Forget scope `import`, one transaction (`withTenant`, member context): lock the 
 `privacy.forgotten` `{ scope: "import", import_id, purge_request_id }`.
 
 Migration `packages/db/migrations/0007_imports.sql`: partial indexes on `observations` and `observation_texts`
-`(tenant_id, member_id, import_id) where import_id is not null`, and on `events_outbox`
-`(tenant_id, (payload->>'import_id')) where payload ? 'import_id'`, so forget does not scan the live store or the outbox.
+`(tenant_id, member_id, import_id) where import_id is not null`; on `events_outbox` a stored generated column
+`import_id uuid` (from `payload->>'import_id'`, null unless a lower-case uuid) with an index on `(tenant_id, import_id)
+where import_id is not null`, so forget does not scan the live store or the outbox. A plain column, because under RLS
+Postgres does not use a clause that is not leakproof (`jsonb ->>`) as an index condition (review 2).
 
 ## Design note
 - **Module**: `services/api/src/imports/` (`routes.ts` registers the four routes; `forget.ts` holds
@@ -123,7 +125,7 @@ Tests live in `services/api/tests/m3-05b-imports-server/`, real Postgres (the m3
 | IMPORT | IMPORT: two devices of one member ingest into one import space at the same time without a deadlock | 15 concurrent rounds all 200 (review 1, finding 1) |
 | IMPORT | IMPORT: an import_id sent in upper case is the same import space for ingest and forget | review 1, finding 4 |
 | IMPORT | IMPORT: forget waits for a dispatcher that holds the import's outbox event and still wipes it | 202, no FK error (review 1, finding 2) |
-| IMPORT | IMPORT: forget finds an import's outbox events through an index, not a scan of the outbox | review 1, finding 3 |
+| IMPORT | IMPORT: forget finds an import's outbox events through an index, not a scan of the outbox | EXPLAIN of forget's own query as `offload_app` in `withTenant`, 3000 other events: Index Cond on `import_id` (review 1 finding 3, review 2 finding 1) |
 
 ## Out of scope
 The Mac sink and uploader (m3-02); forget scopes `entity`, `range`, `all` and `GET /v1/me/export` (M7); derived user
@@ -154,4 +156,9 @@ state (none references an import yet); the analysis anchored to an import's last
 - [x] review 1 (independent Opus read of SPEC, diff and tests; mutation spot-checks A to F): 1 major (deadlock between
   two devices' batches on one import space: `FOR SHARE` then `UPDATE`), 3 minor (forget vs dispatcher FK race,
   unindexed outbox lookup, upper-case import ids). All fixed, red tests first (`bd3683e`).
-- [ ] a second review of the fixes and the CI run; status stays `in_progress` until then
+- [x] review 2 (independent Opus read of `bd3683e`, `a2ff639`; reverted three fixes one at a time, each turned its test
+  red): lock, race and lower-case fixes correct, no forget/ingest deadlock, no regressions. 1 minor: the outbox index
+  was not an index condition under RLS and its test only checked that it existed. Fixed with a generated `import_id`
+  column, red test first (`d9110bc`). Nits: dispatcher claims must stay short (commented in `forget.ts`); the race
+  test copies `outbox_claim`'s locking instead of calling it.
+- [ ] CI run (the gate for `done`); status stays `in_progress` until then

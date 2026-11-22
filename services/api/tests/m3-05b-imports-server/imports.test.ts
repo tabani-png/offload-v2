@@ -430,6 +430,14 @@ test("IMPORT: forget finds an import's outbox events through an index, not a sca
   const dev = await consentingDevice(h, h.fx.a, h.fx.a.owner);
   const importId = await openImport(h, dev);
   expect((await ingestObjects(h, dev, imported(importId, daysAgo(9)))).status).toBe(200);
+  // A tenant with a long outbox: 3000 events of other batches, 300 of them in other import spaces.
+  await h.fx.admin.query(
+    `insert into events_outbox (tenant_id, id, type, version, payload)
+     select $1, gen_random_uuid(), 'observations.ingested', 1,
+            case when g % 10 = 0 then jsonb_build_object('member_id', $2::text, 'import_id', gen_random_uuid()::text)
+                 else jsonb_build_object('member_id', $2::text) end
+     from generate_series(1, 3000) g`,
+    [h.fx.a.tenantId, dev.memberId]);
   await h.fx.admin.query("analyze events_outbox");
   const plan = await withTenant(h.fx.app, h.fx.ctx(h.fx.a, h.fx.a.owner), async (tx) => {
     await tx.query("set local enable_seqscan = off");
