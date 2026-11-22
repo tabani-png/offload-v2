@@ -189,6 +189,24 @@ extension M312 {
     #expect(navigation.selection == .recordings)
   }
 
+  @Test("STATES: an empty week offers the latest week with data (an old archive), which opens with one tap")
+  @MainActor func statesEmptyOffersLatestWeek() async {
+    let insights = await M312Kit.insights(M312Data.focusWeeks([(40, 90), (41, 120)]))
+    let model = M312Kit.model(insights: insights)
+    await model.refresh()
+    #expect(model.week.id == "2026-W47")
+    #expect(model.state == .empty)
+    #expect(model.latestDataWeek?.id == "2026-W41")
+    #expect(ReviewCopy.seeWeek(M312Clock.week("2026-W41")) == "See the week of Oct 5")
+    await model.showLatestData()
+    #expect(model.week.id == "2026-W41")
+    #expect(model.state == .ready)
+    #expect(model.content?.tiles.first?.valueText == "2 h")
+    let none = M312Kit.model(insights: await M312Kit.insights([]))
+    await none.refresh()
+    #expect(none.latestDataWeek == nil)
+  }
+
   @Test("STATES: before the slot this week is not yet: the line names the slot in words; last week is shown first")
   @MainActor func statesNotYet() async {
     let wednesday = M312Clock.date(2026, 11, 18, 12)
