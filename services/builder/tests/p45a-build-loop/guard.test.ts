@@ -4,7 +4,7 @@
 // the Docker provider is used with an executor that emulates `docker run` (mounts mapped to the sandbox's host folders,
 // --workdir as cwd, --env as the whole environment), so the attack is exercised on any machine without Docker.
 import { afterAll, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BUILDER_IMPORT_REFUSED, GUARD_TS, SHARD_BUNFIG } from "../../src/harness.ts";
@@ -415,5 +415,19 @@ describe("p45a held-out check isolation (review 3 finding 1)", () => {
     const check = 'import { expect, test } from "bun:test";\ntest("socket", () => { const r = Bun.spawnSync([process.execPath, "run", "dial.ts", process.env.OFFLOAD_BROKER ?? ""]); expect(r.stdout.toString().trim()).toBe("refused"); });\n';
     const r = await privileged(check, [file("dial.ts", tool)]);
     expect(r.proof).toMatchObject({ status: "pass", split: true });
+  }, 60_000);
+
+  test.skipIf(!sudoOk)("SANDBOX: (privileged) destroy removes folders and files a sandbox user made in /work", async () => {
+    const p = new DockerProvider({ executor: emulator({ sudo: true }), docker: "docker" });
+    made.push(p);
+    const sb = await p.create(SPEC);
+    const dirs = p.paths(sb);
+    chmodSync(dirs.root, 0o711); // in a container /work is a mount root; on the host the sandbox folder must be traversable
+    // what a worker's command does as 65534 with the default umask: tests/ (0755) and a file in it
+    const made65534 = Bun.spawnSync(["sudo", "-n", "setpriv", "--reuid=65534", "--regid=65534", "--clear-groups", "sh", "-c", `umask 022; mkdir ${join(dirs.work, "tests")} && echo x > ${join(dirs.work, "tests", "a.test.ts")}`]);
+    expect(made65534.exitCode).toBe(0);
+    await p.destroy(sb);
+    expect(existsSync(dirs.root)).toBe(false);
+    expect(await p.list(SPEC.tag)).not.toContain(sb.id);
   }, 60_000);
 });

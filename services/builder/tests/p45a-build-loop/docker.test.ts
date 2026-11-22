@@ -99,7 +99,7 @@ describe("p45a docker provider", () => {
     }
   });
 
-  test("SANDBOX: destroy forgets a sandbox even when its folder cannot be removed (the reaper takes it from there)", async () => {
+  test("SANDBOX: destroy never throws on a folder it cannot remove, and keeps it listed (on disk) until a later destroy removes it", async () => {
     const { p } = fake();
     const sb = await p.create(SPEC);
     const dirs = p.paths(sb);
@@ -107,10 +107,18 @@ describe("p45a docker provider", () => {
     writeFileSync(join(dirs.work, "stuck", "f"), "x");
     chmodSync(join(dirs.work, "stuck"), 0o555);
     try {
-      await p.destroy(sb);
-      expect(p.known().map((x) => x.id)).not.toContain(sb.id);
-    } finally {
+      await p.destroy(sb); // must not throw
+      expect(existsSync(dirs.root)).toBe(true);
+      expect(await p.list(SPEC.tag)).toContain(sb.id);
+      // the record is on disk: a provider started later (a restarted builder, the reaper) still finds it
+      const later = fake().p;
+      expect(await later.list(SPEC.tag)).toContain(sb.id);
       chmodSync(join(dirs.work, "stuck"), 0o755);
+      await later.destroy({ id: sb.id, tag: SPEC.tag });
+      expect(existsSync(dirs.root)).toBe(false);
+      expect(await later.list(SPEC.tag)).not.toContain(sb.id);
+    } finally {
+      if (existsSync(join(dirs.work, "stuck"))) chmodSync(join(dirs.work, "stuck"), 0o755);
       rmSync(dirs.root, { recursive: true, force: true });
     }
   });
