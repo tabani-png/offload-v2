@@ -227,6 +227,9 @@ into `offload serve` (m1-06), `remove_step` and `small_app` rules, track record 
   `SLICE_UPSTREAM=$(git merge-base HEAD origin/chain/m5-01-understanding) bash scripts/verify-all.sh` green
 - [x] review 1 (CHANGES): findings 2, 3, 4, 6 fixed with red tests first (bf541e8, then fc3ac0a); finding 1 and 5
   tests added (db4edb8; 11 of 11 reverted guards now fail a test); finding 7 cleanup; docs (API.md, ARCHITECTURE 6)
+- [x] after review 1: `verify.sh` PASS (27 slice tests, 677 in the full suite); `verify-all` green with
+  `SLICE_UPSTREAM=$(git merge-base HEAD origin/chain/m5-01-understanding)` (two earlier runs each had one timeout in
+  untouched packages under load: contracts round-trip 11.5 s, durable cron 25 s; the rerun was green)
 - [ ] review 2, then `status: done`
 
 Known limits (for the next slices):
