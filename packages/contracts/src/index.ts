@@ -5,6 +5,7 @@
 export * from "./errors.ts";
 export * from "./figure.ts";
 export * from "./hash.ts";
+export * from "./imports.ts";
 export * from "./ingest.ts";
 export * from "./jcs.ts";
 export * from "./pseudonym.ts";
