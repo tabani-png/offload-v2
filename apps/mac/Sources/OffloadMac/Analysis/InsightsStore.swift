@@ -69,28 +69,34 @@ public actor InsightsStore {
 
   public nonisolated var timeZone: TimeZone { sources.timeZone }
 
-  /// Recomputes these days (YYYY-MM-DD) from the imports kept on this Mac, plus live events for today.
+  /// Recomputes these days (YYYY-MM-DD) from the imports kept on this Mac, plus live events for today. The imports
+  /// are read once for the whole range.
   @discardableResult
   public func recompute(days labels: [String]) -> InsightsSnapshot {
     let tz = sources.timeZone
-    let wanted = Array(Set(labels)).sorted()
-    let intervals = wanted.compactMap { LocalDays.interval(of: $0, timeZone: tz) }
+    let intervals = labels.compactMap { LocalDays.interval(of: $0, timeZone: tz) }
     guard let lo = intervals.map(\.start).min(), let hi = intervals.map(\.end).max() else { return snapshot() }
     // A span can start the evening before; read a day on each side once.
     let cal = LocalDays.calendar(tz)
     let from = cal.date(byAdding: .day, value: -1, to: lo) ?? lo
     let to = cal.date(byAdding: .day, value: 1, to: hi) ?? hi
-    let imported = sources.reader.events(in: DateInterval(start: from, end: to))
-    let rules = sources.exclusions()
+    return recompute(days: labels, imported: sources.reader.events(in: DateInterval(start: from, end: to)))
+  }
+
+  /// The days from events already read: spans are built and merged once, then clipped into each day.
+  private func recompute(days labels: [String], imported: [InsightEvent]) -> InsightsSnapshot {
+    let tz = sources.timeZone
+    let wanted = Array(Set(labels)).sorted()
     let now = sources.now()
     let today = LocalDays.label(now, timeZone: tz)
+    var events = imported
+    if wanted.contains(today), let live = sources.live, let interval = LocalDays.interval(of: today, timeZone: tz) {
+      events += LocalEventInsightSource(source: live).events(in: DateInterval(start: interval.start, end: max(interval.start, min(interval.end, now))))
+    }
+    let computed = LocalInsights.days(events, labels: wanted, timeZone: tz, exclusions: sources.exclusions(), until: now)
     for label in wanted {
-      var events = imported
-      if label == today, let live = sources.live, let interval = LocalDays.interval(of: label, timeZone: tz) {
-        events += LocalEventInsightSource(source: live).events(in: DateInterval(start: interval.start, end: min(interval.end, now)))
-      }
-      let d = LocalInsights.day(events, day: label, timeZone: tz, exclusions: rules, until: now)
-      cache[label] = d.isEmpty ? nil : d
+      let d = computed[label]
+      cache[label] = (d?.isEmpty ?? true) ? nil : d
       recomputed.append(label)
     }
     updated = now
@@ -104,13 +110,14 @@ public actor InsightsStore {
   }
 
   /// Every day the imports hold, every cached day, and today when live capture can have data (at launch, and after a
-  /// Never watch change).
+  /// Never watch change). The imports are read once: their days come from the same read.
   @discardableResult
   public func refreshAll() -> InsightsSnapshot {
     let tz = sources.timeZone
-    var labels = Set(sources.reader.dayLabels(timeZone: tz)).union(cache.keys)
+    let imported = sources.reader.events(in: DateInterval(start: .distantPast, end: .distantFuture))
+    var labels = Set(imported.map { LocalDays.label($0.ts, timeZone: tz) }).union(cache.keys)
     if sources.live != nil { labels.insert(LocalDays.label(sources.now(), timeZone: tz)) }
-    return recompute(days: Array(labels))
+    return recompute(days: Array(labels), imported: imported)
   }
 
   /// The cached days and the repeats ranked with the answers as they are now.
@@ -139,6 +146,13 @@ public final class InsightsModel: ObservableObject {
   private(set) var coordinator: InsightsCoordinator?
   private var cancellables: Set<AnyCancellable> = []
   private var lastExclusions: Set<Exclusion> = []
+  private var exclusionSource: (any ExclusionSource)?
+  private var exclusionRules: (@MainActor @Sendable () -> [ImportExclusionRule])?
+  private var rulesBox: ExclusionRulesBox?
+  /// Recounts still running, by the order they were asked for. Each removes itself when it finishes, so the list
+  /// never grows in the app; `idle()` waits for them.
+  private var pending: [Int: Task<Void, Never>] = [:]
+  private var lastTaskID = 0
 
   public init(store: InsightsStore) {
     self.store = store
@@ -157,9 +171,30 @@ public final class InsightsModel: ObservableObject {
     running += 1
     isAnalysing = true
     let store = self.store
-    return Task { @MainActor [weak self] in
+    return track { [weak self] in
       let s = await work(store)
       self?.finished(s)
+    }
+  }
+
+  /// Runs `body` on the main actor as a tracked task.
+  @discardableResult
+  private func track(_ body: @escaping @MainActor @Sendable () async -> Void) -> Task<Void, Never> {
+    lastTaskID += 1
+    let id = lastTaskID
+    let task = Task { @MainActor [weak self] in
+      await body()
+      self?.pending[id] = nil
+    }
+    pending[id] = task
+    return task
+  }
+
+  /// Waits until every recount asked for so far (and any it led to) has finished.
+  public func idle() async {
+    while let next = pending.min(by: { $0.key < $1.key }) {
+      await next.value.value
+      pending[next.key] = nil
     }
   }
 
@@ -188,20 +223,30 @@ public final class InsightsModel: ObservableObject {
 
   /// Recounts every day when the Never watch list changed, so an added entry applies without a new import.
   /// `rules` is read on the main actor first (app names are looked up there) and handed to the store through `box`.
+  /// The places that change the list ask directly (`exclusionsChanged()`: the menu bar's Don't watch, the Never watch
+  /// sheet closing); `changes` (onboarding's objectWillChange) is a second, later look for any other path.
   public func follow(exclusions source: any ExclusionSource, changes: ObservableObjectPublisher,
                      rules: @escaping @MainActor @Sendable () -> [ImportExclusionRule], box: ExclusionRulesBox) {
+    exclusionSource = source
+    exclusionRules = rules
+    rulesBox = box
     lastExclusions = Set(source.currentExclusions())
     box.rules = rules()
     changes
       .sink { [weak self] _ in
-        // objectWillChange fires before the change: look after it.
-        Task { @MainActor [weak self] in self?.exclusionsMayHaveChanged(source, rules: rules, box: box) }
+        // objectWillChange fires before the change: look on the main actor's next turn, after it. Tracked, so
+        // `idle()` waits for it.
+        MainActor.assumeIsolated {
+          guard let self else { return }
+          self.track { [weak self] in self?.exclusionsChanged() }
+        }
       }
       .store(in: &cancellables)
   }
 
-  func exclusionsMayHaveChanged(_ source: any ExclusionSource, rules: @MainActor @Sendable () -> [ImportExclusionRule],
-                                box: ExclusionRulesBox) {
+  /// Recounts every day if the Never watch list differs from the one last counted; does nothing otherwise.
+  public func exclusionsChanged() {
+    guard let source = exclusionSource, let rules = exclusionRules, let box = rulesBox else { return }
     let now = Set(source.currentExclusions())
     guard now != lastExclusions else { return }
     lastExclusions = now
@@ -247,7 +292,6 @@ public final class InsightsCoordinator {
   public let insights: InsightsModel
   private var cancellables: Set<AnyCancellable> = []
   private var known: [ImportRecord] = []
-  private var pending: [Task<Void, Never>] = []
 
   public init(insights: InsightsModel) { self.insights = insights }
 
@@ -289,13 +333,12 @@ public final class InsightsCoordinator {
     run { await $0.refreshAll() }
   }
 
-  /// Waits until every recompute asked for so far has finished.
+  /// Waits until every recompute asked for so far has finished (the model tracks them).
   public func idle() async {
-    let tasks = pending
-    for t in tasks { await t.value }
+    await insights.idle()
   }
 
   private func run(_ work: @escaping @Sendable (InsightsStore) async -> InsightsSnapshot) {
-    pending.append(insights.schedule(work))
+    insights.schedule(work)
   }
 }
