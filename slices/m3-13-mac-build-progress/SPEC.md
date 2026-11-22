@@ -308,7 +308,7 @@ sheet?" (m5-06); any change to m3-10's folders.
      build this Mac didn't record isn't listed here."
   5. The Sample data label sits above the scrolling content, so it never scrolls away.
   6. Actions are faded once: each disabled button by `ActionLook`, the row not again, so the saving caption keeps the
-     muted caption colour (#5D6874 on #F4F5F2, about 5.3:1).
+     muted caption colour (#5D6874 on #F4F5F2, 5.19:1, above WCAG AA 4.5:1).
   7. No milestone names in copy: a missing outcomes route says "measured after install, once Offload measures
      outcomes"; the COPY test now rejects `M<digit>`.
   8. The capped headline formats the build's own `cap_usd`, as the meter does.
