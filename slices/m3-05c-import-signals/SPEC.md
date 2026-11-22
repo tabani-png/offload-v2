@@ -11,7 +11,7 @@ size: M
 parallel_group: M3-C
 owns: [apps/mac/Tests/OffloadMacTests/M305C/**, packages/contracts/rules/**, packages/contracts/src/app-cues.ts, packages/contracts/tests/m3-05c-import-signals/**]
 verify: bash slices/m3-05c-import-signals/verify.sh
-min_tests: 24
+min_tests: 26
 paths_in_scope: [apps/mac/Sources/OffloadImport/**, apps/mac/Tests/OffloadMacTests/M305C/**, packages/contracts/rules/**, packages/contracts/src/app-cues.ts, packages/contracts/tests/m3-05c-import-signals/**, docs/ARCHITECTURE.md, docs/ONBOARDING.md, docs/GLOSSARY.md, docs/ROADMAP.md, docs/DATA_MODEL.md, slices/m3-05c-import-signals/**]
 paths_out_of_scope: [ee/**, services/**, apps/web/**, .github/**, docs/adr/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/Sources/OffloadMac/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M304/**, packages/contracts/src/index.ts, packages/contracts/schemas/**]
 red_tests: [CUES, SIGNALS, TABLE, START]
@@ -66,7 +66,8 @@ can apply the same rules to masked text (decision below).
     the masker left unchanged.
 - **`RecordingIngestor`** (behaviour): when `MenuBarApp.name` gives nothing (or the masker would change it), the
   frame's app is the cue's app. A `focus` is written when the app name or the host changes, and carries the cue's
-  host. A frame the exclusions exclude keeps a `focus` with the app name only (no host), and no text or keyframe, as
+  host; a frame of the same app where no host was read (OCR missed the URL bar) keeps the span, unless the frame's
+  exclusion state changed. A frame the exclusions exclude keeps a `focus` with the app name only (no host), and no text or keyframe, as
   before. The menu bar band is still left out of the body text.
 - **Start times** (new, `OffloadImport/RecordingStart.swift`):
   - `protocol RecordingCreationDates: Sendable { func creationDate(of url: URL) -> Date? }`;
@@ -133,7 +134,7 @@ fakes (`FakeMasker`, `FakeRecording`, `M305Files`, `M305Importer`). TypeScript: 
 | Tag | Tests (short) |
 |---|---|
 | CUES | a URL-bar host names a known web app (Gmail, Google Sheets by path, QuickBooks, HubSpot); an unknown host is Browser with the host; window titles name the app (Gmail, QuickBooks, HubSpot, Slack, Excel, Google Sheets); a host wins over a title, the topmost title wins; body lines are not cues; email domains, file names and numbers are not hosts; a host the masker would change is dropped and names come from the table only; no cue is nil |
-| SIGNALS | a window recording gets app and host from the chrome, one focus per change; the menu bar wins; an excluded host keeps the focus without host, text or keyframe; nothing unmasked leaves in any focus field; two unrelated window recordings get different app keys |
+| SIGNALS | a window recording gets app and host from the chrome, one focus per change; the menu bar wins; an excluded host keeps the focus without host, text or keyframe; nothing unmasked leaves in any focus field; two unrelated window recordings get different app keys; a missed URL bar does not split the span (self-review) |
 | TABLE | Swift: the table equals `packages/contracts/rules/app-cues.json`. TS: the JSON parses with `AppCueTable`; hosts are bare lowercase hosts with an optional path prefix; ids and titles are unique; bundle ids and names fit the observation contract |
 | START | creation date first; name next; QuickTime zero, pre-2000 and future creation dates are ignored; files sharing a modified time are laid end to end in name order with the gap; the plan does not depend on input order; far-apart files keep modified minus length; a future file is nil; the importer uses the injected creation date; three copied recordings with one modified time do not overlap after import |
 
@@ -158,11 +159,27 @@ Swift part prints SKIPPED; `REQUIRE_MAC=1` turns that into a failure.
 - The JSON table lives under `packages/contracts/rules/` (a new folder) and its zod schema in
   `packages/contracts/src/app-cues.ts`, not in `src/index.ts` and not in `schemas/` (both shared with other slices).
 
+- The TS TABLE red test imported `@offload/contracts/src/app-cues.ts` by the package's own name, which a package
+  cannot resolve from inside itself; it uses the relative path now (assertions unchanged). Other packages (m5-01)
+  import `@offload/contracts/src/app-cues.ts` (checked from `services/brain`).
+- Self-review added one SIGNALS test (a missed URL bar must not split a span), red first, then the fix.
+
+## Verification without a Mac
+This box has no macOS. The Swift was checked two ways before CI:
+- A throwaway Linux harness (outside the repo) compiled every `OffloadImport` file except `FrameReaders.swift` with
+  the Swift 6.1.2 Linux toolchain in Swift 6 language mode, with stubs for `CGImage`, `autoreleasepool` and CryptoKit
+  and the AVFoundation parts of `RecordingStart.swift` and `Readers.live` replaced. It ran every M305C test except
+  the one that writes a real `.mov` (25 of 26) plus the 64 existing M305 tests that need no UI or AVFoundation
+  (ingest, importer, names, ledger and sink): 89 passed. Mutating the ingestor's cue call or the importer's planned
+  start made the SIGNALS and START tests fail.
+- `AVRecordingCreationDates` and the START test with a generated `.mov` are compile-blind: the CI `mac` job is the
+  first real check.
+
 ## Progress
-- [ ] SPEC, verify.sh, ROADMAP row
-- [ ] red tests (Swift M305C, TS TABLE)
-- [ ] AppCues + JSON table + TS schema
-- [ ] ingestor wiring
-- [ ] start time planner + importer wiring
-- [ ] docs (ARCHITECTURE, ONBOARDING, GLOSSARY, DATA_MODEL)
-- [ ] self-review, verify.sh, verify-all
+- [x] SPEC, verify.sh, ROADMAP row (`3e6385f`)
+- [x] red tests (Swift M305C, TS TABLE) (`19db9cc`)
+- [x] JSON table + TS schema (`faec8b8`); AppCues + ingestor wiring (`af9d316`)
+- [x] start time planner + importer wiring (`f4dd3a0`)
+- [x] docs (ARCHITECTURE, ONBOARDING, GLOSSARY, DATA_MODEL) (`5cefa6c`)
+- [x] self-review fix: missed URL bar keeps the span (red `m3-05c-import-signals: red test`, green `2cc53d7`)
+- [ ] independent review, verify.sh, verify-all, then CI `mac` (status stays `in_progress` until CI ran M305C)
