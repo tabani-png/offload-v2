@@ -21,8 +21,9 @@ public struct LocalAnalysis {
   }
 
   /// Only `.local` imports into the on-device sink; `.cloud` keeps m3-05's import exactly as it was built (its sink is
-  /// the uploader's, m3-02), so nothing is counted here that the cloud should have (review 2, finding 4).
-  public static func importsOnThisMac(mode: BackendMode) -> Bool { mode.isLocal }
+  /// the uploader's, m3-02), so nothing is counted here that the cloud should have (review 2, finding 4). Pure, so
+  /// nonisolated: callable off the main actor.
+  nonisolated public static func importsOnThisMac(mode: BackendMode) -> Bool { mode.isLocal }
 
   /// `folders` and `defaults` are this user's in the app; tests pass a temporary folder and a test suite.
   public static func live(neverWatch: NeverWatchStore, events: LocalEventSource, mode: BackendMode,
