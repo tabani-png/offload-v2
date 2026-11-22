@@ -2,7 +2,7 @@
 id: m3-11-mac-today-live
 title: Today on the Mac wired to real data (local insights on this Mac, the brain's records and opportunities in the cloud), with things you repeat, one suggested fix, the hand-off to Build progress and the menu bar summary
 milestone: M3
-status: ready
+status: in_progress
 depends_on: [m3-10-mac-recordings-analysis]
 parallel_safe: true
 human_gated: true
@@ -12,7 +12,7 @@ parallel_group: M3-E
 owns: [apps/mac/Sources/OffloadMac/TodayLive/**, apps/mac/Tests/OffloadMacTests/M311/**]
 verify: bash slices/m3-11-mac-today-live/verify.sh
 min_tests: 55
-paths_in_scope: [apps/mac/Sources/OffloadMac/TodayLive/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M311/**, apps/mac/README.md, docs/GLOSSARY.md, slices/m3-11-mac-today-live/**]
+paths_in_scope: [apps/mac/Sources/OffloadMac/TodayLive/**, apps/mac/Sources/OffloadMac/App/OffloadApp.swift, apps/mac/Sources/OffloadMacApp/**, apps/mac/Tests/OffloadMacTests/M311/**, apps/mac/README.md, docs/GLOSSARY.md, slices/m3-11-mac-today-live/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Sources/OffloadMac/WeeklyReview/**, apps/mac/Sources/OffloadMac/BuildProgress/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**, apps/mac/Tests/OffloadMacTests/M310/**, apps/mac/Tests/OffloadMacTests/M312/**, apps/mac/Tests/OffloadMacTests/M313/**]
 red_tests: [HEADER, DAY, GRID, DID, REPEATS, HOW, FIX, ANSWER, HANDOFF, CLOUD, STATES, BANNERS, MENU, KEYS, FIGURES, COPY]
 ---
@@ -106,6 +106,43 @@ Scope changes). `human_gated: true`: the owner checks it against his own importe
 - **Refresh**: the model refreshes when the screen appears, when the insights snapshot changes and every 60 s while
   visible (live capture); `.cloud` reads are not repeated more than once a minute.
 
+### Implementation notes (build, 2026-11-22)
+- **Files** (`TodayLive/`): `TodayCopy.swift` (every string), `TodayContent.swift` (the pure content types and the
+  `.local` and `.cloud` builders), `DayGrid.swift` (the cell grid), `TodayMenuSummary.swift`, `TodayLiveModel.swift`
+  (@MainActor: state, day stepping, answers, hand-off, keys, the 60 s refresh rule), `TodayLiveView.swift` (views
+  only) and `TodayLiveScreen.swift` (the m3-10 entry point, same initialiser).
+- **One model per app**: `TodayLiveModel.shared(for: app)` keeps one model per `AppModel`, so the day picked and the
+  open "how" lines survive a trip to another screen, and the menu bar line reads the same model. The model listens to
+  `insights.$snapshot`, `insights.$isAnalysing` and `recordings.$phase` and uses the values they publish (a
+  `@Published` sink runs before the property changes).
+- **Builders take what they need, explicitly**: `TodayContent.local(snapshot:day:rhythm:timeZone:answers:now:)` and
+  `TodayContent.cloud(day:week:opportunities:today:timeZone:)` (`now` and `today` name the day shown as "Today"; a pure
+  builder never reads the clock). Both return nil when nothing was counted for the day, which the model shows as the
+  empty state (`.local`) or `.notRecorded` (`.cloud`); a zero is never drawn.
+- **A repeat this week** (local): the pattern's occurrences in the ISO week of the shown day. `times` is a count Figure
+  ("Mon 1 + Tue 1 + Wed 2 + Thu 2 = 6 times"), `minutes` the sum of those occurrences ("6 times · 31 min median · 186
+  min = 3.1 h"), so "6× · 3.1 h" and the how line read the same arithmetic. The mockup's "6 times × 31 min median"
+  multiplies a median, which would disagree with the counted sum whenever the occurrences differ in length; the sum is
+  shown and the median stays as an item (see Scope changes). The weekdays item is "Mon–Thu" for a run of days, else
+  the days listed.
+- **Declined**: a repeat is left out of the list and the card when the snapshot ranks it declined or when the answers
+  on this Mac decline it now (`RankingAdjustments(answers:).declinePenalty == 0`), so Not now moves the card at once,
+  before the store re-ranks (`insights.reload()` runs after each answer).
+- **Session names and times** (local): "Xcode and github.com" from the session's top app and top host; start times
+  in the hour axis's style ("9:00a", "1:00p": the mockup's "1:00" would read the same as 1:00 at night); durations
+  from the session's active seconds ("1 h 05 m", padded as the mockup's mono column).
+- **Cloud card**: open opportunities by rank (no rank last, then id). Options are the opportunity's options that are
+  not `leave_alone`, by `option_no`, at most 3, then "Leave it alone" (the server's `leave_alone` option when it sends
+  one, else a choice of its own). The recommended option is picked at first. Keys 1 to the number of choices pick;
+  Return presses the primary button. Picking "Leave it alone" makes the primary button "Leave it alone", which posts
+  `leave_alone`. The keys hint lists the numbers there are ("1 / 2 / 3 / 4 to pick · ↵ to build").
+- **Cloud days**: `previousDay`/`nextDay` step one calendar day, never past today; a 404 shows "Nothing recorded for
+  this day yet." The week record's 404 leaves the repeats empty; any other error fails the screen with one sentence.
+- **Importing**: `.importing(file:of:)` while m3-05's phase is reading; `of == 0` while local insights are counting
+  ("counting on this Mac · Today updates when it's done"). Whatever was already counted stays below the line.
+- **Menu bar line**: `TodayMenuLine(app:)` (a view in `TodayLive/`) draws the model's `menuLine`; `OffloadApp.swift`
+  gains that one line above m3-04's menu content.
+
 ## Red tests (write these first, run them, see them fail)
 Folder `apps/mac/Tests/OffloadMacTests/M311/`, Swift Testing, every test `@Test("TAG: ...")` inside
 `@Suite struct M311` (tests in extensions of `M311` across files). Fixtures are synthetic insights snapshots and
@@ -152,6 +189,16 @@ The day grid in `.cloud` mode (needs `GET /v1/today`, m5-05's API half); "how it
 6. Turn on Reduce Motion: the grid appears at once.
 
 ## Scope changes
+- m3-10's 2026-11-22 rebase moved the app from `OffloadMacApp/OffloadApp.swift` to
+  `OffloadMac/App/OffloadApp.swift`; `paths_in_scope` adds that one file for the menu bar line (the Contract's hook).
+- The how line shows the counted sum of the week's occurrences ("6 times · 31 min median · 186 min = 3.1 h"), not the
+  mockup's "6 times × 31 min median = 3.1 h": times × median is an estimate that differs from the counted minutes when
+  occurrences differ in length (ADR 0003). The card's title on the Mac says "You've done X 6 times this week." from the
+  same count.
+- `TodayContent.local` takes `now:` and `TodayContent.cloud` takes `today:` and `timeZone:` (the title says "Today"
+  only for today's date); the Contract's shorter signatures had no way to know which day is today.
+- `BASE` is m3-10's last commit on this stack (`d3d6651`), taken while m3-10 is still `in_progress` (its review 3 is
+  done); this slice's commits are the only ones counted by the scope check (subject prefix).
 - ROADMAP puts Today's Mac screen in m5-05 (M5) with its API; the owner asked for it in the test build now. This
   slice is the Mac screen only, `milestone: M3` with the wave; m5-05 keeps `GET /v1/today` and the evidence route.
 - Divergences from the mockup, honest by design: in `.local` the grid rows are apps, not kinds of work, and session

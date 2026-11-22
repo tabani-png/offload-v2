@@ -9,7 +9,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m3-11-mac-today-live"
-BASE=""   # set to the commit this slice starts from (after m3-10 is done) when status becomes in_progress
+BASE="d3d66519c8809874b1b68dbb796f41e28a2c8105"   # the commit this slice started from (m3-10's last commit on the stack; m3-10 is still in review)
 PKG="apps/mac"
 TEST_DIR="apps/mac/Tests/OffloadMacTests/M311"
 SUITE="OffloadMacTests.M311"
