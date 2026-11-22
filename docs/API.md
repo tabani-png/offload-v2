@@ -267,7 +267,7 @@ and the runtime never re-resolves ([ADR 0033](adr/0033-pinned-connector-resoluti
     { "id": "01JC...", "ts": "2026-11-14T16:01:12-05:00", "kind": "focus",
       "app_bundle_id": "com.google.Chrome", "app_name": "Google Chrome", "title": "Finance 2026 - Google Sheets",
       "host": "docs.google.com", "doc": "<doc:h_7c1e09b2a4d35f6e>" },
-    { "id": "01JC...", "ts": "2026-11-14T16:02:30-05:00", "kind": "text_snapshot", "text_source": "ax",
+    { "id": "01JC...", "ts": "2026-11-14T16:02:30-05:00", "kind": "text_snapshot", "text_source": "ax", "app_bundle_id": "com.apple.mail",
       "text": "Reply to <person:h_0123456789abcdef> about the invoice", "text_hash": "9f2c..." }
   ]
 }
@@ -291,6 +291,21 @@ before that, so this is a server-side backstop.
 | `NoticeAck` | `id`, `ts`, `notice_id` (uuid), `notice_version` (string) |
 | `KeyframeMeta` | `id`, `ts`, `phash` (16 hex), `width` (≤ 1280), `height`, `bytes` (≤ 524288), `sha256` |
 | `StepResult` | `id`, `ts`, `command_id` (uuid), `item_hash`, `outcome` (`sent`, `failed_before_send`, `unknown`), `detail_code?`, `finished_at` |
+
+**Where the shapes live.** `packages/contracts/src` (zod) is the source; `packages/contracts/schemas/*.schema.json`
+(Draft 2020-12, `$id` `https://offload.consultance.ai/schemas/<name>.json`, regenerated with
+`bun packages/contracts/scripts/gen-json-schema.ts`, a test fails if stale) is what Swift generates from. The envelope's
+`objects` hold 1 to 500 items. `Observation` is one strict shape per `kind` (a field not listed for its kind is
+`schema_invalid`). Id fields: object `id` is a ULID, `run_id`, `command_id`, `notice_id`, `import_id` and `device_id`
+are uuids; `phash` and `sha256` are lowercase hex. `host` is a bare host name (letters, digits, hyphens, dots). Receipt
+ids are plain strings of 1 to 64 characters, because an object whose own `id` was malformed is still named in the
+receipt. A `Figure` carries its `id` and the validator checks it equals `fig_` + 16 hex of `sha256Hex(jcs(rest))`.
+The JSON Schema states the shape, the bounds, the per-kind rules and `import_id` for imports. These rules are checked by zod only,
+so every consumer repeats them (the Mac egress guard, [ADR 0035](adr/0035-mac-egress-guard-and-ledger.md)):
+`text_hash = sha256Hex(text)`; `title`, `text`, `app_name` and `app_bundle_id` hold no `<kind:...>` token (any `<...:...>`
+after NFKC normalisation) other than a pseudonym or a router placeholder (`<person:[a-z]{4}\.[0-9]+(\.first)?>`,
+`<person:[a-z]{4}\.me>`); the `Figure` id check. `notice_version` and `detail_code` are codes (`[A-Za-z0-9_.-]`). Length limits count
+UTF-16 code units in zod and code points in JSON Schema.
 
 Required `Observation` fields per `kind`:
 

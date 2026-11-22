@@ -1,8 +1,10 @@
 /**
- * @offload/contracts
- * Contracts: JSON Schema 2020-12 + zod schemas for REST, ingest, MCP tools, webhooks and events. Source of generated Swift types.
- *
- * Architecture only. No feature code yet. See docs/ARCHITECTURE.md#4-contracts.
- * The first slice that touches this package replaces this marker.
+ * @offload/contracts: zod schemas (source) exported to JSON Schema 2020-12 (committed under schemas/). ADR 0008.
+ * No Bun or WebCrypto APIs here, so the web app can import it.
  */
-export type TodoContracts = "TODO: not implemented. See docs/ARCHITECTURE.md#4-contracts";
+export * from "./errors.ts";
+export * from "./figure.ts";
+export * from "./hash.ts";
+export * from "./ingest.ts";
+export * from "./jcs.ts";
+export * from "./pseudonym.ts";

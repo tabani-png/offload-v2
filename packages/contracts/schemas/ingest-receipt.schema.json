@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://offload.consultance.ai/schemas/ingest-receipt.json",
+  "type": "object",
+  "properties": {
+    "accepted": {
+      "maxItems": 500,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      }
+    },
+    "rejected": {
+      "maxItems": 500,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "schema_invalid",
+              "leak_detected",
+              "excluded",
+              "too_old",
+              "unknown_kind",
+              "consent_missing",
+              "not_enabled",
+              "rate_limited",
+              "server_error"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "code"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "accepted",
+    "rejected"
+  ],
+  "additionalProperties": false
+}
