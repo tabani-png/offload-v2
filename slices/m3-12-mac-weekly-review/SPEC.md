@@ -144,7 +144,7 @@ Scope changes). `human_gated: true`: the owner answers real questions about his 
   this week stays in its place, ticked, with its answer chip on; one not answered is left out when declined. At most 4.
   With goals, a repeat never answered `keep` or `other_goal` gets the goal question (question i asks about goal
   i mod count, "another goal" offers the others; with one goal that chip is not shown); otherwise the build question.
-  The first build question's why line starts "Top repeat:"; the others give the same numbers without it.
+  The first question's why line starts "Top repeat:"; the others give the same numbers without it.
 - **Cloud**: tiles by position ("Active", "Focus", "Meetings", "Switches / hour"; a fifth or later by unit), values as
   the brain sent them, no delta line. Questions read "What next for <name>?" with one chip per answer the brain lists
   (`other_goal` only when goals exist). OK, build hands `.opportunity(id: subject_key, optionID: nil)` to Build
@@ -157,6 +157,8 @@ Scope changes). `human_gated: true`: the owner answers real questions about his 
   with its line without asking again. One pending request id `ai.offload.weekly-review`, a repeating calendar trigger
   on weekday, hour and minute. `LiveReviewNotifier` touches `UNUserNotificationCenter` only inside a bundle, shows the
   banner while Offload is in front and opens Weekly review when clicked.
+- **Empty week with older data**: an imported archive often holds only older weeks, so the empty state also offers
+  "See the week of Oct 5" for the latest week with data (added after self-review, with its own red test).
 - **Settings**: the slot is edited with a day picker and an hour-and-minute picker (minute precision, so the owner can
   set it two minutes ahead). `.local` saves to `UserDefaults` (`ai.offload.review.day`, `ai.offload.review.time`,
   `ai.offload.review.notify`); `.cloud` sends `PATCH /v1/profile` with only `review_slot`, and reads the slot from
@@ -217,3 +219,19 @@ folders.
 - `Shell/AppModel.swift` is shared (m3-04, m3-05, m3-10); this slice adds one line to `live()`.
 - `BASE` is set after m3-10 is `done`, so m3-10's placeholder commits in `WeeklyReview/` are not counted against this
   slice's `owns`.
+- Build notes (2026-11-22): the screen's question type is `WeekQuestion` (m3-10's `ReviewQuestion` is the brain wire
+  shape). `ReviewTone` has a third value, `neutral`, for tiles with nothing to compare (first week, Saved by fixes,
+  cloud tiles) and goals without a trend: the SPEC's good or needs-you would otherwise colour a number that was not
+  compared. Cloud tiles show no line against your usual (the brain's WeekReview has no usual). Cloud **OK, build**
+  hands `.opportunity(id: subject_key, optionID: nil)` to Build progress, because the review question carries the task
+  key, not an opportunity id (for m3-13 and the API owners). Local goal ids hash the trimmed, lowercased text only
+  (the brain also hashes `created_at`, which the Mac does not have), so a local id and a cloud id for the same goal
+  differ; they never mix because answers stay in their own mode. The AppModel edit is a lazy stored property plus one
+  line in `live()` (3 lines), not one line: the hub must be kept somewhere and AppModel is the app's root.
+  `LiveReviewNotifier` installs itself as `UNUserNotificationCenter`'s delegate only when no delegate is set, to show
+  the banner while Offload is in front and open Weekly review on click.
+- Reference repos: nothing ported. The old repo's `ReviewModel`/`ReviewView` (release/mac-testable) are the workflow
+  approval review built around the run mode ADR 0016 removes, not the weekly review; Clicky has no notification or
+  week code. The layout follows the owner-approved mockup (`Weekly`, lines 629 to 709). No NOTICE change.
+- Not verified here: Swift does not build on Linux; the slice suite (73 tests) and the UserNotifications delegate
+  conformance under Swift 6 are first checked by the macOS CI run.
