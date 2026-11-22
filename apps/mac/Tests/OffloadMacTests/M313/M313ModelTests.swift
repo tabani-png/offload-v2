@@ -144,9 +144,9 @@ extension M313 {
     let model = M313M.cloud(client)
     await model.startPlan(opportunityID: "opp_1", optionID: "fix_1")
     #expect(model.plan?.phase == .needsConnection(["google_sheets", "github"]))
-    #expect(model.plan?.line == "Connect Google Sheets and Github first.")
+    #expect(model.plan?.line == "Connect Google Sheets and GitHub first.")
     #expect(await model.planStep() == 5)
-    #expect(model.plan?.line == "Connect Github first.")
+    #expect(model.plan?.line == "Connect GitHub first.")
     #expect(client.count("fix") == 0)
   }
 
@@ -166,7 +166,8 @@ extension M313 {
     bare.brief = .object([:])
     bare.estimate = nil
     #expect(PlanSummary.make(fix: bare, title: "PR pre-read tool") == PlanSummary(summary: "PR pre-read tool", estimate: nil,
-                                                                                    cap: "build cap $4.00"))
+                                                                                    cap: "build cap $4.00",
+                                                                                    fingerprint: "fingerprint 7c41e2"))
   }
 
   @Test("PLAN: after 10 minutes of designing it says Still designing. Check back later. and stops")

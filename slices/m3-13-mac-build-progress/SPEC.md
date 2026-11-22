@@ -14,7 +14,7 @@ verify: bash slices/m3-13-mac-build-progress/verify.sh
 min_tests: 60
 paths_in_scope: [apps/mac/Sources/OffloadMac/BuildProgress/**, apps/mac/Tests/OffloadMacTests/M313/**, apps/mac/README.md, docs/GLOSSARY.md, slices/m3-13-mac-build-progress/**]
 paths_out_of_scope: [ee/**, services/**, packages/**, apps/web/**, docs/adr/**, .github/**, NOTICE, apps/mac/Package.swift, apps/mac/Packaging/**, apps/mac/TestBuild/**, apps/mac/Sources/OffloadMacApp/**, apps/mac/Sources/OffloadMac/OffloadMac.swift, apps/mac/Sources/OffloadMac/Updates/**, apps/mac/Sources/OffloadMac/SelfCheck/**, apps/mac/Sources/OffloadMac/Version/**, apps/mac/Sources/OffloadObserver/**, apps/mac/Sources/OffloadMasker/**, apps/mac/Sources/OffloadStore/**, apps/mac/Sources/OffloadUploader/**, apps/mac/Sources/OffloadImport/**, apps/mac/Sources/OffloadActuator/**, apps/mac/Sources/OffloadMac/Recordings/**, apps/mac/Sources/OffloadMac/Today/**, apps/mac/Sources/OffloadMac/Onboarding/**, apps/mac/Sources/OffloadMac/Permissions/**, apps/mac/Sources/OffloadMac/LocalNow/**, apps/mac/Sources/OffloadMac/NeverWatch/**, apps/mac/Sources/OffloadMac/Design/**, apps/mac/Sources/OffloadMac/Shell/**, apps/mac/Sources/OffloadMac/Analysis/**, apps/mac/Sources/OffloadMac/OnDevice/**, apps/mac/Sources/OffloadMac/Backend/**, apps/mac/Sources/OffloadMac/Navigation/**, apps/mac/Sources/OffloadMac/TodayLive/**, apps/mac/Sources/OffloadMac/WeeklyReview/**, apps/mac/Tests/OffloadMacTests/SmokeTests.swift, apps/mac/Tests/OffloadMacTests/M304/**, apps/mac/Tests/OffloadMacTests/M305/**, apps/mac/Tests/OffloadMacTests/M309/**, apps/mac/Tests/OffloadMacTests/M310/**, apps/mac/Tests/OffloadMacTests/M311/**, apps/mac/Tests/OffloadMacTests/M312/**]
-red_tests: [LIST, STEPS, ATTEMPTS, HEADLINE, HELDOUT, BUDGET, PLAN, OKBUILD, INSTALL, SAVING, POLL, SAMPLE, HANDOFF, STATES, FIGURES, COPY]
+red_tests: [LIST, STEPS, ATTEMPTS, HEADLINE, HELDOUT, BUDGET, PLAN, OKBUILD, INSTALL, SAVING, POLL, SAMPLE, HANDOFF, STATES, FIGURES, COPY, CANCEL]
 ---
 
 # m3-13-mac-build-progress
@@ -162,6 +162,7 @@ port's `buildView` shape; fake `BuildsClient`, signer and clock.
 | STATES | no builds line; offline line; each `APIError` sentence |
 | FIGURES | every number in `BuildDetail` comes from the build, fix or outcome fields or the labelled sample fixture |
 | COPY | strings have no em dash, banned word or ADR 0016 term; captions lowercase with `·` items as separate items |
+| CANCEL | Cancel build offered only while live, nothing posted otherwise; the returned build replaces the one shown; an error becomes a notice; `POST /v1/builds/{id}/cancel` unsigned with no body (added by review 2) |
 
 ## Out of scope
 The builder, approvals and outcomes on the server (`services/**`); the SSE stream, cancel and retry buttons beyond

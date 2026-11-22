@@ -81,6 +81,61 @@ struct M313Token: MemberTokenProvider {
   func currentToken() -> String? { "m313-member-token-Q8wLx2" }
 }
 
+/// Holds the first `parks` calls that reach it until `open()`, so a test can change the screen while a request is in
+/// flight. Later calls pass straight through.
+final class M313Gate: @unchecked Sendable {
+  private let lock = NSLock()
+  private var opened = false
+  private var parked: [CheckedContinuation<Void, Never>] = []
+  private var count = 0
+  private let parks: Int
+
+  init(parks: Int = 1) { self.parks = parks }
+
+  func wait() async {
+    await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+      if !park(c) { c.resume() }
+    }
+  }
+
+  private func park(_ c: CheckedContinuation<Void, Never>) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    count += 1
+    guard !opened, count <= parks else { return false }
+    parked.append(c)
+    return true
+  }
+
+  func open() {
+    for c in release() { c.resume() }
+  }
+
+  private func release() -> [CheckedContinuation<Void, Never>] {
+    lock.lock()
+    defer { lock.unlock() }
+    opened = true
+    let p = parked
+    parked = []
+    return p
+  }
+
+  var arrived: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return count
+  }
+
+  /// Yields until `n` calls have reached the gate.
+  func arrival(_ n: Int = 1) async {
+    var spins = 0
+    while arrived < n && spins < 200_000 {
+      spins += 1
+      await Task.yield()
+    }
+  }
+}
+
 /// A scripted BuildsClient: each method answers from its queue in order, then from its fallback; an unscripted call
 /// fails with `badResponse(599)`. Every call is logged as "<method> <id> …".
 final class M313Client: BuildsClient, @unchecked Sendable {
@@ -95,6 +150,18 @@ final class M313Client: BuildsClient, @unchecked Sendable {
   private var log: [String] = []
   private var okHashes: [FixHashes] = []
   private var deployed: [DeployHashes] = []
+  private let gate: M313Gate?
+  private let gated: Set<String>
+
+  /// Calls to the `gated` methods wait at `gate` after they are logged and before they answer.
+  init(gate: M313Gate? = nil, gated: Set<String> = []) {
+    self.gate = gate
+    self.gated = gated
+  }
+
+  private func hold(_ method: String) async {
+    if gated.contains(method), let gate { await gate.wait() }
+  }
 
   func script(_ method: String, _ replies: Reply...) {
     lock.lock()
@@ -149,22 +216,56 @@ final class M313Client: BuildsClient, @unchecked Sendable {
     }
   }
 
-  func openOpportunities() async throws -> [Opportunity] { try answer(take("openOpportunities", "openOpportunities")) }
-  func opportunity(id: String) async throws -> Opportunity { try answer(take("opportunity", "opportunity \(id)")) }
+  func openOpportunities() async throws -> [Opportunity] {
+    let r = take("openOpportunities", "openOpportunities")
+    await hold("openOpportunities")
+    return try answer(r)
+  }
+  func opportunity(id: String) async throws -> Opportunity {
+    let r = take("opportunity", "opportunity \(id)")
+    await hold("opportunity")
+    return try answer(r)
+  }
   func answerOpportunity(id: String, answer a: OpportunityAnswer, optionID: String?) async throws -> Opportunity {
-    try answer(take("answer", "answer \(id) \(a.rawValue) \(optionID ?? "-")"))
+    let r = take("answer", "answer \(id) \(a.rawValue) \(optionID ?? "-")")
+    await hold("answer")
+    return try answer(r)
   }
-  func fix(id: String) async throws -> Fix { try answer(take("fix", "fix \(id)")) }
+  func fix(id: String) async throws -> Fix {
+    let r = take("fix", "fix \(id)")
+    await hold("fix")
+    return try answer(r)
+  }
   func okBuild(fixID: String, hashes: FixHashes) async throws -> BuildStarted {
-    try answer(take("okBuild", "okBuild \(fixID)", ok: hashes))
+    let r = take("okBuild", "okBuild \(fixID)", ok: hashes)
+    await hold("okBuild")
+    return try answer(r)
   }
-  func build(id: String) async throws -> Build { try answer(take("build", "build \(id)")) }
-  func cancel(id: String) async throws -> Build { try answer(take("cancel", "cancel \(id)")) }
-  func definition(id: String) async throws -> BuildDefinition { try answer(take("definition", "definition \(id)")) }
+  func build(id: String) async throws -> Build {
+    let r = take("build", "build \(id)")
+    await hold("build")
+    return try answer(r)
+  }
+  func cancel(id: String) async throws -> Build {
+    let r = take("cancel", "cancel \(id)")
+    await hold("cancel")
+    return try answer(r)
+  }
+  func definition(id: String) async throws -> BuildDefinition {
+    let r = take("definition", "definition \(id)")
+    await hold("definition")
+    return try answer(r)
+  }
   func deploy(id: String, hashes: DeployHashes) async throws -> Deployed {
-    try answer(take("deploy", "deploy \(id)", deploy: hashes))
+    let r = take("deploy", "deploy \(id)", deploy: hashes)
+    await hold("deploy")
+    return try answer(r)
   }
-  func outcomes(month: String) async throws -> [FixOutcome] { try answer(take("outcomes", "outcomes \(month)")) }
+  func outcomes(month: String) async throws -> [FixOutcome] {
+    let r = take("outcomes", "outcomes \(month)")
+    await hold("outcomes")
+    return try answer(r)
+  }
 }
 
 /// Fixtures. Synthetic: no real person's data.
@@ -259,8 +360,8 @@ enum M313F {
     return d
   }
 
-  static func outcome(_ flag: String, weeks: String = "[]", ratio: String = "0.86") -> FixOutcome {
-    decode(FixOutcome.self, #"{"routine_id":"rt_1","shipped_at":"2026-11-22T12:10:00Z","estimated_minutes_per_week":{"id":"fig_0000000000000002","value":84,"unit":"minutes_per_week","arithmetic":"1.4 h x 60 = 84 min/week","evidence":[{"kind":"fix_estimate","id":"fix_1"}],"source_purged_at":null},"baseline_minutes_per_week":120,"weeks":\#(weeks),"flag":"\#(flag)","ratio":\#(ratio),"arithmetic":"72.24 min measured / 84 min estimated = 0.86"}"#)
+  static func outcome(_ flag: String, weeks: String = "[]", ratio: String = "0.86", estimated: String = "84") -> FixOutcome {
+    decode(FixOutcome.self, #"{"routine_id":"rt_1","shipped_at":"2026-11-22T12:10:00Z","estimated_minutes_per_week":{"id":"fig_0000000000000002","value":\#(estimated),"unit":"minutes_per_week","arithmetic":"1.4 h x 60 = 84 min/week","evidence":[{"kind":"fix_estimate","id":"fix_1"}],"source_purged_at":null},"baseline_minutes_per_week":120,"weeks":\#(weeks),"flag":"\#(flag)","ratio":\#(ratio),"arithmetic":"72.24 min measured / 84 min estimated = 0.86"}"#)
   }
 
   static func record(_ id: String = buildID, name: String = "PR pre-read tool", fixID: String? = "fix_1",

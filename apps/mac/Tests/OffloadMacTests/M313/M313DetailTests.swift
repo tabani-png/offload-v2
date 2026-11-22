@@ -415,7 +415,7 @@ extension M313 {
     #expect(BuildCopy.installNeedsCloud == "Installing needs the cloud.")
     #expect(BuildCopy.installNeedsEnrollment == "Installing needs this Mac to be enrolled.")
     #expect(BuildCopy.connectFirst(["google_sheets"]) == "Connect Google Sheets first.")
-    #expect(BuildCopy.connectFirst(["github", "slack"]) == "Connect Github and Slack first.")
+    #expect(BuildCopy.connectFirst(["github", "slack"]) == "Connect GitHub and Slack first.")
     #expect(BuildCopy.connectFirst(["a", "b", "c"]) == "Connect A, B and C first.")
     #expect(BuildCopy.designing == "Designing the fix…")
     #expect(BuildCopy.stillDesigning == "Still designing. Check back later.")
