@@ -11,7 +11,7 @@ size: L
 parallel_group: M5-A
 owns: [services/brain/src/understanding/**, services/brain/tests/m5-01-understanding/**]
 verify: bash slices/m5-01-understanding/verify.sh
-min_tests: 24
+min_tests: 36
 paths_in_scope: [services/brain/src/understanding/**, services/brain/src/user-model/ports.ts, services/brain/src/index.ts, services/brain/tests/m5-01-understanding/**, services/brain/package.json, bun.lock, docs/API.md, docs/ARCHITECTURE.md, docs/DATA_MODEL.md, docs/GLOSSARY.md, docs/ROADMAP.md, slices/m5-01-understanding/**]
 paths_out_of_scope: [ee/**, apps/**, packages/**, services/api/**, services/runtime/**, services/broker/**, services/builder/**, services/brain/src/models/**, services/brain/src/store/**, services/brain/src/user-model/ledger.ts, services/brain/sql/**, docs/adr/**, .github/**, slices/m5-01-understanding/STATUS.md]
 red_tests: [SPAN, CUE, DESCRIBE, EMBED, INDUCE, WINDOW, LEDGER, CONSUME]
@@ -53,8 +53,10 @@ deterministic local embedder, induce tasks and instances, and hand the result to
   - The job: `runUnderstanding(deps, event) → UnderstandingResult` and `drainUnderstanding(deps, { tenantId, limit? })`
     (in-process consumer), `understandingWorkflow(deps)` (a `WorkflowFn` for the durable runtime, input
     `{ tenant_id, event_id }`), `pgCaptureStore(pool)`, `UNDERSTANDING_CONSUMER = "workflow:understanding"`.
-    `deps = { capture: CaptureStore, runBrain: RunInTenant, clock: () => number, embedder?, labeler?, estimateFor? }`.
+    `deps = { capture: CaptureStore, runBrain: RunInTenant, clock: () => number, embedder?, labelerFor?, estimateFor? }`
+    where `labelerFor(member)` builds the label route for the event's tenant and member (review 1).
     `UnderstandingResult.status` is `updated`, `duplicate` (already delivered: nothing read, nothing written),
+    `busy` (another consumer holds the event's claim), `failed` (drain only; `error` is the recorded code),
     `empty` (no observations in range), `paused` (learning paused) or `unknown_member`.
 - Event payload read: `{ device_id, member_id, seq, accepted }` as m3-01 writes it, plus optional `first_ts`,
   `last_ts` (API.md section 7 is corrected to say so).
@@ -75,7 +77,7 @@ Pipeline, all in `services/brain/src/understanding/`:
 2. **Sessionize** (`sessionize.ts`, written fresh after old `sessionize.ts`): segments end at the next focus,
    `idle_start` (backdated 120 s), `pause` or the last event; blips under 10 s join a contiguous neighbour; segments of
    the same app + title + host merge across idle up to 15 min. Text snapshots attach to the segment open at their `ts`.
-3. **Cues** (`cues.ts`): a segment on a **stand-in app** (`recording.unknown`, `screenwatch.screen`, app name `Screen`: what
+3. **Cues** (`cues.ts`; app names only at the start of the first two lines of a snapshot): a segment on a **stand-in app** (`recording.unknown`, `screenwatch.screen`, app name `Screen`: what
    the recordings import emits without a macOS menu bar) takes its host from host tokens in its masked text (URL bar)
    and its app from known app names in window chrome text, before merging. A stand-in segment with no cue never merges
    across idle, so unrelated recordings stay apart.
@@ -86,19 +88,22 @@ Pipeline, all in `services/brain/src/understanding/`:
    words is **not joinable**: it counts as time but joins no task.
 5. **Embed** (`embed.ts`): feature hashing of surface words, verb, object and content words (stemmed words weight 1,
    bigrams 0.5), signed buckets, 1024 dims, unit norm. Same text, same vector.
-6. **Induce** (`induce.ts`): steps join by exact `app|host|verb|object` key, else the best step on the same surface
-   with cosine ≥ 0.7. Tasks are connected components of steps linked by a shared item pseudonym or a reliable
+6. **Induce** (`induce.ts`): steps join by exact `app|host|verb|object` key when that key names an object or a verb
+   read on screen on a named surface (review 1: a default verb with no object, or a stand-in without a cue, says
+   nothing about the work), else the best step on the same surface with cosine ≥ 0.7. Tasks are connected components of steps linked by a shared item pseudonym or a reliable
    transition. Instances split on a new day, a gap over 10 min, a step coming back with a conflicting `doc` or the instance's first
    step recurring after another step. Ids are deterministic (uuid from sha256 of device and object ids), so the same
    observations give the same window and `runMemberUpdate` writes the same rows.
-7. **Job** (`job.ts`): duplicate check on `outbox_deliveries` → profile timezone (brain transaction) → read (capture
-   transaction) → build the window (no transaction; the labeler's model call happens here) → `runMemberUpdate`
-   (brain transaction) → mark delivered (capture transaction). A failure records `attempts` and
-   `last_error_code` and rethrows; a re-run after a crash rebuilds the same window, which `runMemberUpdate` stores
-   idempotently. A delivered event is never processed again.
+7. **Job** (`job.ts`): claim the event (session advisory lock in `withEventLock`; a second consumer gets `busy`) →
+   duplicate check on `outbox_deliveries` → profile timezone (brain transaction) → read (capture transaction) → build
+   the window (no transaction; the labeler's model call happens here) → `runMemberUpdate` after `repo.lockProfile`
+   (brain transaction: one member's updates run one after the other) → mark delivered (capture transaction). A
+   failure records `attempts` and `last_error_code` and rethrows; the drain records it as `failed` and goes on; after
+   `MAX_ATTEMPTS` (5) the event is no longer pending. A re-run after a crash rebuilds the same window, which
+   `runMemberUpdate` stores idempotently. A delivered event is never processed again.
 
-Privacy: only masked C1 text is read; logs and errors carry ids only; the window's task names are scrubbed again by
-the user model (`safeName`). No model call unless a labeler is injected; the labeler goes through the router.
+Privacy: only masked C1 text is read; logs and errors carry ids and codes only. Task names are built from verb,
+object, app and masked title words, never from snapshot text, and are scrubbed again by the user model (`safeName`). No model call unless a labeler is injected; the labeler goes through the router.
 
 ## Red tests (write these first, run them, see them fail)
 Tests live in `services/brain/tests/m5-01-understanding/`. Postgres tests skip without `DATABASE_URL` (verify.sh
@@ -131,6 +136,20 @@ requires it).
 | CONSUME | CONSUME: imported observations are read by ts and analysed on their own days | |
 | CONSUME | CONSUME: a member's run reads only that member's observations and writes only that member's model | tenant and member walls |
 | CONSUME | CONSUME: drainUnderstanding processes pending events once and understandingWorkflow runs one event | |
+| CUE | (review 1, in the first CUE test) an app name in the body text, not at the start of the first two lines, is not a cue | |
+| INDUCE | INDUCE: unrelated recordings sharing an object word or an app name do not merge | review 1 finding 1 |
+| INDUCE | INDUCE: reliable transitions alone join a workflow whose steps share no pseudonym | finding 5 |
+| INDUCE | INDUCE: a doc pseudonym on more than 12 spans is a container and links nothing | finding 5 |
+| INDUCE | INDUCE: a shared person pseudonym links steps only within 20 min | finding 5 |
+| WINDOW | WINDOW: a task without an object is named from its verb, app and masked title, never from snapshot text | finding 2 |
+| DESCRIBE | DESCRIBE: a labeler that throws leaves the rules' description | finding 5 |
+| EMBED | EMBED: one step on two generated instances is close; a noise clip on another surface is far | finding 11 |
+| CONSUME | CONSUME: two consumers of one event: one updates the model and the other does nothing | finding 3 |
+| CONSUME | CONSUME: two events of one member update the model one after the other | finding 3 (ledger first/last seen day) |
+| CONSUME | CONSUME: a failing event records its code, is rethrown, does not block the drain, and stops after the attempt cap | finding 4 |
+| CONSUME | CONSUME: first_ts and last_ts in the event narrow the analysed days | finding 5 |
+| CONSUME | CONSUME: with learning paused nothing is read or written and the event is delivered | finding 5 |
+| CONSUME | CONSUME: label route calls carry the event's tenant and member | finding 6 |
 
 ## Test plan
 Pure tests on synthetic, masked observations (`tests/m5-01-understanding/fixtures.ts`: a reproducible generator of
@@ -177,11 +196,20 @@ fix rules and `FixEstimate` (m5-04: `estimateFor` is passed through), `offload s
   CONSUME fail; duplicate check removed → two CONSUME tests fail)
 - [x] `bash slices/m5-01-understanding/verify.sh` PASS (25 slice tests, 466 in the full suite);
   `SLICE_UPSTREAM=$(git merge-base HEAD origin/main) bash scripts/verify-all.sh` green
-- [ ] review by an agent that did not write it (AGENTS.md review gate), then `status: done`
+- [x] review 1 (CHANGES): findings 1 to 8, 10 and 11 fixed with red tests first (0ce0a04, then 43966f6, c41cdcc);
+  finding 9 recorded under Known limits
+- [ ] review 2, then `status: done`
 
 Known limits (for m1-06 and later):
 - Each event re-reads its whole days, so a live member whose Mac uploads every few minutes re-analyses today and
   yesterday per batch. Correct (idempotent), but `offload serve` should run the drain on a tick, not per insert.
-- App cues use a fixed table of app names; a stand-in recording of an app not in it gets its host cue only.
+- Imports and live data interplay (review 1 finding 9): imported rows carry today's partition `day`, so on an
+  import's ingest day (and the day after) every live batch's fallback range also covers the whole imported range,
+  up to 31 days, read into memory per event. m1-06 should coalesce a member's pending events (one run per member per
+  tick) or have ingest write `first_ts`/`last_ts` into the event; both stay inside this consumer's contract.
+- Each running event holds one pool connection for its claim (session advisory lock) besides its queries: size the
+  `offload serve` pool for that.
+- App cues use a fixed table of app names, read only at the start of a snapshot's first two lines; a recording of
+  an app not in the table, or whose chrome OCR reads lower down, gets its host cue only.
 - Instances split by the rules above; a workflow whose steps interleave with unrelated work inside 2 min can link
   through a transition only if it happens at least twice and on half of the step's spans.

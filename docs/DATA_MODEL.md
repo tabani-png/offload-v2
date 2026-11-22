@@ -283,7 +283,7 @@ window built in another one.
 | `webhook_endpoints` | `(tenant_id, id)` | `url`, `event_types[]`, `secret_ref` (vault), `created_by`, `disabled_at` | life of endpoint (M8) |
 | `exports` | `(tenant_id, id)` | `member_id`, `kind` (`member_data`), `object_key`, `state`, `created_at`, `expires_at` (7 days) | 7 days |
 | `events_outbox` | `(tenant_id, id)` | `type`, `version`, `payload jsonb` (ids only), `created_at` | `R-ops`. RLS on. The dispatcher reads through `outbox_claim(limit)` as `offload_jobs` |
-| `outbox_deliveries` | `(tenant_id, event_id, consumer)` | `consumer` (`workflow:<name>`, `webhook:<endpoint_id>`), `attempts`, `delivered_at`, `last_error_code` | `R-ops`. Understanding (m5-01) writes consumer `workflow:understanding`: one row per `observations.ingested` event, `delivered_at` set once it ran (or had nothing to do), `last_error_code` a code only |
+| `outbox_deliveries` | `(tenant_id, event_id, consumer)` | `consumer` (`workflow:<name>`, `webhook:<endpoint_id>`), `attempts`, `delivered_at`, `last_error_code` | `R-ops`. Understanding (m5-01) writes consumer `workflow:understanding`: one row per `observations.ingested` event, `delivered_at` set once it ran (or had nothing to do), `last_error_code` a code only; not retried after 5 attempts |
 
 The durable runtime keeps its own state in schema `durable` ([ADR 0009](adr/0009-durable-execution-on-postgres.md)),
 outside RLS and allowlisted by name. Rule and test: workflow inputs and step outputs hold **ids only, never content**;

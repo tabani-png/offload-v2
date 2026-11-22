@@ -306,8 +306,10 @@ days without the real values ([ADR 0028](adr/0028-stable-keyed-pseudonyms.md)).
 
 **Understanding** (slice [m5-01](../slices/m5-01-understanding/SPEC.md), `services/brain/src/understanding/`; ideas
 from the old `sessionize.ts`, `understanding/*`, written fresh):
-- Trigger: the consumer `workflow:understanding` takes each `observations.ingested` event once (`outbox_deliveries`
-  marks it delivered; a delivered event is never processed again). It reads the event's member's `observations` and
+- Trigger: the consumer `workflow:understanding` takes each `observations.ingested` event once: it claims the event
+  with a session advisory lock (a second consumer skips it), `outbox_deliveries` marks it delivered (a delivered event
+  is never processed again), a failure records its code, and an event that failed 5 times is no longer drained. One
+  member's model updates run one after the other (the profile lock). It reads the event's member's `observations` and
   `observation_texts` **by `ts`** inside `withTenant` (member wall on): the `ts` range of the rows just ingested
   (partition `day` = the event's UTC day or the day before; imported rows carry the ingest date), widened to whole
   days in the profile's timezone, at most 31 days. So an import is analysed on its own days and its records are
@@ -316,7 +318,7 @@ from the old `sessionize.ts`, `understanding/*`, written fresh):
 - Spans: continuous focus on one app + title + host; minimum span 10 s; idle merges up to 15 min; idle start backdated
   120 s. Text snapshots attach to the span open at their time.
 - Stand-in apps: a recording without a macOS menu bar arrives as `recording.unknown` / "Screen". Its masked text gives
-  app cues (known app names in window chrome) and host cues (the URL bar's host); the segment splits where they change.
+  app cues (a known app name opening one of the snapshot's first two lines: window chrome, never body text) and host cues (the URL bar's host); the segment splits where they change.
   A stand-in segment without a cue never merges across idle, and one without text joins no task, so unrelated
   recordings stay apart.
 - Span descriptions: rules first (verb and object from fixed vocabularies counted in the masked title and text, else a
@@ -324,12 +326,13 @@ from the old `sessionize.ts`, `understanding/*`, written fresh):
   only from the same vocabularies.
 - Embeddings: local feature-hashing embedder, 1024 dims, deterministic. Task centroids reach `task_ledger.centroid`;
   span vectors are not stored (M7 entity resolution may add them in pgvector).
-- Task induction: steps joined by exact surface + verb + object key, else best embedding match on the same surface
-  (assign threshold 0.7); tasks are connected components of steps linked by shared item pseudonyms (same `<doc:h_…>` at
+- Task induction: steps joined by exact surface + verb + object key when the key names an object or an on-screen verb
+  on a named surface, else best embedding match on the same surface (assign threshold 0.7); tasks are connected components of steps linked by shared item pseudonyms (same `<doc:h_…>` at
   any distance, same `<person:h_…>`, email or phone within 20 min; a pseudonym on more than 12 spans is a container) or
   reliable transitions (within 2 min, at least twice and on half of the step's spans); instances split on a new day, a
   gap over 10 min, a step coming back with a conflicting `doc`, or the instance's first step recurring.
-- Output: an `UnderstandingWindow` (spans, tasks with instances; masked, no text snapshot content) handed to
+- Output: an `UnderstandingWindow` (spans, tasks with instances; masked, no text snapshot content: task names come
+  from verb, object, app and masked title) handed to
   `runMemberUpdate` in the brain store. Ids are derived from observation ids, so a re-run writes the same rows.
 
 **User model** ([ADR 0019](adr/0019-user-model-storage.md); constants match PR #43):
