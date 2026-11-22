@@ -2,7 +2,7 @@
   "name": "@offload/testkit",
   "version": "0.0.0",
   "private": true,
-  "description": "Test helpers: real-Postgres tenant fixtures, commit fault injection, golden-file helpers, fake model router, fake sandbox.",
+  "description": "Test helpers: real-Postgres tenant fixtures, commit fault injection, golden-file helpers, fake model router, fake sandbox, fake connector.",
   "license": "MIT",
   "type": "module",
   "main": "src/index.ts",
@@ -14,6 +14,7 @@
   "dependencies": {
     "@offload/contracts": "workspace:*",
     "@offload/db": "workspace:*",
+    "@offload/routine-sdk": "workspace:*",
     "jose": "6.2.13",
     "pg": "8.23.1"
   },

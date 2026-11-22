@@ -11,7 +11,7 @@ cd "$ROOT"
 
 # ---- CONFIG -------------------------------------------------------------
 SLICE_ID="m1-05-routine-contract"
-BASE=""                                  # commit this slice stacks on (required once status is in_progress)
+BASE="a512a5c7c305bd14ab53e917e980df37d6c26876"                                  # commit this slice stacks on (required once status is in_progress)
 TEST_DIRS="packages/routine-sdk/tests/m1-05-routine-contract packages/testkit/tests/m1-05-routine-contract"   # one or more folders, space separated
 NEEDS_POSTGRES=0                         # 1 = tests need a real Postgres 17 at DATABASE_URL
 # -------------------------------------------------------------------------

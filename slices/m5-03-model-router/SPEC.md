@@ -2,7 +2,7 @@
 id: m5-03-model-router
 title: Model router - the one egress for product model calls, with the person-name masking second pass, leak scan, budgets, escalation, label-only structured output and the optional local tier
 milestone: M5
-status: ready
+status: done
 depends_on: [m1-02-contracts-ingest, m1-03-tenancy-rls, m3-01-ingest-batches]
 parallel_safe: true
 human_gated: false
@@ -12,7 +12,7 @@ parallel_group: M5-A
 owns: [services/brain/src/models/**, services/brain/config/**, packages/masking/src/names/**, packages/testkit/src/models/**, packages/testkit/fixtures/masking/**]
 verify: bash slices/m5-03-model-router/verify.sh
 min_tests: 26
-paths_in_scope: [services/brain/src/models/**, services/brain/config/**, services/brain/tests/m5-03-model-router/**, packages/masking/src/names/**, packages/masking/tests/m5-03-model-router/**, packages/testkit/src/models/**, packages/testkit/fixtures/masking/**, slices/m5-03-model-router/**, package.json, bun.lock]
+paths_in_scope: [services/brain/src/models/**, services/brain/config/**, services/brain/tests/m5-03-model-router/**, packages/masking/src/names/**, packages/masking/tests/m5-03-model-router/**, packages/testkit/src/models/**, packages/testkit/fixtures/masking/**, slices/m5-03-model-router/**, services/brain/package.json, docs/ARCHITECTURE.md, package.json, bun.lock]
 paths_out_of_scope: [ee/**, apps/**, services/api/**, services/broker/**, services/builder/**, services/runtime/**, services/brain/src/understanding/**, services/brain/src/records/**, services/brain/src/opportunities/**, packages/masking/src/index.ts, packages/testkit/src/index.ts, packages/db/**, packages/contracts/**, docs/adr/**]
 red_tests: [ROUTER, NAMES, BUDGET, ESCALATE, LABEL, LOCAL]
 ---
@@ -157,4 +157,35 @@ runtime `model` step execution (m2-10, which calls this router); keyframe captio
 `bash slices/m5-03-model-router/verify.sh` (no Postgres; fakes only).
 
 ## Scope changes
-None.
+- **`services/brain/package.json` added to `paths_in_scope`.** Bun workspaces here do not hoist: a package can import
+  only what its own `package.json` declares. The router needs `zod` (the Contract says "validated by zod at load"),
+  `@offload/contracts` (`sha256Hex` for the audit request hash) and `@offload/masking` (the name masker), plus
+  `@offload/testkit` as a dev dependency for the fakes. `zod` is pinned at `4.6.7`, the version already in `bun.lock`
+  for `packages/contracts` and `packages/routine-sdk`, so no new package enters the lockfile.
+- **`docs/ARCHITECTURE.md` added to `paths_in_scope`** for the docs step: section 17 gains the router's call contract
+  (result statuses and reasons, ledger idempotency keys per attempt, untrusted-tag rule), which the docs did not state.
+- **`BudgetLedger` gains `monthlyBudgetUsd(tenant)`** next to the four methods named above, so the router reads
+  `tenants.monthly_model_budget_usd` through the port instead of from the caller.
+- **`reserve` takes the limits and is atomic** (review finding): `reserve({…, limits: { month_start,
+  monthly_budget_usd, run_budget_usd } })` returns `over_budget` when a paid reservation does not fit, so parallel
+  calls cannot overrun a budget (a read-then-reserve race let five calls through with $0.025 left). Reservations are
+  kept apart from `budget_entries` (append-only, one row written at settle), as `budget_reservations` and
+  `budget_entries` are in DATA_MODEL and ADR 0030. `budget_reservations` today names build columns only; the
+  Postgres adapter slice must widen it to brain, run and design scopes (open issue). The BUDGET and ESCALATE tests'
+  ledger assertions were changed to this shape in the review commit; their intent is unchanged.
+- **Extra refusal reasons** from review: `invalid_call` (bad `max_tokens`, `call_id`, roles or empty messages),
+  `schema_holds_name` (a schema is sent unmasked, so it may not hold a name) and `call_in_flight` (a `call_id` with an
+  open reservation is not sent twice). A provider error now settles at the reserved amount, not zero.
+- **Re-review**: the schema name check uses the run's masker after the messages (so a name the run already masked
+  cannot go out raw in an enum); `RunMaskers` keeps one masker per run and the masker gains
+  `setOwnName(name, mode)` so a later call's own name joins the run's map without a new tag (`keep` after `mask`
+  stays masked; a different own name in one run is `invalid_call`); `untrusted()` folds NFKC and angle-bracket
+  look-alikes before escaping, and the tag check counts tags in that folded form.
+- **`models.json` gains `local_model`** (the model name the OpenAI-compatible local endpoint serves; default
+  `"default"`, edited by the operator), and the allowlist of model ids lives in
+  `services/brain/config/model-allowlist.json` so that "changing a model id is a config change plus a router allowlist
+  update" (ADR 0021) is two reviewed file edits.
+- **Leak scan stand-in.** m3-01 is `ready`, not `done`, so `packages/masking/src/detectors.ts` does not exist on this
+  branch. The router consumes the transport check through a `LeakScanner` port; tests use
+  `fakeLeakScanner()` from `packages/testkit/src/models/` (email, Luhn card number, `sk-ant`/`sk-` keys only). The
+  composition root wires m3-01's detectors once they land; no router change is needed.

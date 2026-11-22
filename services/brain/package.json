@@ -10,5 +10,13 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@offload/contracts": "workspace:*",
+    "@offload/masking": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@offload/testkit": "workspace:*"
   }
 }

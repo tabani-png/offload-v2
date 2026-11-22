@@ -1,0 +1,35 @@
+{
+  "tiers": {
+    "opus": { "id": "claude-opus-5-5", "usd_per_mtok_in": null, "usd_per_mtok_out": null, "usd_per_mtok_cache_read": null },
+    "sonnet": { "id": "claude-sonnet-5-5", "usd_per_mtok_in": null, "usd_per_mtok_out": null, "usd_per_mtok_cache_read": null },
+    "haiku": { "id": "claude-haiku-5-5", "usd_per_mtok_in": null, "usd_per_mtok_out": null, "usd_per_mtok_cache_read": null }
+  },
+  "routes": {
+    "design": "opus",
+    "check_write": "opus",
+    "verify": "opus",
+    "understand": "opus",
+    "explain": "opus",
+    "build": "sonnet",
+    "draft": "sonnet",
+    "model_step": "sonnet",
+    "classify": "haiku",
+    "caption": "haiku",
+    "label": "haiku"
+  },
+  "local_routes": ["classify", "caption", "embed"],
+  "local_model": "default",
+  "max_usd_per_call": {
+    "design": 0.6,
+    "check_write": 0.6,
+    "verify": 0.6,
+    "understand": 0.5,
+    "explain": 0.25,
+    "build": 1.0,
+    "draft": 0.25,
+    "model_step": 0.1,
+    "classify": 0.05,
+    "caption": 0.05,
+    "label": 0.05
+  }
+}
