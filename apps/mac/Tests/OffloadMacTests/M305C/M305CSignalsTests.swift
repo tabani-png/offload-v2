@@ -109,4 +109,17 @@ extension M305C {
     #expect(b == ["web.hubspot"])
     #expect(a.isDisjoint(with: b))
   }
+
+  @Test("SIGNALS: a frame where OCR misses the URL bar does not split the app's span; another site or an excluded one does")
+  func missedURLBarKeepsTheSpan() throws {
+    let script = M305Script(id: "flicker", duration: 40, scenes: [
+      M305Scene(at: 0, lines: m305cWindow(tab: "Inbox - Gmail", url: "mail.google.com/mail/u/0", body: "Inbox"), hash: 0),
+      M305Scene(at: 10, lines: m305cWindow(tab: "Inbox - Gmail", body: "Inbox"), hash: 0),
+      M305Scene(at: 20, lines: m305cWindow(tab: "Inbox - Gmail", url: "mail.google.com/mail/u/0", body: "Inbox"), hash: 0),
+      M305Scene(at: 30, lines: m305cWindow(url: "https://secure.chase.com/accounts", body: "Balance"), hash: 0),
+    ])
+    let focus = M305.of(.focus, try M305C.ingest(script))
+    #expect(focus.map(\.appName) == ["Gmail", "Browser"])
+    #expect(focus.map(\.host) == ["mail.google.com", nil])
+  }
 }
