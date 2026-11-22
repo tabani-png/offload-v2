@@ -85,6 +85,12 @@ Found in this review (not fixed by `473cafb`):
   --user 65534:65534 --tmpfs /tmp --mount …/work → /work --mount …/check → /check,readonly`; only the harness exec on a
   split provider gets `--user 0:0 --cap-add CHOWN --cap-add SETGID --cap-add SETUID` instead. The executor is injected,
   so tests pin the exact argv and the exec-error rule with a fake; a `LIVE:` test runs real Docker and skips without it.
+  The image is provisioned on the host before the first container: `docker image inspect`, then one `docker pull` if
+  it is missing (one per image, shared by sandboxes that start together; a failed pull is an infra error and is
+  retried by the next sandbox; `pull_missing_image: false` forbids it on an air-gapped host). This is a host-side step
+  outside every sandbox; sandbox containers keep `--pull never`. CI run 1 failed without it: the runner had no image,
+  every `docker run --pull never` exited 125, and each shard failed as infra before any check ran. An image reference
+  that could read as a docker option is refused.
   A non-empty `network_allowlist` is refused until the egress proxy network lands (m2-08). `harness: true` is refused
   on any exec but `HARNESS_ARGV` (`bun /check/harness.ts`) in `/check`, so no other command gets root on a caller's
   word (review round 5). `destroy()` empties `/work` as each owner of files there before removing the folders, and
@@ -160,17 +166,18 @@ deploy that can be retried, and p45b's unrounded threshold and stored raw minute
   harness exec alone (`exec({ harness: true })`); every other exec, a worker's command above all, runs as `65534`
   with no added capability (review round 4). Tested for real with
   passwordless `sudo` (skipped without it: GitHub's hosted runners have it); `privilege_split: false` is development
-  only. Open (owner action before m2-07/m2-08 rely on it): one `LIVE:` run on a Linux Docker engine. It is the only
-  proof that the production path works there (root PID 1 with three capabilities under `no-new-privileges`, `chown`
-  on the bind mount, the Unix-socket broker), besides network and registry denial, `swept` and the cheat case.
+  only. The `LIVE:` test has now run on a Linux engine (Docker 26.1.5, cgroup v2, seccomp; 2026-11-22, starting from
+  a host without the image) and passes: root PID 1 with three capabilities under `no-new-privileges`, `chown` on the
+  bind mount, the Unix-socket broker, `split: true`, `swept: true`, network and registry denial, and the cheat case.
+  Still open: that box has no AppArmor; GitHub's Ubuntu runner (AppArmor `docker-default`) is the next run.
 - **Approvals are in memory** (`MemoryApprovals`): a restart loses them. The Postgres adapter is m2-06.
 - **Durable handoff of the build token**: the inline runner holds it in process (section 4).
 - **`LOCAL:` hand-off to m5-03** (owner action: whoever writes m5-03's SPEC). ROADMAP's m5-03 row does not list the
   four `LOCAL:` tests of section 5 or the `redirect: "error"` rule yet, and ROADMAP is outside this slice's scope.
-- **Network and registry isolation are proven only by the `LIVE:` Docker test**, which has not run here; the argv test
-  pins `--network none` and `--entrypoint`. Run it once on a Docker host before m2-08 relies on it (it now also tries
-  a registry and checks that the harness swept as PID 1). `parseProof` reports `swept` but does not require it yet:
-  the emulated container in the guard tests is not PID 1. Require it for verification shards when the LIVE run passes.
+- **Network and registry isolation are proven only by the `LIVE:` Docker test** (passing on Docker 26.1.5, above);
+  the argv test pins `--network none` and `--entrypoint`. `parseProof` reports `swept` but does not require it yet:
+  the emulated container in the guard tests is not PID 1. The LIVE run shows `swept: true`; requiring it for
+  verification shards is a small follow-up once CI's run passes too.
 - **The guard's two hooks**: `onResolve` refuses a path into `/work` at resolution; `onLoad` stops anything that
   resolved there another way (symlink, alias, absolute path). Each has its own test. Data imports (JSON, text) are
   not refused: data is not code.
@@ -184,6 +191,8 @@ deploy that can be retried, and p45b's unrounded threshold and stored raw minute
   a start with a wrong token ends the build `failed`. Only the in-process runner starts builds today; the durable
   adapter should claim before, or in the same transaction as, the compare-and-set.
 - **Image pin** (owner: spike S4, then m2-08): `docker run --pull never` stops fetching at check time, but the
-  default image is the tag `oven/bun:1.4.4`. Pin it by `@sha256:` digest, then refuse non-digest images in config.
+  default image is the tag `oven/bun:1.4.4`, and a host without it now pulls that tag once (section 3): whoever
+  controls the tag then controls the harness image on a fresh host. Pin it by `@sha256:` digest (the daemon verifies a
+  digest on pull), then refuse non-digest images in config.
 - Not ported here: verifier and repair turn, replay fixtures, receipt signing, egress proxy, reaper, E2B, artifact
-  object storage, the artifact capability scan (m2-07, m2-08). The `LIVE:` Docker test has not run on this box.
+  object storage, the artifact capability scan (m2-07, m2-08).
