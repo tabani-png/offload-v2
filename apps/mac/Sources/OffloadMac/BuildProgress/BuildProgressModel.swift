@@ -150,7 +150,10 @@ public final class BuildProgressModel: ObservableObject {
   @Published public private(set) var builds: [BuildRow] = []
   @Published public private(set) var selected: String?
   @Published public private(set) var detail: BuildDetail?
-  @Published public private(set) var plan: PlanState?
+  @Published public private(set) var plan: PlanState? {
+    // Kept across screens: leaving Builds destroys this model (review2.md finding 1).
+    didSet { persistPlan() }
+  }
   @Published public private(set) var installState = InstallState()
   /// A line above the detail: the hand-off's needs-cloud line, already running, a cancel error.
   @Published public private(set) var notice: String?
@@ -177,6 +180,7 @@ public final class BuildProgressModel: ObservableObject {
 
   private let client: (any BuildsClient)?
   private let store: any BuildRecordStore
+  private let plans: any PlanRecordStore
   private let sleeper: any BuildSleeper
   private let now: @Sendable () -> Date
   private let timeZone: TimeZone
@@ -188,12 +192,14 @@ public final class BuildProgressModel: ObservableObject {
   private var pollErrors = 0
 
   public init(mode: BackendMode, client: (any BuildsClient)?, store: any BuildRecordStore,
+              plans: any PlanRecordStore = MemoryPlanRecordStore(),
               sleeper: any BuildSleeper = TaskSleeper(), now: @escaping @Sendable () -> Date = { Date() },
               timeZone: TimeZone = .current) {
     isLocal = mode.isLocal
     provenance = mode.isLocal ? .sample : .cloud
     self.client = mode.isLocal ? nil : client
     self.store = store
+    self.plans = plans
     self.sleeper = sleeper
     self.now = now
     self.timeZone = timeZone
@@ -201,8 +207,8 @@ public final class BuildProgressModel: ObservableObject {
   }
 
   /// The app's model: m3-10's backends and the builds started on this Mac.
-  public convenience init(backends: Backends, store: any BuildRecordStore) {
-    self.init(mode: backends.mode, client: backends.builds, store: store)
+  public convenience init(backends: Backends, store: any BuildRecordStore, plans: any PlanRecordStore) {
+    self.init(mode: backends.mode, client: backends.builds, store: store, plans: plans)
   }
 
   // MARK: What the buttons may do
@@ -288,6 +294,10 @@ public final class BuildProgressModel: ObservableObject {
     if case .opportunity(let id, let optionID)? = pending {
       await startPlan(opportunityID: id, optionID: optionID)
       guard !Task.isCancelled else { return }
+    } else if plan == nil, let kept = plans.load() {
+      // A plan kept by an earlier screen (review2.md finding 1).
+      await resumePlan(kept)
+      guard !Task.isCancelled else { return }
     }
     // Also resumes a plan that was waiting when the screen went away (review 2, finding 5).
     restartPlanLoop()
@@ -335,17 +345,22 @@ public final class BuildProgressModel: ObservableObject {
   }
 
   /// Removes a build that is gone from the list on this Mac.
-  public func remove(buildID: String) {
+  public func remove(buildID: String) async {
     guard !isLocal else { return }
     store.remove(buildID: buildID)
     cache[buildID] = nil
     gone.remove(buildID)
     outcomes[buildID] = nil
-    if selected == buildID {
-      selected = store.records().first?.buildID
-      installState = InstallState()
-    }
     rebuildRows()
+    if selected == buildID {
+      // The next build is chosen as a person would choose it: loaded and polled (review2.md finding 3).
+      selected = nil
+      installState = InstallState()
+      if let next = store.records().first?.buildID {
+        await select(next)
+        return
+      }
+    }
     recompute()
   }
 
@@ -495,6 +510,38 @@ public final class BuildProgressModel: ObservableObject {
         return
       }
       stopPlan(words(error))
+    }
+  }
+
+  /// Brings back a kept plan: it reads the opportunity once at once (so a plan that was ready shows again even after
+  /// 10 minutes), then the plan loop goes on from the kept start time. The answer is never posted again.
+  public func resumePlan(_ kept: KeptPlan) async {
+    guard !isLocal, let client else { return }
+    plan = PlanState(opportunityID: kept.opportunityID, optionID: kept.optionID, fixID: kept.fixID, title: kept.title,
+                     phase: .designing, line: BuildCopy.designing, message: nil, startedAt: kept.startedAt)
+    do {
+      let opportunity = try await client.opportunity(id: kept.opportunityID)
+      guard plan?.opportunityID == kept.opportunityID else { return }
+      connectionLine = nil
+      await apply(opportunity)
+    } catch {
+      connectionLine = connectionWords(error)
+    }
+  }
+
+  /// Saves the plan while it waits or is ready; clears it once it is gone, stopped or too long.
+  private func persistPlan() {
+    guard !isLocal else { return }
+    guard let p = plan else {
+      plans.clear()
+      return
+    }
+    switch p.phase {
+    case .stopped, .tooLong:
+      plans.clear()
+    default:
+      plans.save(KeptPlan(opportunityID: p.opportunityID, optionID: p.optionID, fixID: p.fixID, title: p.title,
+                          startedAt: p.startedAt))
     }
   }
 
@@ -750,6 +797,11 @@ public final class BuildProgressModel: ObservableObject {
       notice = nil
     } catch {
       notice = words(error)
+      if (error as? APIError)?.code == .stateConflict {
+        // "Showing the latest" reads the latest (review2.md finding 2).
+        await rereadBuild(id)
+        return
+      }
     }
     rebuildRows()
     recompute()

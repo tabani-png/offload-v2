@@ -14,7 +14,8 @@ public struct BuildProgressScreen: View {
   public init(app: AppModel) {
     self.app = app
     self.navigation = app.navigation
-    _model = StateObject(wrappedValue: BuildProgressModel(backends: app.backends, store: UserDefaultsBuildRecordStore()))
+    _model = StateObject(wrappedValue: BuildProgressModel(backends: app.backends, store: UserDefaultsBuildRecordStore(),
+                                                         plans: UserDefaultsPlanRecordStore()))
   }
 
   public var body: some View {

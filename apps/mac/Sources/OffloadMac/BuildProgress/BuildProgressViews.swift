@@ -60,7 +60,7 @@ public struct BuildsListView: View {
             BuildRowView(row: row, selected: row.id == model.selected) {
               Task { await model.select(row.id) }
             } remove: {
-              model.remove(buildID: row.id)
+              Task { await model.remove(buildID: row.id) }
             }
           }
         }

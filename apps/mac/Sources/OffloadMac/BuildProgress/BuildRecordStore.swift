@@ -95,3 +95,72 @@ public final class UserDefaultsBuildRecordStore: BuildRecordStore {
     }
   }
 }
+
+// MARK: The OK, build plan, kept across screens
+
+/// The OK, build plan while it waits (review2.md finding 1). Leaving Builds destroys the screen and its model, and the
+/// opportunity was already answered `build` (it is no longer listed as open), so without this the person could not
+/// get back to OK, build. Ids, the suggestion's name as shown and the time the plan started (the 10-minute limit
+/// counts from it); never the fix, its hashes or the brief.
+public struct KeptPlan: Codable, Equatable, Sendable {
+  public var opportunityID: String
+  public var optionID: String?
+  public var fixID: String?
+  public var title: String
+  public var startedAt: Date
+
+  public init(opportunityID: String, optionID: String?, fixID: String?, title: String, startedAt: Date) {
+    self.opportunityID = opportunityID
+    self.optionID = optionID
+    self.fixID = fixID
+    self.title = title
+    self.startedAt = startedAt
+  }
+
+  enum CodingKeys: String, CodingKey {
+    case opportunityID = "opportunity_id"
+    case optionID = "option_id"
+    case fixID = "fix_id"
+    case title
+    case startedAt = "started_at"
+  }
+}
+
+@MainActor
+public protocol PlanRecordStore: AnyObject {
+  func load() -> KeptPlan?
+  func save(_ plan: KeptPlan)
+  func clear()
+}
+
+/// For tests and previews.
+@MainActor
+public final class MemoryPlanRecordStore: PlanRecordStore {
+  private var kept: KeptPlan?
+
+  public init(_ kept: KeptPlan? = nil) { self.kept = kept }
+
+  public func load() -> KeptPlan? { kept }
+  public func save(_ plan: KeptPlan) { kept = plan }
+  public func clear() { kept = nil }
+}
+
+/// The app's plan store: one JSON value under `key`. An unreadable value reads as none.
+@MainActor
+public final class UserDefaultsPlanRecordStore: PlanRecordStore {
+  public static let key = "ai.offload.builds.planWaiting"
+  private let defaults: UserDefaults
+
+  public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
+  public func load() -> KeptPlan? {
+    guard let data = defaults.data(forKey: Self.key) else { return nil }
+    return try? JSONDecoder().decode(KeptPlan.self, from: data)
+  }
+
+  public func save(_ plan: KeptPlan) {
+    if let data = try? JSONEncoder().encode(plan) { defaults.set(data, forKey: Self.key) }
+  }
+
+  public func clear() { defaults.removeObject(forKey: Self.key) }
+}
